@@ -117,33 +117,33 @@ export default function Home() {
 
       {/* Navigation Header */}
       <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-[#0f2055]/10 shadow-[0_2px_12px_rgba(15,32,85,0.06)]">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 sm:h-24 flex items-center justify-between">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-18 sm:h-20 flex items-center justify-between">
           {/* Logo & Brand Identity */}
-          <a href="#" className="flex items-center gap-3 sm:gap-4 group">
-            <div className="relative w-14 h-14 sm:w-16 sm:h-16 rounded-2xl overflow-hidden shadow-md shadow-[#0f2055]/15 border-2 border-[#d4a017]/40 bg-white p-0.5 shrink-0 group-hover:border-[#d4a017] transition-all">
+          <a href="#" className="flex items-center gap-2.5 sm:gap-3.5 group shrink-0 mr-6 sm:mr-8 lg:mr-12">
+            <div className="relative w-11 h-11 sm:w-13 sm:h-13 rounded-xl overflow-hidden shadow-md shadow-[#0f2055]/15 border-2 border-[#d4a017]/40 bg-white p-0.5 shrink-0 group-hover:border-[#d4a017] transition-all">
               <Image
                 src="/images/samin_logo.jpeg"
                 alt="Samin Home Tutors Logo"
-                width={64}
-                height={64}
-                className="w-full h-full object-cover rounded-xl group-hover:scale-105 transition-transform"
+                width={52}
+                height={52}
+                className="w-full h-full object-cover rounded-lg group-hover:scale-105 transition-transform"
                 priority
               />
             </div>
-            <div>
-              <div className="text-xl sm:text-2xl lg:text-3xl font-black tracking-tight leading-none text-[#0f2055]">
+            <div className="flex flex-col justify-center">
+              <div className="text-base sm:text-lg lg:text-xl font-black tracking-tight leading-snug text-[#0f2055]">
                 <span className="text-[#1e3a8a]">SAMIN</span>{" "}
                 <span>HOME TUTORS</span>
               </div>
-              <div className="text-[10px] sm:text-[11px] tracking-widest text-[#b8860b] font-bold uppercase mt-1">
+              <div className="text-[9px] sm:text-[10px] tracking-wider text-[#b8860b] font-bold uppercase mt-0.5">
                 Canada • USA • UK Online Tutoring
               </div>
             </div>
           </a>
 
           {/* Desktop Nav Links */}
-          <nav className="hidden lg:flex items-center gap-7 text-sm font-semibold text-[#1a1a2e]">
-            <a href="#levels" className="hover:text-[#b8860b] transition-colors">
+          <nav className="hidden lg:flex items-center gap-6 xl:gap-7 text-sm font-semibold text-[#1a1a2e] ml-2 lg:ml-4">
+            <a href="#levels" className="hover:text-[#b8860b] transition-colors whitespace-nowrap">
               Programs &amp; Levels
             </a>
             <a href="#method" className="hover:text-[#b8860b] transition-colors">
@@ -169,24 +169,18 @@ export default function Home() {
               href="https://wa.me/2347059655382"
               target="_blank"
               rel="noopener noreferrer"
-              className="hidden sm:inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 transition-all"
+              className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 transition-all"
             >
               <MessageCircle className="w-4 h-4 text-emerald-600" />
-              <span>WhatsApp</span>
+              <span className="hidden sm:inline">WhatsApp</span>
             </a>
             <a
               href="/admin/login"
-              className="hidden sm:inline-flex items-center gap-1 text-xs font-semibold px-3 py-2 rounded-xl bg-[#faf9f6] text-[#0f2055] border border-[#0f2055]/15 hover:border-[#b8860b] hover:text-[#b8860b] transition-all"
+              className="inline-flex items-center gap-1 text-xs font-semibold px-3 py-2 rounded-xl bg-[#faf9f6] text-[#0f2055] border border-[#0f2055]/15 hover:border-[#b8860b] hover:text-[#b8860b] transition-all"
             >
               <ShieldCheck className="w-3.5 h-3.5 text-[#b8860b]" />
               <span>Admin</span>
             </a>
-            <button
-              onClick={() => handleOpenBooking()}
-              className="btn-primary text-xs sm:text-sm px-4 sm:px-5 py-2.5 rounded-xl cursor-pointer"
-            >
-              Enroll Now
-            </button>
             {/* Mobile Hamburger Toggle */}
             <button
               onClick={() => setMobileNavOpen(true)}
