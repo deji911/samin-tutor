@@ -1,0 +1,84 @@
+@import "tailwindcss";
+
+:root {
+  --background: #060b17;
+  --foreground: #f1f5f9;
+  --brand-navy-950: #040812;
+  --brand-navy-900: #070e1c;
+  --brand-navy-800: #0c1830;
+  --brand-navy-700: #132448;
+  --brand-cyan: #00d2c4;
+  --brand-teal: #06b6d4;
+  --brand-blue: #2563eb;
+  --brand-coral: #ff6b4a;
+}
+
+body {
+  background-color: #060b17;
+  color: #f1f5f9;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  overflow-x: hidden;
+}
+
+/* Custom glow and glassmorphism utilities */
+.glass-panel {
+  background: rgba(12, 24, 48, 0.7);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.glass-panel-hover:hover {
+  background: rgba(19, 36, 72, 0.85);
+  border-color: rgba(0, 210, 196, 0.3);
+  box-shadow: 0 10px 30px -10px rgba(0, 210, 196, 0.15);
+}
+
+.glow-cyan {
+  box-shadow: 0 0 35px -5px rgba(0, 210, 196, 0.35);
+}
+
+.glow-blue {
+  box-shadow: 0 0 35px -5px rgba(37, 99, 235, 0.35);
+}
+
+.glow-coral {
+  box-shadow: 0 0 35px -5px rgba(255, 107, 74, 0.35);
+}
+
+.text-gradient-cyan-blue {
+  background: linear-gradient(135deg, #00d2c4 0%, #38bdf8 50%, #60a5fa 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.text-gradient-sunburst {
+  background: linear-gradient(135deg, #ff8a48 0%, #ff5e62 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.bg-radial-hero {
+  background: radial-gradient(circle at 50% 0%, rgba(37, 99, 235, 0.18) 0%, rgba(0, 210, 196, 0.1) 35%, transparent 70%);
+}
+
+/* Subtle grid backdrop */
+.bg-grid-pattern {
+  background-image: radial-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px);
+  background-size: 28px 28px;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #070e1c;
+}
+::-webkit-scrollbar-thumb {
+  background: #1e293b;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #00d2c4;
+}
