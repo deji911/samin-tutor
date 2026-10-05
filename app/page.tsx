@@ -483,8 +483,36 @@ export default function Home() {
               Scottish National 5, and A Level exam excellence, our specialist educators provide laser-focused online guidance.
             </p>
 
-            {/* Level Tabs */}
-            <div className="flex items-center justify-start sm:justify-center gap-2 pt-4 overflow-x-auto pb-2 px-1 max-w-full no-scrollbar">
+            {/* Mobile View: Staggered Interactive Grid */}
+            <div className="grid grid-cols-2 gap-2 pt-4 sm:hidden">
+              {[
+                { id: "reception", label: "Reception", icon: "🔤", span: "col-span-1" },
+                { id: "year1_6", label: "Year 1-6", icon: "📚", span: "col-span-1" },
+                { id: "eleven_plus", label: "11 Plus Preparation", icon: "🧩", span: "col-span-2" },
+                { id: "year7_12", label: "Year 7-12", icon: "🌉", span: "col-span-1" },
+                { id: "gcse", label: "GCSE Preparation", icon: "🎓", span: "col-span-1" },
+                { id: "nat5", label: "National 5", icon: "🏴󠁧󠁢󠁳󠁣󠁴󠁿", span: "col-span-1" },
+                { id: "alevel", label: "A Level", icon: "🏛️", span: "col-span-1" },
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveLevelTab(tab.id as LearnerCategory)}
+                  className={`p-3 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-sm active:scale-95 ${
+                    tab.span
+                  } ${
+                    activeLevelTab === tab.id
+                      ? "bg-[#0f2055] text-white border-2 border-[#d4a017] shadow-md shadow-[#0f2055]/20 font-black"
+                      : "bg-[#faf9f6] text-[#0f2055] border border-[#0f2055]/15 hover:border-[#b8860b]"
+                  }`}
+                >
+                  <span className="text-sm">{tab.icon}</span>
+                  <span>{tab.label}</span>
+                </button>
+              ))}
+            </div>
+
+            {/* Desktop View: Centered Tab Bar */}
+            <div className="hidden sm:flex items-center justify-center gap-2 pt-4 max-w-full">
               {[
                 { id: "reception", label: "Reception" },
                 { id: "year1_6", label: "Year 1-6" },
@@ -492,7 +520,7 @@ export default function Home() {
                 { id: "year7_12", label: "Year 7-12" },
                 { id: "gcse", label: "GCSE preparation" },
                 { id: "nat5", label: "National 5" },
-                { id: "alevel", label: "A level preparation" },
+                { id: "alevel", label: "A level" },
               ].map((tab) => (
                 <button
                   key={tab.id}
