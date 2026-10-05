@@ -1889,45 +1889,50 @@ export default function Home() {
 
       {/* Interactive Consultation / Trial Booking Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
-          <div className="relative w-full max-w-lg rounded-3xl bg-white border border-[#0f2055]/15 p-6 sm:p-8 shadow-2xl overflow-hidden">
-            {/* Close Button */}
-            <button
-              onClick={() => setIsModalOpen(false)}
-              className="absolute top-5 right-5 text-[#0f2055] hover:bg-[#faf9f6] p-1.5 rounded-full transition-colors cursor-pointer"
-            >
-              <X className="w-5 h-5" />
-            </button>
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/65 backdrop-blur-sm animate-fadeIn">
+          <div className="relative w-full max-w-lg rounded-t-3xl sm:rounded-3xl bg-white border border-[#0f2055]/15 shadow-2xl flex flex-col max-h-[92vh] sm:max-h-[90vh] overflow-hidden">
+            {/* Modal Header: Pinned at top with title and close button */}
+            <div className="px-5 py-4 sm:px-7 sm:py-5 border-b border-[#0f2055]/10 flex items-start justify-between bg-white shrink-0">
+              <div className="text-left space-y-0.5 pr-4">
+                <div className="text-[10px] sm:text-xs font-bold text-[#b8860b] uppercase tracking-wider">
+                  {selectedTutorForBooking ? `Booking with ${selectedTutorForBooking}` : "Fast-Track Consultation"}
+                </div>
+                <h3 className="text-xl sm:text-2xl font-black text-[#0f2055] leading-tight">
+                  Book Free Diagnostic Trial
+                </h3>
+                <p className="text-[11px] sm:text-xs text-[#5a6070] leading-snug">
+                  Complimentary 30-min evaluation &amp; tailored study plan ($120 value).
+                </p>
+              </div>
+              <button
+                onClick={() => setIsModalOpen(false)}
+                className="p-2 rounded-full text-[#0f2055] hover:bg-[#faf9f6] transition-colors cursor-pointer shrink-0 -mr-1 -mt-1 border border-[#0f2055]/10 bg-[#faf9f6]"
+                aria-label="Close dialog"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
 
             {!bookingSuccess ? (
-              <form onSubmit={handleBookingSubmit} className="space-y-4">
-                <div className="text-left space-y-1">
-                  <div className="text-xs font-bold text-[#b8860b] uppercase tracking-wider">
-                    {selectedTutorForBooking ? `Booking with ${selectedTutorForBooking}` : "Fast-Track Consultation"}
-                  </div>
-                  <h3 className="text-2xl font-black text-[#0f2055]">Book Free Diagnostic Trial</h3>
-                  <p className="text-xs text-[#5a6070]">
-                    Complimentary 30-min student evaluation &amp; tutor matching plan ($120 value).
-                  </p>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+              <form onSubmit={handleBookingSubmit} className="overflow-y-auto px-5 py-4 sm:px-7 sm:py-5 space-y-3.5 sm:space-y-4 overscroll-contain">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-[11px] font-bold text-[#0f2055] uppercase mb-1">
-                      Parent / Guardian Name
+                      Parent / Guardian Name *
                     </label>
                     <input
                       type="text"
                       required
+                      autoComplete="name"
                       value={bookingForm.parentName}
                       onChange={(e) => setBookingForm({ ...bookingForm, parentName: e.target.value })}
                       placeholder="e.g. Sarah Jenkins"
-                      className="w-full px-3 py-2.5 rounded-xl bg-[#faf9f6] border border-[#0f2055]/15 text-[#1a1a2e] text-xs focus:border-[#d4a017] focus:outline-none transition-colors"
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-[#faf9f6] border border-[#0f2055]/15 text-[#1a1a2e] text-base sm:text-xs focus:bg-white focus:border-[#d4a017] focus:outline-none transition-colors"
                     />
                   </div>
                   <div>
                     <label className="block text-[11px] font-bold text-[#0f2055] uppercase mb-1">
-                      Student Name &amp; Year
+                      Student Name &amp; Year *
                     </label>
                     <input
                       type="text"
@@ -1935,7 +1940,7 @@ export default function Home() {
                       value={bookingForm.studentName}
                       onChange={(e) => setBookingForm({ ...bookingForm, studentName: e.target.value })}
                       placeholder="e.g. Liam (Year 11)"
-                      className="w-full px-3 py-2.5 rounded-xl bg-[#faf9f6] border border-[#0f2055]/15 text-[#1a1a2e] text-xs focus:border-[#d4a017] focus:outline-none transition-colors"
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-[#faf9f6] border border-[#0f2055]/15 text-[#1a1a2e] text-base sm:text-xs focus:bg-white focus:border-[#d4a017] focus:outline-none transition-colors"
                     />
                   </div>
                 </div>
@@ -1943,28 +1948,32 @@ export default function Home() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-[11px] font-bold text-[#0f2055] uppercase mb-1">
-                      Email Address
+                      Email Address *
                     </label>
                     <input
                       type="email"
                       required
+                      autoComplete="email"
+                      inputMode="email"
                       value={bookingForm.email}
                       onChange={(e) => setBookingForm({ ...bookingForm, email: e.target.value })}
                       placeholder="sarah@example.com"
-                      className="w-full px-3 py-2.5 rounded-xl bg-[#faf9f6] border border-[#0f2055]/15 text-[#1a1a2e] text-xs focus:border-[#d4a017] focus:outline-none transition-colors"
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-[#faf9f6] border border-[#0f2055]/15 text-[#1a1a2e] text-base sm:text-xs focus:bg-white focus:border-[#d4a017] focus:outline-none transition-colors"
                     />
                   </div>
                   <div>
                     <label className="block text-[11px] font-bold text-[#0f2055] uppercase mb-1">
-                      Phone / WhatsApp
+                      Phone / WhatsApp *
                     </label>
                     <input
                       type="tel"
                       required
+                      autoComplete="tel"
+                      inputMode="tel"
                       value={bookingForm.phone}
                       onChange={(e) => setBookingForm({ ...bookingForm, phone: e.target.value })}
                       placeholder="+234 705 965 5382"
-                      className="w-full px-3 py-2.5 rounded-xl bg-[#faf9f6] border border-[#0f2055]/15 text-[#1a1a2e] text-xs focus:border-[#d4a017] focus:outline-none transition-colors"
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-[#faf9f6] border border-[#0f2055]/15 text-[#1a1a2e] text-base sm:text-xs focus:bg-white focus:border-[#d4a017] focus:outline-none transition-colors"
                     />
                   </div>
                 </div>
@@ -1977,7 +1986,7 @@ export default function Home() {
                     <select
                       value={bookingForm.gradeLevel}
                       onChange={(e) => setBookingForm({ ...bookingForm, gradeLevel: e.target.value })}
-                      className="w-full px-3 py-2.5 rounded-xl bg-[#faf9f6] border border-[#0f2055]/15 text-[#1a1a2e] text-xs focus:border-[#d4a017] focus:outline-none transition-colors"
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-[#faf9f6] border border-[#0f2055]/15 text-[#1a1a2e] text-base sm:text-xs focus:bg-white focus:border-[#d4a017] focus:outline-none transition-colors"
                     >
                       <option>Reception</option>
                       <option>Year 1-6</option>
@@ -1995,7 +2004,7 @@ export default function Home() {
                     <select
                       value={bookingForm.mode}
                       onChange={(e) => setBookingForm({ ...bookingForm, mode: e.target.value })}
-                      className="w-full px-3 py-2.5 rounded-xl bg-[#faf9f6] border border-[#0f2055]/15 text-[#1a1a2e] text-xs focus:border-[#d4a017] focus:outline-none transition-colors"
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-[#faf9f6] border border-[#0f2055]/15 text-[#1a1a2e] text-base sm:text-xs focus:bg-white focus:border-[#d4a017] focus:outline-none transition-colors"
                     >
                       <option>100% Live Online 1-on-1</option>
                       <option>Online Small Study Pod (2-3 Students)</option>
@@ -2012,24 +2021,30 @@ export default function Home() {
                     value={bookingForm.notes}
                     onChange={(e) => setBookingForm({ ...bookingForm, notes: e.target.value })}
                     placeholder="e.g. Struggling with Edexcel Maths grade 5, wants grade 8 or 9."
-                    className="w-full px-3 py-2 rounded-xl bg-[#faf9f6] border border-[#0f2055]/15 text-[#1a1a2e] text-xs focus:border-[#d4a017] focus:outline-none resize-none transition-colors"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-[#faf9f6] border border-[#0f2055]/15 text-[#1a1a2e] text-base sm:text-xs focus:bg-white focus:border-[#d4a017] focus:outline-none resize-none transition-colors"
                   />
                 </div>
 
-                <button
-                  type="submit"
-                  className="w-full btn-primary py-3.5 text-sm cursor-pointer"
-                >
-                  Confirm Diagnostic Session Booking
-                </button>
+                <div className="pt-2">
+                  <button
+                    type="submit"
+                    className="w-full btn-primary py-3.5 text-sm sm:text-base font-bold shadow-lg shadow-[#0f2055]/20 active:scale-[0.99] transition-transform cursor-pointer"
+                  >
+                    Confirm Diagnostic Session Booking
+                  </button>
+                  <div className="flex items-center justify-center gap-1.5 text-[10px] sm:text-[11px] text-[#5a6070] mt-2 text-center">
+                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                    <span>Zero obligation • No card required • 4-hour response</span>
+                  </div>
+                </div>
               </form>
             ) : (
-              <div className="text-center py-6 space-y-4">
-                <div className="w-16 h-16 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-200 mx-auto flex items-center justify-center">
+              <div className="text-center p-6 sm:p-8 space-y-4 my-auto">
+                <div className="w-16 h-16 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-200 mx-auto flex items-center justify-center shadow-sm">
                   <CheckCircle2 className="w-8 h-8" />
                 </div>
-                <h3 className="text-2xl font-bold text-[#0f2055]">Consultation Request Received!</h3>
-                <p className="text-xs text-[#5a6070] max-w-sm mx-auto leading-relaxed">
+                <h3 className="text-xl sm:text-2xl font-bold text-[#0f2055]">Consultation Request Received!</h3>
+                <p className="text-xs sm:text-sm text-[#5a6070] max-w-sm mx-auto leading-relaxed">
                   Thank you, <span className="font-bold text-[#0f2055]">{bookingForm.parentName || "Parent"}</span>.
                   One of our Senior Academic Advisors will contact you at{" "}
                   <span className="font-bold text-[#b8860b]">{bookingForm.phone || bookingForm.email}</span> within 4
@@ -2037,9 +2052,9 @@ export default function Home() {
                 </p>
                 <button
                   onClick={() => setIsModalOpen(false)}
-                  className="px-6 py-2.5 rounded-xl bg-[#0f2055] text-white text-xs font-semibold hover:bg-[#1a3275] transition-colors cursor-pointer"
+                  className="w-full sm:w-auto px-8 py-3 rounded-xl bg-[#0f2055] text-white text-xs sm:text-sm font-bold hover:bg-[#1a3275] transition-colors cursor-pointer shadow-md"
                 >
-                  Close Window
+                  Done &amp; Close Window
                 </button>
               </div>
             )}
