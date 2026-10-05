@@ -120,7 +120,7 @@ export default function AdminLoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#070f2b] text-slate-100 flex flex-col justify-between selection:bg-[#d4a017]/20 selection:text-[#ffd56b]">
+    <div className="min-h-screen bg-[#070f2b] text-slate-100 flex flex-col justify-between selection:bg-[#d4a017]/20 selection:text-[#ffd56b] overflow-x-hidden w-full max-w-full">
       {/* Top Admin Bar */}
       <header className="border-b border-[#d4a017]/20 bg-[#0a1435]/90 backdrop-blur-md sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">

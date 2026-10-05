@@ -29,13 +29,23 @@
 /* ── Reset & Base ─────────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; }
 
-html { scroll-behavior: smooth; -webkit-font-smoothing: antialiased; }
+html {
+  scroll-behavior: smooth;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+  max-width: 100%;
+  width: 100%;
+}
 
 body {
   background-color: var(--cream-50);
   color: var(--foreground);
   font-family: var(--font-sans, "Plus Jakarta Sans"), "Inter", system-ui, sans-serif;
   overflow-x: hidden;
+  max-width: 100%;
+  width: 100%;
+  position: relative;
+  touch-action: pan-y;
 }
 
 /* ── Selection ───────────────────────────────────────────────────────── */

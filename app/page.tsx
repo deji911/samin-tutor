@@ -101,9 +101,9 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen bg-[#faf9f6] text-[#1a1a2e]">
+    <div className="min-h-screen bg-[#faf9f6] text-[#1a1a2e] overflow-x-hidden w-full max-w-full relative">
       {/* Top Announcement Banner */}
-      <div className="bg-[#0f2055] py-2.5 px-4 text-center text-xs sm:text-sm text-white flex flex-wrap items-center justify-center gap-2 shadow-inner">
+      <div className="bg-[#0f2055] py-2.5 px-4 text-center text-xs sm:text-sm text-white flex flex-wrap items-center justify-center gap-2 shadow-inner w-full">
         <span className="flex h-2 w-2 rounded-full bg-[#d4a017] animate-ping" />
         <span className="font-semibold text-white/95">Serving Students Across 🇨🇦 Canada • 🇺🇸 USA • 🇬🇧 UK:</span>
         <span className="text-[#ffd56b] font-medium hidden sm:inline">Free Diagnostic Assessment &amp; Lesson Plan Included</span>
@@ -116,78 +116,78 @@ export default function Home() {
       </div>
 
       {/* Navigation Header */}
-      <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-[#0f2055]/10 shadow-[0_2px_12px_rgba(15,32,85,0.06)]">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-18 sm:h-20 flex items-center justify-between">
+      <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-[#0f2055]/10 shadow-[0_2px_12px_rgba(15,32,85,0.06)] w-full">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 sm:h-20 flex items-center justify-between">
           {/* Logo & Brand Identity */}
-          <a href="#" className="flex items-center gap-2.5 sm:gap-3.5 group shrink-0 mr-6 sm:mr-8 lg:mr-12">
-            <div className="relative w-11 h-11 sm:w-13 sm:h-13 rounded-xl overflow-hidden shadow-md shadow-[#0f2055]/15 border-2 border-[#d4a017]/40 bg-white p-0.5 shrink-0 group-hover:border-[#d4a017] transition-all">
+          <a href="#" className="flex items-center gap-2 sm:gap-3 group min-w-0 pr-2">
+            <div className="relative w-10 h-10 sm:w-12 sm:h-12 rounded-xl overflow-hidden shadow-md shadow-[#0f2055]/15 border-2 border-[#d4a017]/40 bg-white p-0.5 shrink-0 group-hover:border-[#d4a017] transition-all">
               <Image
                 src="/images/samin_logo.jpeg"
                 alt="Samin Home Tutors Logo"
-                width={52}
-                height={52}
+                width={48}
+                height={48}
                 className="w-full h-full object-cover rounded-lg group-hover:scale-105 transition-transform"
                 priority
               />
             </div>
-            <div className="flex flex-col justify-center">
-              <div className="text-base sm:text-lg lg:text-xl font-black tracking-tight leading-snug text-[#0f2055]">
+            <div className="flex flex-col justify-center min-w-0">
+              <div className="text-sm sm:text-base lg:text-xl font-black tracking-tight leading-snug text-[#0f2055] whitespace-nowrap">
                 <span className="text-[#1e3a8a]">SAMIN</span>{" "}
                 <span>HOME TUTORS</span>
               </div>
-              <div className="text-[9px] sm:text-[10px] tracking-wider text-[#b8860b] font-bold uppercase mt-0.5">
+              <div className="text-[8px] sm:text-[9px] lg:text-[10px] tracking-wider text-[#b8860b] font-bold uppercase whitespace-nowrap">
                 Canada • USA • UK Online Tutoring
               </div>
             </div>
           </a>
 
           {/* Desktop Nav Links */}
-          <nav className="hidden lg:flex items-center gap-6 xl:gap-7 text-sm font-semibold text-[#1a1a2e] ml-2 lg:ml-4">
+          <nav className="hidden lg:flex items-center gap-6 xl:gap-7 text-sm font-semibold text-[#1a1a2e] ml-6 lg:ml-8">
             <a href="#levels" className="hover:text-[#b8860b] transition-colors whitespace-nowrap">
               Programs &amp; Levels
             </a>
-            <a href="#method" className="hover:text-[#b8860b] transition-colors">
+            <a href="#method" className="hover:text-[#b8860b] transition-colors whitespace-nowrap">
               The Samin Method
             </a>
-            <a href="#tutors" className="hover:text-[#b8860b] transition-colors">
+            <a href="#tutors" className="hover:text-[#b8860b] transition-colors whitespace-nowrap">
               Our Tutors
             </a>
-            <a href="#calculator" className="hover:text-[#b8860b] transition-colors">
+            <a href="#calculator" className="hover:text-[#b8860b] transition-colors whitespace-nowrap">
               Tuition Calculator
             </a>
-            <a href="#virtual-classroom" className="hover:text-[#b8860b] transition-colors">
+            <a href="#virtual-classroom" className="hover:text-[#b8860b] transition-colors whitespace-nowrap">
               Online Classroom
             </a>
-            <a href="#faqs" className="hover:text-[#b8860b] transition-colors">
+            <a href="#faqs" className="hover:text-[#b8860b] transition-colors whitespace-nowrap">
               FAQs
             </a>
           </nav>
 
-          {/* Action CTAs */}
-          <div className="flex items-center gap-2 sm:gap-3">
+          {/* Action CTAs: Desktop shows WhatsApp + Admin; Mobile shows ONLY the firm Hamburger Menu button */}
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
             <a
               href="https://wa.me/2347059655382"
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 transition-all"
+              className="hidden lg:inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 transition-all"
             >
               <MessageCircle className="w-4 h-4 text-emerald-600" />
-              <span className="hidden sm:inline">WhatsApp</span>
+              <span>WhatsApp</span>
             </a>
             <a
               href="/admin/login"
-              className="inline-flex items-center gap-1 text-xs font-semibold px-3 py-2 rounded-xl bg-[#faf9f6] text-[#0f2055] border border-[#0f2055]/15 hover:border-[#b8860b] hover:text-[#b8860b] transition-all"
+              className="hidden lg:inline-flex items-center gap-1 text-xs font-semibold px-3 py-2 rounded-xl bg-[#faf9f6] text-[#0f2055] border border-[#0f2055]/15 hover:border-[#b8860b] hover:text-[#b8860b] transition-all"
             >
               <ShieldCheck className="w-3.5 h-3.5 text-[#b8860b]" />
               <span>Admin</span>
             </a>
-            {/* Mobile Hamburger Toggle */}
+            {/* Mobile Hamburger Toggle - firmly visible and always within viewport */}
             <button
               onClick={() => setMobileNavOpen(true)}
-              className="lg:hidden p-2 rounded-xl text-[#0f2055] hover:bg-[#f0eeeb] transition-colors cursor-pointer"
+              className="lg:hidden p-2 rounded-xl text-[#0f2055] bg-[#f5f3ef] hover:bg-[#edeae3] transition-colors cursor-pointer shrink-0 border border-[#0f2055]/10"
               aria-label="Open mobile menu"
             >
-              <Menu className="w-6 h-6" />
+              <Menu className="w-5 h-5 text-[#0f2055]" />
             </button>
           </div>
         </div>
@@ -197,21 +197,27 @@ export default function Home() {
       {mobileNavOpen && (
         <div className="mobile-nav-overlay" onClick={() => setMobileNavOpen(false)}>
           <div className="mobile-nav-panel" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-8">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl overflow-hidden border-2 border-[#d4a017]/40">
-                  <Image src="/images/samin_logo.jpeg" alt="Samin Logo" width={40} height={40} className="w-full h-full object-cover" />
+            <div className="flex items-center justify-between mb-6 pb-4 border-b border-[#edeae3]">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-xl overflow-hidden border-2 border-[#d4a017]/40 p-0.5 bg-white shrink-0">
+                  <Image src="/images/samin_logo.jpeg" alt="Samin Logo" width={40} height={40} className="w-full h-full object-cover rounded-lg" />
                 </div>
                 <div>
-                  <div className="text-sm font-black text-[#0f2055]"><span className="text-[#1e3a8a]">SAMIN</span> HOME TUTORS</div>
-                  <div className="text-[10px] text-[#b8860b] font-bold uppercase tracking-widest">Canada • USA • UK</div>
+                  <div className="text-sm font-black text-[#0f2055] leading-none"><span className="text-[#1e3a8a]">SAMIN</span> HOME TUTORS</div>
+                  <div className="text-[9px] text-[#b8860b] font-bold uppercase tracking-wider mt-1">Canada • USA • UK</div>
                 </div>
               </div>
-              <button onClick={() => setMobileNavOpen(false)} className="p-2 rounded-lg hover:bg-[#f5f3ef] transition-colors cursor-pointer">
-                <X className="w-5 h-5 text-[#0f2055]" />
+              <button
+                onClick={() => setMobileNavOpen(false)}
+                className="p-2 rounded-lg bg-[#f5f3ef] hover:bg-[#edeae3] text-[#0f2055] transition-colors cursor-pointer"
+                aria-label="Close menu"
+              >
+                <X className="w-5 h-5" />
               </button>
             </div>
-            <nav className="flex flex-col gap-1 flex-1">
+
+            {/* Nav links */}
+            <nav className="flex flex-col gap-1 flex-1 py-1">
               {[
                 { href: "#levels", label: "Programs & Levels" },
                 { href: "#method", label: "The Samin Method" },
@@ -224,27 +230,39 @@ export default function Home() {
                   key={link.href}
                   href={link.href}
                   onClick={() => setMobileNavOpen(false)}
-                  className="px-4 py-3 rounded-xl text-[#1a1a2e] font-semibold text-sm hover:bg-[#f0eeeb] hover:text-[#0f2055] transition-all"
+                  className="px-3.5 py-2.5 rounded-xl text-[#1a1a2e] font-semibold text-sm hover:bg-[#f0eeeb] hover:text-[#0f2055] transition-all"
                 >
                   {link.label}
                 </a>
               ))}
             </nav>
-            <div className="pt-6 border-t border-[#edeae3] mt-4 space-y-3">
+
+            {/* Mobile Actions: WhatsApp, Admin, and Enroll placed prominently in menu drawer */}
+            <div className="pt-4 border-t border-[#edeae3] mt-auto space-y-2.5">
               <a
                 href="https://wa.me/2347059655382"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center gap-2 px-4 py-3 rounded-xl bg-emerald-50 text-emerald-700 font-semibold text-sm"
+                className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold text-xs sm:text-sm hover:bg-emerald-100 transition-all"
               >
-                <MessageCircle className="w-4 h-4" />
-                WhatsApp Us
+                <MessageCircle className="w-4 h-4 text-emerald-600" />
+                <span>WhatsApp: +234 705 965 5382</span>
               </a>
+
+              <a
+                href="/admin/login"
+                onClick={() => setMobileNavOpen(false)}
+                className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-[#faf9f6] text-[#0f2055] border border-[#0f2055]/15 font-bold text-xs sm:text-sm hover:border-[#b8860b] hover:text-[#b8860b] transition-all"
+              >
+                <ShieldCheck className="w-4 h-4 text-[#b8860b]" />
+                <span>Staff &amp; Admin Portal</span>
+              </a>
+
               <button
                 onClick={() => { setMobileNavOpen(false); handleOpenBooking(); }}
-                className="w-full btn-primary"
+                className="w-full btn-primary py-3 text-xs sm:text-sm cursor-pointer"
               >
-                Book Free Trial
+                Enroll Now • Free Trial
               </button>
             </div>
           </div>
@@ -394,7 +412,7 @@ export default function Home() {
                 </div>
 
                 {/* Floating Grade Boost Card */}
-                <div className="absolute -bottom-6 -left-6 bg-white/95 backdrop-blur-lg border border-[#0f2055]/10 p-4 rounded-2xl shadow-xl shadow-[#0f2055]/15 flex items-center gap-3.5 max-w-[240px]">
+                <div className="absolute -bottom-6 -left-6 hidden sm:flex bg-white/95 backdrop-blur-lg border border-[#0f2055]/10 p-4 rounded-2xl shadow-xl shadow-[#0f2055]/15 items-center gap-3.5 max-w-[240px]">
                   <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#1e3a8a] to-[#0f2055] flex items-center justify-center text-white shrink-0 shadow-md">
                     <TrendingUp className="w-6 h-6 text-[#ffd56b]" />
                   </div>
