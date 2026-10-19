@@ -1,2094 +1,814 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Image from "next/image";
 import {
-  Sparkles,
   GraduationCap,
-  BookOpen,
   CheckCircle2,
   Star,
   Users,
   Award,
   Video,
-  Calendar,
-  Clock,
-  ArrowRight,
-  ShieldCheck,
-  Zap,
-  Phone,
-  Mail,
-  MessageCircle,
-  HelpCircle,
   ChevronDown,
   X,
   Menu,
-  Laptop,
   TrendingUp,
-  FileCheck2,
+  Mail,
+  Phone,
+  MapPin,
+  ChevronLeft,
+  ChevronRight,
+  Send,
+  BookOpen,
+  Layers,
+  Search,
+  Lightbulb,
+  ShieldCheck,
 } from "lucide-react";
 
-type LearnerCategory =
-  | "reception"
-  | "year1_6"
-  | "eleven_plus"
-  | "year7_12"
-  | "gcse"
-  | "nat5"
-  | "alevel";
+// ─── Data ──────────────────────────────────────────────────────────────────
+
+const heroSlides = [
+  {
+    img: "/images/hero-lecture.jpg",
+    alt: "University lecture hall",
+    title: "Taking the lead for education quality",
+    sub: "Educating the mind without educating the heart is no education at all.",
+  },
+  {
+    img: "/images/hero-graduation.jpg",
+    alt: "Graduation ceremony",
+    title: "Empowering students to reach their full potential",
+    sub: "World-class 1-on-1 live online tutoring for GCSE, A-Level, and beyond.",
+  },
+  {
+    img: "/images/hero-conference.jpg",
+    alt: "Educational conference",
+    title: "Access your lessons anytime, anywhere",
+    sub: "Expert tutors matched to your child's needs — Canada, USA & UK.",
+  },
+];
+
+const courses = [
+  {
+    img: "/images/hero-student.jpg",
+    title: "GCSE Mathematics & Science Mastery",
+    desc: "Intensive 1-on-1 sessions with subject specialists covering all GCSE exam boards — AQA, Edexcel, OCR.",
+    price: "£40",
+    rating: 4.9,
+    votes: 128,
+  },
+  {
+    img: "/images/hero-lecture.jpg",
+    title: "A-Level Physics & Maths Specialist",
+    desc: "Advanced tutoring for A-Level students targeting A/A* grades, including Mechanics and Further Maths.",
+    price: "£48",
+    rating: 4.8,
+    votes: 94,
+  },
+  {
+    img: "/images/tutor-1.jpg",
+    title: "11+ & Grammar School Preparation",
+    desc: "Comprehensive preparation for 11+ exams, covering verbal reasoning, non-verbal reasoning, English and Maths.",
+    price: "£36",
+    rating: 5.0,
+    votes: 76,
+  },
+  {
+    img: "/images/tutor-2.jpg",
+    title: "Primary School Fundamentals",
+    desc: "Building strong foundations in Literacy and Numeracy for Reception through Year 6 students.",
+    price: "£32",
+    rating: 4.9,
+    votes: 112,
+  },
+  {
+    img: "/images/tutor-3.jpg",
+    title: "Canadian Curriculum Support",
+    desc: "Ontario & BC curriculum aligned tutoring for all grades, including IB and AP programmes.",
+    price: "CAD 55",
+    rating: 4.8,
+    votes: 63,
+  },
+  {
+    img: "/images/hero-graduation.jpg",
+    title: "University Admissions & Interview Prep",
+    desc: "Oxbridge, Ivy League and medical school admissions coaching, personal statement writing and interview prep.",
+    price: "£65",
+    rating: 5.0,
+    votes: 45,
+  },
+];
+
+const instructors = [
+  {
+    img: "/images/tutor-1.jpg",
+    name: "Aisha Omoruyi",
+    role: "Mathematics & Physics • Oxford Graduate",
+  },
+  {
+    img: "/images/tutor-2.jpg",
+    name: "Daniel Okonkwo",
+    role: "English & Humanities • Cambridge Graduate",
+  },
+  {
+    img: "/images/tutor-3.jpg",
+    name: "Priya Sharma",
+    role: "Biology & Chemistry • Imperial College",
+  },
+  {
+    img: "/images/hero-student.jpg",
+    name: "James Whitfield",
+    role: "Computer Science & Maths • UCL Graduate",
+  },
+];
+
+const stats = [
+  { icon: "📚", number: "47+", label: "Free Resources" },
+  { icon: "👩‍🏫", number: "105", label: "Expert Tutors" },
+  { icon: "💡", number: "5k+", label: "Students Helped" },
+  { icon: "😊", number: "98%", label: "Satisfaction Rate" },
+  { icon: "🏆", number: "21", label: "Awards Won" },
+];
+
+const pricingPlans = [
+  {
+    name: "Starter",
+    price: "£32",
+    period: "/ hour",
+    featured: false,
+    features: [
+      "1-on-1 Live Sessions",
+      "Primary & KS3 Level",
+      "Weekly Progress Report",
+      "Email Support",
+      "Learning Resources",
+    ],
+  },
+  {
+    name: "GCSE Pro",
+    price: "£40",
+    period: "/ hour",
+    featured: true,
+    features: [
+      "1-on-1 Premium Sessions",
+      "GCSE All Subjects",
+      "Weekly Progress Report",
+      "WhatsApp Support",
+      "Past Paper Bank Access",
+      "Tutor Match Guarantee",
+    ],
+  },
+  {
+    name: "A-Level Elite",
+    price: "£48",
+    period: "/ hour",
+    featured: false,
+    features: [
+      "1-on-1 Elite Sessions",
+      "A-Level & IB Subjects",
+      "Weekly Parent Meeting",
+      "Priority Support",
+      "University Prep Included",
+      "Oxbridge Coaching",
+    ],
+  },
+];
+
+const testimonials = [
+  {
+    text: "My daughter's GCSE Maths went from a Grade 4 to a Grade 8 in just 6 months. The tutor was patient, thorough, and really understood how she learns.",
+    name: "Sarah Mitchell",
+    role: "Parent, UK",
+    img: "/images/tutor-1.jpg",
+    stars: 5,
+  },
+  {
+    text: "Samin Home Tutors changed everything. My son now loves Physics. His tutor makes it feel easy and his confidence has sky-rocketed.",
+    name: "James Okafor",
+    role: "Parent, Canada",
+    img: "/images/tutor-2.jpg",
+    stars: 5,
+  },
+  {
+    text: "Excellent service from start to finish. The tutor matching was perfect and the online classroom tools are brilliant. Highly recommend!",
+    name: "Priya Anand",
+    role: "Parent, USA",
+    img: "/images/tutor-3.jpg",
+    stars: 5,
+  },
+];
+
+const faqs = [
+  {
+    q: "How does the online tutoring work?",
+    a: "All sessions are conducted via our HD virtual classroom. Tutors use interactive whiteboards, screen sharing, and breakout tools to deliver fully live 1-on-1 lessons. All you need is a device with a camera and internet connection.",
+  },
+  {
+    q: "How are tutors vetted and selected?",
+    a: "All tutors hold degrees from top universities and must pass our rigorous 5-stage screening process including subject knowledge tests, a mock lesson, and enhanced background checks. Only the top 3% are accepted.",
+  },
+  {
+    q: "What curriculum do you cover?",
+    a: "We cover UK (AQA, Edexcel, OCR, CIE), Canadian (Ontario, BC, AB) and US curricula across all key stages. This includes Reception through A-Level, IB, AP, and university preparation.",
+  },
+  {
+    q: "Can I get a free trial lesson?",
+    a: "Yes! We offer a free 30-minute diagnostic consultation and assessment session so you can meet your tutor, assess your child's current level, and plan a learning roadmap — all before committing.",
+  },
+  {
+    q: "What happens if we are not happy with our tutor?",
+    a: "We offer a 100% Tutor Match Guarantee. If you are not satisfied within the first two sessions, we will rematch you with another tutor at no extra cost.",
+  },
+];
+
+// ─── Component ──────────────────────────────────────────────────────────────
 
 export default function Home() {
-  // Mobile drawer state
-  const [mobileNavOpen, setMobileNavOpen] = useState(false);
-
-  // Modal state
+  const [currentSlide, setCurrentSlide] = useState(0);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [activeFaq, setActiveFaq] = useState<number | null>(0);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [selectedTutorForBooking, setSelectedTutorForBooking] = useState<string | null>(null);
   const [bookingSuccess, setBookingSuccess] = useState(false);
-  const [bookingForm, setBookingForm] = useState({
+  const [searchKeyword, setSearchKeyword] = useState("");
+  const [searchCategory, setSearchCategory] = useState("");
+  const [form, setForm] = useState({
     parentName: "",
     studentName: "",
     email: "",
     phone: "",
-    gradeLevel: "GCSE preparation",
     subject: "Mathematics",
-    mode: "100% Live Online 1-on-1",
+    level: "GCSE",
     notes: "",
   });
 
-  // Level selector state
-  const [activeLevelTab, setActiveLevelTab] = useState<LearnerCategory>("gcse");
+  // Auto-slide
+  const nextSlide = useCallback(() => {
+    setCurrentSlide((p) => (p + 1) % heroSlides.length);
+  }, []);
+  const prevSlide = () =>
+    setCurrentSlide((p) => (p - 1 + heroSlides.length) % heroSlides.length);
 
-  // Calculator states
-  const [calcLevel, setCalcLevel] = useState<LearnerCategory>("gcse");
-  const [calcFormat, setCalcFormat] = useState<"1on1" | "pod">("1on1");
-  const [calcHours, setCalcHours] = useState<number>(2);
+  useEffect(() => {
+    const t = setInterval(nextSlide, 5000);
+    return () => clearInterval(t);
+  }, [nextSlide]);
 
-  // FAQ accordion state
-  const [activeFaq, setActiveFaq] = useState<number | null>(0);
-
-  // Dynamic pricing calculation (100% Online)
-  const baseRates: Record<LearnerCategory, { "1on1": number; pod: number }> = {
-    reception: { "1on1": 28, pod: 18 },
-    year1_6: { "1on1": 32, pod: 22 },
-    eleven_plus: { "1on1": 36, pod: 24 },
-    year7_12: { "1on1": 36, pod: 24 },
-    gcse: { "1on1": 40, pod: 28 },
-    nat5: { "1on1": 40, pod: 28 },
-    alevel: { "1on1": 48, pod: 34 },
-  };
-
-  const currentHourlyRate = baseRates[calcLevel][calcFormat];
-  const weeklyTotal = currentHourlyRate * calcHours;
-  const monthlyTotal = weeklyTotal * 4;
-  const discountMultiplier = calcHours >= 4 ? 0.9 : calcHours >= 2 ? 0.95 : 1;
-  const discountedMonthlyTotal = Math.round(monthlyTotal * discountMultiplier);
-  const savings = monthlyTotal - discountedMonthlyTotal;
-
-  const handleOpenBooking = (tutorName?: string) => {
-    if (tutorName) {
-      setSelectedTutorForBooking(tutorName);
-    } else {
-      setSelectedTutorForBooking(null);
-    }
-    setBookingSuccess(false);
-    setIsModalOpen(true);
-  };
-
-  const handleBookingSubmit = (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setBookingSuccess(true);
   };
 
+  const StarRow = ({ count }: { count: number }) => (
+    <span className="stars">
+      {[...Array(5)].map((_, i) => (
+        <span key={i}>{i < Math.floor(count) ? "★" : "☆"}</span>
+      ))}
+    </span>
+  );
+
   return (
-    <div className="min-h-screen bg-[#faf9f6] text-[#1a1a2e] overflow-x-hidden w-full max-w-full relative">
-      {/* Top Announcement Banner */}
-      <div className="bg-[#0f2055] py-2.5 px-4 text-center text-xs sm:text-sm text-white flex flex-wrap items-center justify-center gap-2 shadow-inner w-full">
-        <span className="flex h-2 w-2 rounded-full bg-[#d4a017] animate-ping" />
-        <span className="font-semibold text-white/95">Serving Students Across 🇨🇦 Canada • 🇺🇸 USA • 🇬🇧 UK:</span>
-        <span className="text-[#ffd56b] font-medium hidden sm:inline">Free Diagnostic Assessment &amp; Lesson Plan Included</span>
-        <button
-          onClick={() => handleOpenBooking()}
-          className="ml-1 sm:ml-2 underline font-bold text-[#ffd56b] hover:text-white transition-colors cursor-pointer"
-        >
-          Enroll Today &rarr;
-        </button>
+    <div style={{ minHeight: "100vh", backgroundColor: "#fff" }}>
+
+      {/* ── Top Bar ── */}
+      <div className="top-bar">
+        <div className="container" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "0.5rem" }}>
+          <span>🎓 Welcome to Samin Home Tutors — World-Class Live Online Tutoring</span>
+          <div style={{ display: "flex", gap: "1.5rem" }}>
+            <a href="/admin/login">🔐 Admin Login</a>
+            <a href="https://wa.me/2347059655382?text=Hello%20Samin%20Home%20Tutors!%20%F0%9F%8E%93%0A%0AI%20found%20your%20website%20and%20I%E2%80%99m%20interested%20in%20booking%20a%20FREE%20trial%20lesson.%0A%0APlease%20could%20you%20help%20me%20with%20more%20information%20about%3A%0A%E2%80%A2%20Available%20tutors%0A%E2%80%A2%20Subjects%20%26%20levels%20covered%0A%E2%80%A2%20Pricing%20%26%20scheduling%0A%0AThank%20you!" target="_blank" rel="noopener noreferrer">💬 WhatsApp Us</a>
+          </div>
+        </div>
       </div>
 
-      {/* Navigation Header */}
-      <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-[#0f2055]/10 shadow-[0_2px_12px_rgba(15,32,85,0.06)] w-full">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 sm:h-20 flex items-center justify-between">
-          {/* Logo & Brand Identity */}
-          <a href="#" className="flex items-center gap-2 sm:gap-3 group min-w-0 pr-2">
-            <div className="relative w-10 h-10 sm:w-12 sm:h-12 rounded-xl overflow-hidden shadow-md shadow-[#0f2055]/15 border-2 border-[#d4a017]/40 bg-white p-0.5 shrink-0 group-hover:border-[#d4a017] transition-all">
+      {/* ── Header ── */}
+      <header className="site-header">
+        <div className="container" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", height: "70px" }}>
+          {/* Logo */}
+          <a href="#" className="logo-text">
+            <div style={{ width: "2.5rem", height: "2.5rem", borderRadius: "50%", overflow: "hidden", border: "2px solid var(--teal)", flexShrink: 0 }}>
               <Image
                 src="/images/samin_logo.jpeg"
                 alt="Samin Home Tutors Logo"
-                width={48}
-                height={48}
-                className="w-full h-full object-cover rounded-lg group-hover:scale-105 transition-transform"
+                width={40}
+                height={40}
+                style={{ width: "100%", height: "100%", objectFit: "cover" }}
                 priority
               />
             </div>
-            <div className="flex flex-col justify-center min-w-0">
-              <div className="text-sm sm:text-base lg:text-xl font-black tracking-tight leading-snug text-[#0f2055] whitespace-nowrap">
-                <span className="text-[#1e3a8a]">SAMIN</span>{" "}
-                <span>HOME TUTORS</span>
-              </div>
-              <div className="text-[8px] sm:text-[9px] lg:text-[10px] tracking-wider text-[#b8860b] font-bold uppercase whitespace-nowrap">
-                Canada • USA • UK Online Tutoring
-              </div>
-            </div>
+            <span><span className="logo-edu">Samin</span>Tutors</span>
           </a>
 
-          {/* Desktop Nav Links */}
-          <nav className="hidden lg:flex items-center gap-6 xl:gap-7 text-sm font-semibold text-[#1a1a2e] ml-6 lg:ml-8">
-            <a href="#levels" className="hover:text-[#b8860b] transition-colors whitespace-nowrap">
-              Programs &amp; Levels
-            </a>
-            <a href="#method" className="hover:text-[#b8860b] transition-colors whitespace-nowrap">
-              The Samin Method
-            </a>
-            <a href="#tutors" className="hover:text-[#b8860b] transition-colors whitespace-nowrap">
-              Our Tutors
-            </a>
-            <a href="#calculator" className="hover:text-[#b8860b] transition-colors whitespace-nowrap">
-              Tuition Calculator
-            </a>
-            <a href="#virtual-classroom" className="hover:text-[#b8860b] transition-colors whitespace-nowrap">
-              Online Classroom
-            </a>
-            <a href="#faqs" className="hover:text-[#b8860b] transition-colors whitespace-nowrap">
-              FAQs
-            </a>
-          </nav>
+          {/* Desktop nav */}
+          <ul className="nav-menu">
+            <li><a href="#courses">Courses</a></li>
+            <li><a href="#features">Why Us</a></li>
+            <li><a href="#instructors">Tutors</a></li>
+            <li><a href="#pricing">Pricing</a></li>
+            <li><a href="#testimonials">Reviews</a></li>
+            <li><a href="#faqs">FAQs</a></li>
+            <li><a href="#contact">Contact</a></li>
+          </ul>
 
-          {/* Action CTAs: Desktop shows WhatsApp + Admin; Mobile shows ONLY the firm Hamburger Menu button */}
-          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-            <a
-              href="https://wa.me/2347059655382"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="hidden lg:inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 transition-all"
-            >
-              <MessageCircle className="w-4 h-4 text-emerald-600" />
-              <span>WhatsApp</span>
-            </a>
-            <a
-              href="/admin/login"
-              className="hidden lg:inline-flex items-center gap-1 text-xs font-semibold px-3 py-2 rounded-xl bg-[#faf9f6] text-[#0f2055] border border-[#0f2055]/15 hover:border-[#b8860b] hover:text-[#b8860b] transition-all"
-            >
-              <ShieldCheck className="w-3.5 h-3.5 text-[#b8860b]" />
-              <span>Admin</span>
-            </a>
-            {/* Mobile Hamburger Toggle - firmly visible and always within viewport */}
+          {/* CTA + hamburger */}
+          <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+            <button className="btn-enroll" onClick={() => setIsModalOpen(true)}>
+              Free Trial Lesson
+            </button>
             <button
-              onClick={() => setMobileNavOpen(true)}
-              className="lg:hidden p-2 rounded-xl text-[#0f2055] bg-[#f5f3ef] hover:bg-[#edeae3] transition-colors cursor-pointer shrink-0 border border-[#0f2055]/10"
-              aria-label="Open mobile menu"
+              className="btn-enroll"
+              style={{ background: "transparent", color: "var(--dark)", border: "1px solid var(--border)", display: "none" }}
+              onClick={() => setMobileOpen(true)}
+              aria-label="Open menu"
+              id="hamburger-btn"
             >
-              <Menu className="w-5 h-5 text-[#0f2055]" />
+              <Menu size={20} />
+            </button>
+            <button
+              onClick={() => setMobileOpen(true)}
+              aria-label="Open menu"
+              style={{ background: "none", border: "1px solid var(--border)", borderRadius: "4px", padding: "0.45rem", cursor: "pointer", display: "flex", alignItems: "center" }}
+              className="mobile-menu-btn"
+            >
+              <Menu size={20} color="var(--dark)" />
             </button>
           </div>
         </div>
       </header>
 
-      {/* Mobile Nav Overlay */}
-      {mobileNavOpen && (
-        <div className="mobile-nav-overlay" onClick={() => setMobileNavOpen(false)}>
-          <div className="mobile-nav-panel" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-6 pb-4 border-b border-[#edeae3]">
-              <div className="flex items-center gap-2.5">
-                <div className="w-10 h-10 rounded-xl overflow-hidden border-2 border-[#d4a017]/40 p-0.5 bg-white shrink-0">
-                  <Image src="/images/samin_logo.jpeg" alt="Samin Logo" width={40} height={40} className="w-full h-full object-cover rounded-lg" />
-                </div>
-                <div>
-                  <div className="text-sm font-black text-[#0f2055] leading-none"><span className="text-[#1e3a8a]">SAMIN</span> HOME TUTORS</div>
-                  <div className="text-[9px] text-[#b8860b] font-bold uppercase tracking-wider mt-1">Canada • USA • UK</div>
-                </div>
-              </div>
-              <button
-                onClick={() => setMobileNavOpen(false)}
-                className="p-2 rounded-lg bg-[#f5f3ef] hover:bg-[#edeae3] text-[#0f2055] transition-colors cursor-pointer"
-                aria-label="Close menu"
-              >
-                <X className="w-5 h-5" />
+      {/* Mobile nav */}
+      {mobileOpen && (
+        <div className="mobile-overlay" onClick={() => setMobileOpen(false)}>
+          <div className="mobile-drawer" onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.5rem", paddingBottom: "1rem", borderBottom: "1px solid var(--border)" }}>
+              <span className="logo-text" style={{ fontSize: "1.1rem" }}><span className="logo-edu">Samin</span>Tutors</span>
+              <button onClick={() => setMobileOpen(false)} style={{ background: "none", border: "none", cursor: "pointer" }}>
+                <X size={20} />
               </button>
             </div>
-
-            {/* Nav links */}
-            <nav className="flex flex-col gap-1 flex-1 py-1">
-              {[
-                { href: "#levels", label: "Programs & Levels" },
-                { href: "#method", label: "The Samin Method" },
-                { href: "#tutors", label: "Our Tutors" },
-                { href: "#calculator", label: "Tuition Calculator" },
-                { href: "#virtual-classroom", label: "Online Classroom" },
-                { href: "#faqs", label: "FAQs" },
-              ].map((link) => (
-                <a
-                  key={link.href}
-                  href={link.href}
-                  onClick={() => setMobileNavOpen(false)}
-                  className="px-3.5 py-2.5 rounded-xl text-[#1a1a2e] font-semibold text-sm hover:bg-[#f0eeeb] hover:text-[#0f2055] transition-all"
-                >
-                  {link.label}
+            <nav style={{ display: "flex", flexDirection: "column", gap: "0.25rem", flex: 1 }}>
+              {["#courses", "#features", "#instructors", "#pricing", "#testimonials", "#faqs", "#contact"].map((href) => (
+                <a key={href} href={href} onClick={() => setMobileOpen(false)}
+                  style={{ padding: "0.75rem 0.5rem", color: "var(--dark)", textDecoration: "none", borderBottom: "1px solid var(--border)", fontSize: "0.9rem", fontWeight: 500 }}>
+                  {href.replace("#", "").charAt(0).toUpperCase() + href.slice(2)}
                 </a>
               ))}
             </nav>
-
-            {/* Mobile Actions: WhatsApp, Admin, and Enroll placed prominently in menu drawer */}
-            <div className="pt-4 border-t border-[#edeae3] mt-auto space-y-2.5">
-              <a
-                href="https://wa.me/2347059655382"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold text-xs sm:text-sm hover:bg-emerald-100 transition-all"
-              >
-                <MessageCircle className="w-4 h-4 text-emerald-600" />
-                <span>WhatsApp: +234 705 965 5382</span>
-              </a>
-
-              <a
-                href="/admin/login"
-                onClick={() => setMobileNavOpen(false)}
-                className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-[#faf9f6] text-[#0f2055] border border-[#0f2055]/15 font-bold text-xs sm:text-sm hover:border-[#b8860b] hover:text-[#b8860b] transition-all"
-              >
-                <ShieldCheck className="w-4 h-4 text-[#b8860b]" />
-                <span>Staff &amp; Admin Portal</span>
-              </a>
-
-              <button
-                onClick={() => { setMobileNavOpen(false); handleOpenBooking(); }}
-                className="w-full btn-primary py-3 text-xs sm:text-sm cursor-pointer"
-              >
-                Enroll Now • Free Trial
-              </button>
-            </div>
+            <button className="btn-enroll" style={{ width: "100%", marginTop: "1rem", justifyContent: "center" }} onClick={() => { setMobileOpen(false); setIsModalOpen(true); }}>
+              Book Free Trial
+            </button>
           </div>
         </div>
       )}
 
-      {/* Hero Section */}
-      <section className="relative pt-10 pb-16 sm:pt-20 sm:pb-28 overflow-hidden bg-hero-pattern">
-        <div className="absolute inset-0 bg-grid-dots opacity-100 pointer-events-none" />
+      {/* ── Hero Slider ── */}
+      <div className="hero-slider" id="home">
+        {heroSlides.map((slide, i) => (
+          <div key={i} className={`hero-slide ${i === currentSlide ? "active" : ""}`}>
+            <Image src={slide.img} alt={slide.alt} fill style={{ objectFit: "cover", filter: "brightness(0.5)" }} priority={i === 0} />
+            <div className="hero-content">
+              <h1>{slide.title}</h1>
+              <p>{slide.sub}</p>
+              <button className="hero-btn" onClick={() => setIsModalOpen(true)}>
+                Start A Course &nbsp; ›
+              </button>
+            </div>
+          </div>
+        ))}
 
-        {/* Soft orb accents */}
-        <div className="absolute top-0 right-0 w-[500px] h-[400px] bg-[#1e3a8a]/05 rounded-full blur-[100px] pointer-events-none" />
-        <div className="absolute bottom-0 left-0 w-[350px] h-[300px] bg-[#d4a017]/06 rounded-full blur-[80px] pointer-events-none" />
+        {/* Arrows */}
+        <button className="slider-arrow prev" onClick={prevSlide} aria-label="Previous slide">
+          <ChevronLeft size={18} />
+        </button>
+        <button className="slider-arrow next" onClick={nextSlide} aria-label="Next slide">
+          <ChevronRight size={18} />
+        </button>
 
-        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-8 items-center">
-            {/* Left Column: Value Proposition & Brand Pitch */}
-            <div className="lg:col-span-7 space-y-6 sm:space-y-8 text-center lg:text-left">
-              {/* Trust Pill */}
-              <div className="inline-flex items-center gap-2.5 px-4 py-2 rounded-full bg-white border border-[#d4a017]/30 shadow-sm">
-                <div className="flex text-[#d4a017]">
-                  {[...Array(5)].map((_, i) => (
-                    <Star key={i} className="w-3.5 h-3.5 fill-current" />
-                  ))}
+        {/* Dots */}
+        <div className="slider-dots">
+          {heroSlides.map((_, i) => (
+            <button
+              key={i}
+              className={`slider-dot ${i === currentSlide ? "active" : ""}`}
+              onClick={() => setCurrentSlide(i)}
+              aria-label={`Go to slide ${i + 1}`}
+            />
+          ))}
+        </div>
+      </div>
+
+      {/* ── Search Section ── */}
+      <section className="search-section" id="search">
+        <div className="container">
+          <h2>Find your perfect tutor or course</h2>
+          <p>Search from 47+ specialised tutoring programmes across every curriculum and level.</p>
+          <div className="search-bar">
+            <input
+              type="text"
+              placeholder="Type your keywords..."
+              value={searchKeyword}
+              onChange={(e) => setSearchKeyword(e.target.value)}
+            />
+            <select value={searchCategory} onChange={(e) => setSearchCategory(e.target.value)}>
+              <option value="">Choose Subject...</option>
+              <option>Mathematics</option>
+              <option>English</option>
+              <option>Physics</option>
+              <option>Chemistry</option>
+              <option>Biology</option>
+              <option>Computer Science</option>
+              <option>History</option>
+              <option>Economics</option>
+            </select>
+            <button>
+              <Search size={16} style={{ display: "inline", marginRight: "0.4rem" }} />
+              Search
+            </button>
+          </div>
+        </div>
+      </section>
+
+      {/* ── Courses Section ── */}
+      <section className="courses-section" id="courses">
+        <div className="container">
+          <div className="section-header">
+            <h2>Our Tutoring Programmes</h2>
+            <p>Hand-picked subject specialists from Oxford, Cambridge, Imperial and other top universities, delivering live 1-on-1 sessions tailored to your child&apos;s exact needs.</p>
+          </div>
+          <div className="grid-3" style={{ marginBottom: "2rem" }}>
+            {courses.map((c, i) => (
+              <div key={i} className="course-card">
+                <Image src={c.img} alt={c.title} width={400} height={200} className="course-card-img" />
+                <div className="course-card-body">
+                  <h3>{c.title}</h3>
+                  <p>{c.desc}</p>
                 </div>
-                <span className="text-xs sm:text-sm font-medium text-[#3a3a5c]">
-                  <span className="font-bold text-[#0f2055]">4.98 / 5 Rating</span> from 1,200+ Ambitious Families
-                </span>
+                <div className="course-card-footer">
+                  <span className="course-price">{c.price} / hr</span>
+                  <span className="course-rating">
+                    <StarRow count={c.rating} /> ({c.votes} Reviews)
+                  </span>
+                </div>
               </div>
+            ))}
+          </div>
+          <div style={{ textAlign: "center" }}>
+            <button className="btn-enroll" onClick={() => setIsModalOpen(true)}>
+              Book Your Free Trial Lesson
+            </button>
+          </div>
+        </div>
+      </section>
 
-              {/* Main Headline */}
-              <h1 className="text-3xl sm:text-5xl lg:text-6xl font-black tracking-tight leading-[1.1] text-[#0f2055]">
-                World-Class 1-on-1 Lessons That Turn Academic{" "}
-                <span className="text-gradient-gold-navy">Potential Into Mastery</span>
-              </h1>
-
-              {/* Sub-headline */}
-              <p className="text-base sm:text-lg text-[#3a3a5c] max-w-2xl mx-auto lg:mx-0 leading-relaxed">
-                At <span className="font-bold text-[#0f2055]">Samin Home Tutors</span>, we provide 100% interactive live online
-                tutoring tailored specifically for students in{" "}
-                <span className="font-bold text-[#1e3a8a]">Canada 🇨🇦</span>,{" "}
-                <span className="font-bold text-[#b8860b]">the USA 🇺🇸</span>, and{" "}
-                <span className="font-bold text-[#1e3a8a]">the UK 🇬🇧</span>. Matched with vetted subject specialists,
-                our students build confidence, master core concepts, and achieve top grades.
-              </p>
-
-              {/* Dual Action CTAs */}
-              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-center lg:justify-start gap-3 pt-2">
-                <button
-                  onClick={() => handleOpenBooking()}
-                  className="w-full sm:w-auto btn-primary text-sm sm:text-base px-6 sm:px-8 py-3.5 sm:py-4"
-                >
-                  <Sparkles className="w-5 h-5 text-[#d4a017]" />
-                  <span>Book Free Consultation &amp; Diagnostic</span>
-                </button>
-                <a
-                  href="#calculator"
-                  className="w-full sm:w-auto btn-outline text-sm sm:text-base px-6 sm:px-7 py-3.5 sm:py-4"
-                >
-                  <span>Tuition Calculator</span>
-                  <ArrowRight className="w-4 h-4 text-[#b8860b]" />
-                </a>
+      {/* ── Features / Why Us ── */}
+      <section className="features-section" id="features">
+        <div className="container">
+          <div className="two-col-layout">
+            {/* Left: image with play overlay */}
+            <div className="col-img">
+              <Image
+                src="/images/hero-lecture.jpg"
+                alt="Samin virtual classroom"
+                width={580}
+                height={362}
+                className="video-thumb"
+              />
+              <div className="play-btn" role="button" aria-label="Watch intro video">
+                <div className="play-icon">▶</div>
               </div>
+            </div>
 
-              {/* Mini Trust Highlights */}
-              <div className="pt-4 grid grid-cols-1 sm:grid-cols-3 gap-3 border-t border-[#0f2055]/10 text-left">
+            {/* Right: feature list */}
+            <div>
+              <div style={{ marginBottom: "1.5rem" }}>
+                <h2 style={{ fontSize: "1.8rem", fontWeight: 700, color: "var(--dark)", marginBottom: "0.75rem" }}>
+                  Why Choose Samin Home Tutors?
+                </h2>
+                <p style={{ color: "var(--text-muted)", lineHeight: 1.7 }}>
+                  We combine the rigour of elite university graduates with a warm, supportive teaching style to help every student thrive — academically and personally.
+                </p>
+              </div>
+              <div className="features-list">
                 {[
-                  "Top 3% Vetted Tutors",
-                  "100% Tutor Match Guarantee",
-                  "Weekly Parent Progress Log",
-                ].map((text) => (
-                  <div key={text} className="flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-[#b8860b] shrink-0" />
-                    <span className="text-xs sm:text-sm text-[#3a3a5c] font-medium">{text}</span>
+                  { icon: <TrendingUp size={22} />, title: "Highest Rated", desc: "Consistently rated 4.9/5 by families across Canada, USA and the UK." },
+                  { icon: <Video size={22} />, title: "Live Online Training", desc: "100% interactive HD sessions — not pre-recorded. Real tutors, real time." },
+                  { icon: <BookOpen size={22} />, title: "Large Resource Library", desc: "Access to 500+ past papers, revision notes, and mock exams included free." },
+                  { icon: <ShieldCheck size={22} />, title: "Verified & DBS Checked", desc: "Every tutor is background-checked, interview-assessed and test-approved." },
+                  { icon: <Lightbulb size={22} />, title: "Personalised Learning Plans", desc: "Your child gets a bespoke roadmap built around their goals and schedule." },
+                ].map((f, i) => (
+                  <div key={i} className="feature-item">
+                    <div className="feature-icon">{f.icon}</div>
+                    <div>
+                      <h4>{f.title}</h4>
+                      <p>{f.desc}</p>
+                    </div>
                   </div>
                 ))}
               </div>
             </div>
-
-            {/* Right Column: Hero Visual */}
-            <div className="lg:col-span-5 relative mt-6 lg:mt-0">
-              <div className="relative mx-auto max-w-md lg:max-w-none">
-                {/* Glow border ring */}
-                <div className="absolute -inset-1.5 rounded-3xl bg-gradient-to-tr from-[#2563eb] via-[#00d2c4] to-[#ff6b4a] opacity-40 blur-lg" />
-
-                {/* Main Card Container */}
-                <div className="relative rounded-2xl overflow-hidden border border-white/15 bg-[#0a1426] shadow-2xl">
-                  {/* Window Bar Header */}
-                  <div className="bg-[#0c1830] px-4 py-3 border-b border-white/10 flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <div className="w-3 h-3 rounded-full bg-rose-500/80" />
-                      <div className="w-3 h-3 rounded-full bg-amber-500/80" />
-                      <div className="w-3 h-3 rounded-full bg-emerald-500/80" />
-                      <span className="text-xs font-mono text-slate-400 ml-2">Samin Virtual Classroom HD</span>
-                    </div>
-                    <div className="flex items-center gap-2 px-2.5 py-1 rounded-full bg-rose-500/20 text-rose-300 text-xs font-semibold">
-                      <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
-                      LIVE SESSION
-                    </div>
-                  </div>
-
-                  {/* High Quality Student Photo */}
-                  <div className="relative h-72 sm:h-84 w-full overflow-hidden bg-slate-900">
-                    <Image
-                      src="/images/hero-student.jpg"
-                      alt="Student engaged in an interactive Samin Home Tutors online lesson"
-                      fill
-                      className="object-cover object-center"
-                      priority
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-[#060b17] via-transparent to-transparent opacity-80" />
-
-                    {/* On-image badge: Subject topic */}
-                    <div className="absolute bottom-4 left-4 right-4 flex items-center justify-between">
-                      <div className="bg-[#070e1c]/85 backdrop-blur-md px-3.5 py-2 rounded-xl border border-white/15">
-                        <div className="text-[11px] text-[#00d2c4] font-semibold uppercase">Current Focus</div>
-                        <div className="text-sm font-bold text-white">Calculus & Mechanics • Past Paper Drill</div>
-                      </div>
-                      <div className="bg-[#070e1c]/85 backdrop-blur-md px-3 py-2 rounded-xl border border-white/15 text-center">
-                        <div className="text-[11px] text-slate-400">Tutor Match</div>
-                        <div className="text-sm font-bold text-amber-400">100% Fit</div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Lesson Meta bar */}
-                  <div className="p-4 bg-white/95 border-t border-[#0f2055]/10 space-y-3">
-                    <div className="flex items-center justify-between text-xs text-[#3a3a5c]">
-                      <span className="flex items-center gap-1.5 font-semibold text-[#0f2055]">
-                        <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                        Enhanced DBS Checked Tutor
-                      </span>
-                      <span className="text-[#b8860b] font-bold">Grade 9 / A* Track</span>
-                    </div>
-
-                    {/* Progress Bar Snippet */}
-                    <div>
-                      <div className="flex justify-between text-xs mb-1">
-                        <span className="text-[#5a6070] font-medium">Curriculum Mastery (Edexcel Pure Maths)</span>
-                        <span className="font-bold text-[#0f2055]">94%</span>
-                      </div>
-                      <div className="w-full bg-[#edeae3] h-2 rounded-full overflow-hidden">
-                        <div className="bg-gradient-to-r from-[#1e3a8a] to-[#d4a017] h-full rounded-full w-[94%]" />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Floating Grade Boost Card */}
-                <div className="absolute -bottom-6 -left-6 hidden sm:flex bg-white/95 backdrop-blur-lg border border-[#0f2055]/10 p-4 rounded-2xl shadow-xl shadow-[#0f2055]/15 items-center gap-3.5 max-w-[240px]">
-                  <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#1e3a8a] to-[#0f2055] flex items-center justify-center text-white shrink-0 shadow-md">
-                    <TrendingUp className="w-6 h-6 text-[#ffd56b]" />
-                  </div>
-                  <div>
-                    <div className="text-xs font-bold text-[#b8860b] uppercase tracking-wider">Proven Boost</div>
-                    <div className="text-sm font-black text-[#0f2055]">Grade 5 ➔ Grade 9</div>
-                    <div className="text-[11px] text-[#5a6070]">Within 12 Weeks</div>
-                  </div>
-                </div>
-
-                {/* Floating Tutor Rating Card */}
-                <div className="absolute -top-6 -right-4 hidden sm:flex bg-white/95 backdrop-blur-lg border border-[#0f2055]/10 p-3.5 rounded-2xl shadow-xl shadow-[#0f2055]/15 items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-[#0f2055] to-[#1e3a8a] flex items-center justify-center text-[#ffd56b] font-black text-sm border border-[#d4a017]/40">
-                    OX
-                  </div>
-                  <div>
-                    <div className="text-xs font-bold text-[#0f2055]">Oxbridge &amp; Ivy Mentors</div>
-                    <div className="text-[11px] text-[#b8860b] font-semibold flex items-center gap-1">
-                      <span>Top 3% Acceptance</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
           </div>
         </div>
       </section>
 
-      {/* Trust & Proof Bar */}
-      <section className="border-y border-[#0f2055]/10 bg-white py-10 relative">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-6 sm:gap-8 text-center">
-            <div className="space-y-1">
-              <div className="text-3xl sm:text-4xl font-extrabold text-[#0f2055]">99.4%</div>
-              <div className="text-xs sm:text-sm font-bold text-[#1a1a2e]">Exam Pass &amp; Target Grade Rate</div>
-              <div className="text-[11px] text-[#5a6070]">Across GCSE, IGCSE &amp; A-Levels</div>
-            </div>
-            <div className="space-y-1">
-              <div className="text-3xl sm:text-4xl font-extrabold text-[#b8860b]">500+</div>
-              <div className="text-xs sm:text-sm font-bold text-[#1a1a2e]">Elite Specialist Tutors</div>
-              <div className="text-[11px] text-[#5a6070]">All Enhanced DBS &amp; Verified</div>
-            </div>
-            <div className="space-y-1">
-              <div className="text-3xl sm:text-4xl font-extrabold text-[#0f2055]">45,000+</div>
-              <div className="text-xs sm:text-sm font-bold text-[#1a1a2e]">Online Lessons Delivered</div>
-              <div className="text-[11px] text-[#5a6070]">Live Across Canada 🇨🇦, USA 🇺🇸 &amp; UK 🇬🇧 Timezones</div>
-            </div>
-            <div className="space-y-1">
-              <div className="text-3xl sm:text-4xl font-extrabold text-[#b8860b]">100%</div>
-              <div className="text-xs sm:text-sm font-bold text-[#1a1a2e]">Tutor Match Guarantee</div>
-              <div className="text-[11px] text-[#5a6070]">Free switch if not completely delighted</div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Programs & Academic Levels Explorer */}
-      <section id="levels" className="py-16 sm:py-24 bg-white">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center max-w-3xl mx-auto mb-10 sm:mb-16 space-y-4">
-            <div className="badge-gold mx-auto">Comprehensive Curriculum</div>
-            <div className="divider-gold mx-auto" />
-            <h2 className="text-2xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight text-[#0f2055]">
-              Tailored Programs for Every Academic Milestone
-            </h2>
-            <p className="text-[#5a6070] text-sm sm:text-lg leading-relaxed">
-              From early Reception phonics and Year 1-6 foundations to 11 Plus preparation, Year 7-12 transition, GCSEs,
-              Scottish National 5, and A Level exam excellence, our specialist educators provide laser-focused online guidance.
-            </p>
-
-            {/* Mobile View: Staggered Interactive Grid */}
-            <div className="grid grid-cols-2 gap-2 pt-4 sm:hidden">
-              {[
-                { id: "reception", label: "Reception", icon: "🔤", span: "col-span-1" },
-                { id: "year1_6", label: "Year 1-6", icon: "📚", span: "col-span-1" },
-                { id: "eleven_plus", label: "11 Plus Preparation", icon: "🧩", span: "col-span-2" },
-                { id: "year7_12", label: "Year 7-12", icon: "🌉", span: "col-span-1" },
-                { id: "gcse", label: "GCSE Preparation", icon: "🎓", span: "col-span-1" },
-                { id: "nat5", label: "National 5", icon: "🏴󠁧󠁢󠁳󠁣󠁴󠁿", span: "col-span-1" },
-                { id: "alevel", label: "A Level", icon: "🏛️", span: "col-span-1" },
-              ].map((tab) => (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveLevelTab(tab.id as LearnerCategory)}
-                  className={`p-3 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-sm active:scale-95 ${
-                    tab.span
-                  } ${
-                    activeLevelTab === tab.id
-                      ? "bg-[#0f2055] text-white border-2 border-[#d4a017] shadow-md shadow-[#0f2055]/20 font-black"
-                      : "bg-[#faf9f6] text-[#0f2055] border border-[#0f2055]/15 hover:border-[#b8860b]"
-                  }`}
-                >
-                  <span className="text-sm">{tab.icon}</span>
-                  <span>{tab.label}</span>
-                </button>
-              ))}
-            </div>
-
-            {/* Desktop View: Centered Tab Bar */}
-            <div className="hidden sm:flex items-center justify-center gap-2 pt-4 max-w-full">
-              {[
-                { id: "reception", label: "Reception" },
-                { id: "year1_6", label: "Year 1-6" },
-                { id: "eleven_plus", label: "11 plus preparation" },
-                { id: "year7_12", label: "Year 7-12" },
-                { id: "gcse", label: "GCSE preparation" },
-                { id: "nat5", label: "National 5" },
-                { id: "alevel", label: "A level" },
-              ].map((tab) => (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveLevelTab(tab.id as LearnerCategory)}
-                  className={`tab-pill ${activeLevelTab === tab.id ? "active" : ""}`}
-                >
-                  {tab.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Level Details View */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {/* 1. Reception */}
-            {activeLevelTab === "reception" && (
-              <>
-                <div className="p-6 rounded-2xl bg-[#faf9f6] border border-[#0f2055]/10 hover:border-[#d4a017] hover:shadow-lg transition-all space-y-4 group shadow-sm">
-                  <div className="w-12 h-12 rounded-xl bg-pink-500/10 text-pink-400 flex items-center justify-center font-bold text-lg group-hover:scale-110 transition-transform">
-                    🔤
-                  </div>
-                  <h3 className="text-xl font-black text-[#0f2055]">Early Phonics & Guided Reading</h3>
-                  <p className="text-sm text-[#4a4f60] leading-relaxed">
-                    Letter-sound recognition, phonics blending, sight words, and playful storytelling that builds
-                    early literacy confidence and a joyful love for reading.
-                  </p>
-                  <div className="pt-2 flex flex-wrap gap-2 text-xs">
-                    <span className="px-2.5 py-1 rounded-md bg-white border border-[#0f2055]/10 text-[#1e3a8a] font-medium">Phonics Phases 1-3</span>
-                    <span className="px-2.5 py-1 rounded-md bg-white border border-[#0f2055]/10 text-[#1e3a8a] font-medium">Letter Blending</span>
-                    <span className="px-2.5 py-1 rounded-md bg-white border border-[#0f2055]/10 text-[#1e3a8a] font-medium">Storytelling</span>
-                  </div>
-                  <button
-                    onClick={() => handleOpenBooking()}
-                    className="pt-2 text-xs font-bold text-[#b8860b] hover:text-[#0f2055] flex items-center gap-1 group-hover:translate-x-1 transition-transform cursor-pointer"
-                  >
-                    Match Reception Specialist &rarr;
-                  </button>
-                </div>
-
-                <div className="p-6 rounded-2xl bg-[#faf9f6] border border-[#0f2055]/10 hover:border-[#d4a017] hover:shadow-lg transition-all space-y-4 group shadow-sm">
-                  <div className="w-12 h-12 rounded-xl bg-purple-500/10 text-purple-400 flex items-center justify-center font-bold text-lg group-hover:scale-110 transition-transform">
-                    🔢
-                  </div>
-                  <h3 className="text-xl font-black text-[#0f2055]">Early Number Sense & Shapes</h3>
-                  <p className="text-sm text-[#4a4f60] leading-relaxed">
-                    Hands-on digital math games, counting, number patterns, 2D/3D shapes, and basic addition using
-                    fun visual manipulatives on our live interactive whiteboard.
-                  </p>
-                  <div className="pt-2 flex flex-wrap gap-2 text-xs">
-                    <span className="px-2.5 py-1 rounded-md bg-white border border-[#0f2055]/10 text-[#1e3a8a] font-medium">Number Bonds</span>
-                    <span className="px-2.5 py-1 rounded-md bg-white border border-[#0f2055]/10 text-[#1e3a8a] font-medium">Visual Math</span>
-                    <span className="px-2.5 py-1 rounded-md bg-white border border-[#0f2055]/10 text-[#1e3a8a] font-medium">Patterns</span>
-                  </div>
-                  <button
-                    onClick={() => handleOpenBooking()}
-                    className="pt-2 text-xs font-bold text-[#b8860b] hover:text-[#0f2055] flex items-center gap-1 group-hover:translate-x-1 transition-transform cursor-pointer"
-                  >
-                    Match Early Math Tutor &rarr;
-                  </button>
-                </div>
-
-                <div className="p-6 rounded-2xl bg-[#faf9f6] border border-[#0f2055]/10 hover:border-[#d4a017] hover:shadow-lg transition-all space-y-4 group shadow-sm">
-                  <div className="w-12 h-12 rounded-xl bg-amber-500/10 text-amber-400 flex items-center justify-center font-bold text-lg group-hover:scale-110 transition-transform">
-                    🌟
-                  </div>
-                  <h3 className="text-xl font-black text-[#0f2055]">School Readiness & Focus Coaching</h3>
-                  <p className="text-sm text-[#4a4f60] leading-relaxed">
-                    Developing listening stamina, pencil grip coordination, positive communication, and confidence for
-                    a seamless transition into formal school learning.
-                  </p>
-                  <div className="pt-2 flex flex-wrap gap-2 text-xs">
-                    <span className="px-2.5 py-1 rounded-md bg-white border border-[#0f2055]/10 text-[#1e3a8a] font-medium">Focus Stamina</span>
-                    <span className="px-2.5 py-1 rounded-md bg-white border border-[#0f2055]/10 text-[#1e3a8a] font-medium">Confidence</span>
-                    <span className="px-2.5 py-1 rounded-md bg-white border border-[#0f2055]/10 text-[#1e3a8a] font-medium">Gentle Mentoring</span>
-                  </div>
-                  <button
-                    onClick={() => handleOpenBooking()}
-                    className="pt-2 text-xs font-bold text-[#b8860b] hover:text-[#0f2055] flex items-center gap-1 group-hover:translate-x-1 transition-transform cursor-pointer"
-                  >
-                    Book Free Consultation &rarr;
-                  </button>
-                </div>
-              </>
-            )}
-
-            {/* 2. Year 1-6 */}
-            {activeLevelTab === "year1_6" && (
-              <>
-                <div className="p-6 rounded-2xl bg-[#faf9f6] border border-[#0f2055]/10 hover:border-[#d4a017] hover:shadow-lg transition-all space-y-4 group shadow-sm">
-                  <div className="w-12 h-12 rounded-xl bg-blue-500/10 text-blue-400 flex items-center justify-center font-bold text-lg group-hover:scale-110 transition-transform">
-                    📐
-                  </div>
-                  <h3 className="text-xl font-black text-[#0f2055]">Primary Numeracy & Times Tables</h3>
-                  <p className="text-sm text-[#4a4f60] leading-relaxed">
-                    Mastery of multiplication tables, fractions, decimals, place value, and multi-step word problems
-                    using proven visual problem-solving techniques.
-                  </p>
-                  <div className="pt-2 flex flex-wrap gap-2 text-xs">
-                    <span className="px-2.5 py-1 rounded-md bg-white border border-[#0f2055]/10 text-[#1e3a8a] font-medium">Mental Arithmetic</span>
-                    <span className="px-2.5 py-1 rounded-md bg-white border border-[#0f2055]/10 text-[#1e3a8a] font-medium">Fractions & Decimals</span>
-                    <span className="px-2.5 py-1 rounded-md bg-white border border-[#0f2055]/10 text-[#1e3a8a] font-medium">Word Problems</span>
-                  </div>
-                  <button
-                    onClick={() => handleOpenBooking()}
-                    className="pt-2 text-xs font-bold text-[#b8860b] hover:text-[#0f2055] flex items-center gap-1 group-hover:translate-x-1 transition-transform cursor-pointer"
-                  >
-                    Match Primary Math Tutor &rarr;
-                  </button>
-                </div>
-
-                <div className="p-6 rounded-2xl bg-[#faf9f6] border border-[#0f2055]/10 hover:border-[#d4a017] hover:shadow-lg transition-all space-y-4 group shadow-sm">
-                  <div className="w-12 h-12 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center font-bold text-lg group-hover:scale-110 transition-transform">
-                    📖
-                  </div>
-                  <h3 className="text-xl font-black text-[#0f2055]">Reading Comprehension & Grammar</h3>
-                  <p className="text-sm text-[#4a4f60] leading-relaxed">
-                    Deep textual analysis, punctuation accuracy, sentence expansion, and vocabulary enrichment that
-                    accelerates reading age and written expression.
-                  </p>
-                  <div className="pt-2 flex flex-wrap gap-2 text-xs">
-                    <span className="px-2.5 py-1 rounded-md bg-white border border-[#0f2055]/10 text-[#1e3a8a] font-medium">Vocabulary Expansion</span>
-                    <span className="px-2.5 py-1 rounded-md bg-white border border-[#0f2055]/10 text-[#1e3a8a] font-medium">Grammar & Punctuation</span>
-                    <span className="px-2.5 py-1 rounded-md bg-white border border-[#0f2055]/10 text-[#1e3a8a] font-medium">Text Analysis</span>
-                  </div>
-                  <button
-                    onClick={() => handleOpenBooking()}
-                    className="pt-2 text-xs font-bold text-[#b8860b] hover:text-[#0f2055] flex items-center gap-1 group-hover:translate-x-1 transition-transform cursor-pointer"
-                  >
-                    Match English Tutor &rarr;
-                  </button>
-                </div>
-
-                <div className="p-6 rounded-2xl bg-[#faf9f6] border border-[#0f2055]/10 hover:border-[#d4a017] hover:shadow-lg transition-all space-y-4 group shadow-sm">
-                  <div className="w-12 h-12 rounded-xl bg-orange-500/10 text-orange-400 flex items-center justify-center font-bold text-lg group-hover:scale-110 transition-transform">
-                    🏆
-                  </div>
-                  <h3 className="text-xl font-black text-[#0f2055]">KS1 & KS2 SATs Acceleration</h3>
-                  <p className="text-sm text-[#4a4f60] leading-relaxed">
-                    Targeted practice for Year 2 and Year 6 SATs. Diagnostic assessments identify knowledge gaps early,
-                    ensuring students exceed expected standards.
-                  </p>
-                  <div className="pt-2 flex flex-wrap gap-2 text-xs">
-                    <span className="px-2.5 py-1 rounded-md bg-white border border-[#0f2055]/10 text-[#1e3a8a] font-medium">SATs Past Papers</span>
-                    <span className="px-2.5 py-1 rounded-md bg-white border border-[#0f2055]/10 text-[#1e3a8a] font-medium">Exceeding Standards</span>
-                    <span className="px-2.5 py-1 rounded-md bg-white border border-[#0f2055]/10 text-[#1e3a8a] font-medium">Confidence Booster</span>
-                  </div>
-                  <button
-                    onClick={() => handleOpenBooking()}
-                    className="pt-2 text-xs font-bold text-[#b8860b] hover:text-[#0f2055] flex items-center gap-1 group-hover:translate-x-1 transition-transform cursor-pointer"
-                  >
-                    Book SATs Prep &rarr;
-                  </button>
-                </div>
-              </>
-            )}
-
-            {/* 3. 11 Plus Preparation */}
-            {activeLevelTab === "eleven_plus" && (
-              <>
-                <div className="p-6 rounded-2xl bg-[#faf9f6] border border-[#0f2055]/10 hover:border-[#d4a017] hover:shadow-lg transition-all space-y-4 group shadow-sm">
-                  <div className="w-12 h-12 rounded-xl bg-cyan-500/10 text-[#00d2c4] flex items-center justify-center font-bold text-lg group-hover:scale-110 transition-transform">
-                    🧩
-                  </div>
-                  <h3 className="text-xl font-black text-[#0f2055]">Verbal & Non-Verbal Reasoning</h3>
-                  <p className="text-sm text-[#4a4f60] leading-relaxed">
-                    Code breaking, spatial patterns, cube nets, analogies, and logical deduction designed for GL
-                    Assessment, CEM, and bespoke consortium exam formats.
-                  </p>
-                  <div className="pt-2 flex flex-wrap gap-2 text-xs">
-                    <span className="px-2.5 py-1 rounded-md bg-white border border-[#0f2055]/10 text-[#1e3a8a] font-medium">GL & CEM Formats</span>
-                    <span className="px-2.5 py-1 rounded-md bg-white border border-[#0f2055]/10 text-[#1e3a8a] font-medium">Spatial Reasoning</span>
-                    <span className="px-2.5 py-1 rounded-md bg-white border border-[#0f2055]/10 text-[#1e3a8a] font-medium">Speed Techniques</span>
-                  </div>
-                  <button
-                    onClick={() => handleOpenBooking()}
-                    className="pt-2 text-xs font-bold text-[#b8860b] hover:text-[#0f2055] flex items-center gap-1 group-hover:translate-x-1 transition-transform cursor-pointer"
-                  >
-                    Match 11+ Reasoning Tutor &rarr;
-                  </button>
-                </div>
-
-                <div className="p-6 rounded-2xl bg-[#faf9f6] border border-[#0f2055]/10 hover:border-[#d4a017] hover:shadow-lg transition-all space-y-4 group shadow-sm">
-                  <div className="w-12 h-12 rounded-xl bg-blue-500/10 text-blue-400 flex items-center justify-center font-bold text-lg group-hover:scale-110 transition-transform">
-                    🎯
-                  </div>
-                  <h3 className="text-xl font-black text-[#0f2055]">11+ Advanced Maths & Logic</h3>
-                  <p className="text-sm text-[#4a4f60] leading-relaxed">
-                    High-speed numerical fluency, fractions, percentages, ratios, algebra, and tough multi-step problem
-                    solving required by top grammar schools.
-                  </p>
-                  <div className="pt-2 flex flex-wrap gap-2 text-xs">
-                    <span className="px-2.5 py-1 rounded-md bg-white border border-[#0f2055]/10 text-[#1e3a8a] font-medium">Multi-Step Problems</span>
-                    <span className="px-2.5 py-1 rounded-md bg-white border border-[#0f2055]/10 text-[#1e3a8a] font-medium">Speed Drills</span>
-                    <span className="px-2.5 py-1 rounded-md bg-white border border-[#0f2055]/10 text-[#1e3a8a] font-medium">Grammar Thresholds</span>
-                  </div>
-                  <button
-                    onClick={() => handleOpenBooking()}
-                    className="pt-2 text-xs font-bold text-[#b8860b] hover:text-[#0f2055] flex items-center gap-1 group-hover:translate-x-1 transition-transform cursor-pointer"
-                  >
-                    Match 11+ Maths Specialist &rarr;
-                  </button>
-                </div>
-
-                <div className="p-6 rounded-2xl bg-[#faf9f6] border border-[#0f2055]/10 hover:border-[#d4a017] hover:shadow-lg transition-all space-y-4 group shadow-sm">
-                  <div className="w-12 h-12 rounded-xl bg-amber-500/10 text-amber-400 flex items-center justify-center font-bold text-lg group-hover:scale-110 transition-transform">
-                    ✍️
-                  </div>
-                  <h3 className="text-xl font-black text-[#0f2055]">Creative Writing & Comprehension</h3>
-                  <p className="text-sm text-[#4a4f60] leading-relaxed">
-                    Writing flair, figurative language, compelling openings, and unseen comprehension with rigorous
-                    timed mock exam practice.
-                  </p>
-                  <div className="pt-2 flex flex-wrap gap-2 text-xs">
-                    <span className="px-2.5 py-1 rounded-md bg-white border border-[#0f2055]/10 text-[#1e3a8a] font-medium">ISEB Common Pre-Test</span>
-                    <span className="px-2.5 py-1 rounded-md bg-white border border-[#0f2055]/10 text-[#1e3a8a] font-medium">Creative Essays</span>
-                    <span className="px-2.5 py-1 rounded-md bg-white border border-[#0f2055]/10 text-[#1e3a8a] font-medium">Mock Exam Drills</span>
-                  </div>
-                  <button
-                    onClick={() => handleOpenBooking()}
-                    className="pt-2 text-xs font-bold text-[#b8860b] hover:text-[#0f2055] flex items-center gap-1 group-hover:translate-x-1 transition-transform cursor-pointer"
-                  >
-                    Match 11+ English Mentor &rarr;
-                  </button>
-                </div>
-              </>
-            )}
-
-            {/* 4. Year 7-12 */}
-            {activeLevelTab === "year7_12" && (
-              <>
-                <div className="p-6 rounded-2xl bg-[#faf9f6] border border-[#0f2055]/10 hover:border-[#d4a017] hover:shadow-lg transition-all space-y-4 group shadow-sm">
-                  <div className="w-12 h-12 rounded-xl bg-indigo-500/10 text-indigo-400 flex items-center justify-center font-bold text-lg group-hover:scale-110 transition-transform">
-                    🌉
-                  </div>
-                  <h3 className="text-xl font-black text-[#0f2055]">Secondary Bridge & KS3 Mastery</h3>
-                  <p className="text-sm text-[#4a4f60] leading-relaxed">
-                    Navigating the jump from primary to secondary school. Consolidating algebraic thinking, scientific
-                    enquiry, and formal essay structuring.
-                  </p>
-                  <div className="pt-2 flex flex-wrap gap-2 text-xs">
-                    <span className="px-2.5 py-1 rounded-md bg-white border border-[#0f2055]/10 text-[#1e3a8a] font-medium">Algebra Foundations</span>
-                    <span className="px-2.5 py-1 rounded-md bg-white border border-[#0f2055]/10 text-[#1e3a8a] font-medium">Scientific Enquiry</span>
-                    <span className="px-2.5 py-1 rounded-md bg-white border border-[#0f2055]/10 text-[#1e3a8a] font-medium">KS3 Curriculum</span>
-                  </div>
-                  <button
-                    onClick={() => handleOpenBooking()}
-                    className="pt-2 text-xs font-bold text-[#b8860b] hover:text-[#0f2055] flex items-center gap-1 group-hover:translate-x-1 transition-transform cursor-pointer"
-                  >
-                    Match Secondary Mentor &rarr;
-                  </button>
-                </div>
-
-                <div className="p-6 rounded-2xl bg-[#faf9f6] border border-[#0f2055]/10 hover:border-[#d4a017] hover:shadow-lg transition-all space-y-4 group shadow-sm">
-                  <div className="w-12 h-12 rounded-xl bg-teal-500/10 text-[#00d2c4] flex items-center justify-center font-bold text-lg group-hover:scale-110 transition-transform">
-                    🔬
-                  </div>
-                  <h3 className="text-xl font-black text-[#0f2055]">Year 7-9 Core Sciences & Maths</h3>
-                  <p className="text-sm text-[#4a4f60] leading-relaxed">
-                    Building a rock-solid conceptual runway across Physics, Chemistry, Biology, and pure mathematics
-                    before GCSE option choices.
-                  </p>
-                  <div className="pt-2 flex flex-wrap gap-2 text-xs">
-                    <span className="px-2.5 py-1 rounded-md bg-white border border-[#0f2055]/10 text-[#1e3a8a] font-medium">Physics & Forces</span>
-                    <span className="px-2.5 py-1 rounded-md bg-white border border-[#0f2055]/10 text-[#1e3a8a] font-medium">Chemical Reactions</span>
-                    <span className="px-2.5 py-1 rounded-md bg-white border border-[#0f2055]/10 text-[#1e3a8a] font-medium">Linear Equations</span>
-                  </div>
-                  <button
-                    onClick={() => handleOpenBooking()}
-                    className="pt-2 text-xs font-bold text-[#b8860b] hover:text-[#0f2055] flex items-center gap-1 group-hover:translate-x-1 transition-transform cursor-pointer"
-                  >
-                    Book STEM Specialist &rarr;
-                  </button>
-                </div>
-
-                <div className="p-6 rounded-2xl bg-[#faf9f6] border border-[#0f2055]/10 hover:border-[#d4a017] hover:shadow-lg transition-all space-y-4 group shadow-sm">
-                  <div className="w-12 h-12 rounded-xl bg-rose-500/10 text-rose-400 flex items-center justify-center font-bold text-lg group-hover:scale-110 transition-transform">
-                    📚
-                  </div>
-                  <h3 className="text-xl font-black text-[#0f2055]">Analytical English & Study Habits</h3>
-                  <p className="text-sm text-[#4a4f60] leading-relaxed">
-                    Literary analysis, thesis crafting, critical thinking, active revision strategies, and homework
-                    coaching for academic confidence.
-                  </p>
-                  <div className="pt-2 flex flex-wrap gap-2 text-xs">
-                    <span className="px-2.5 py-1 rounded-md bg-white border border-[#0f2055]/10 text-[#1e3a8a] font-medium">Essay Architecture</span>
-                    <span className="px-2.5 py-1 rounded-md bg-white border border-[#0f2055]/10 text-[#1e3a8a] font-medium">Revision Strategies</span>
-                    <span className="px-2.5 py-1 rounded-md bg-white border border-[#0f2055]/10 text-[#1e3a8a] font-medium">Study Skills</span>
-                  </div>
-                  <button
-                    onClick={() => handleOpenBooking()}
-                    className="pt-2 text-xs font-bold text-[#b8860b] hover:text-[#0f2055] flex items-center gap-1 group-hover:translate-x-1 transition-transform cursor-pointer"
-                  >
-                    Match Humanities Tutor &rarr;
-                  </button>
-                </div>
-              </>
-            )}
-
-            {/* 5. GCSE preparation */}
-            {activeLevelTab === "gcse" && (
-              <>
-                <div className="p-6 rounded-2xl bg-[#faf9f6] border border-[#0f2055]/10 hover:border-[#d4a017] hover:shadow-lg transition-all space-y-4 group shadow-sm">
-                  <div className="w-12 h-12 rounded-xl bg-blue-500/10 text-blue-400 flex items-center justify-center font-bold text-lg group-hover:scale-110 transition-transform">
-                    ∑x
-                  </div>
-                  <h3 className="text-xl font-black text-[#0f2055]">GCSE / IGCSE Mathematics</h3>
-                  <p className="text-sm text-[#4a4f60] leading-relaxed">
-                    Higher & Foundation tiers. Step-by-step mastery of algebra, circle theorems, trigonometry, and exam
-                    technique for Edexcel, AQA & OCR. Target Grade 7-9.
-                  </p>
-                  <div className="pt-2 flex flex-wrap gap-2 text-xs">
-                    <span className="px-2.5 py-1 rounded-md bg-white border border-[#0f2055]/10 text-[#1e3a8a] font-medium">Edexcel</span>
-                    <span className="px-2.5 py-1 rounded-md bg-white border border-[#0f2055]/10 text-[#1e3a8a] font-medium">AQA</span>
-                    <span className="px-2.5 py-1 rounded-md bg-white border border-[#0f2055]/10 text-[#1e3a8a] font-medium">Grade 8/9 Target</span>
-                  </div>
-                  <button
-                    onClick={() => handleOpenBooking()}
-                    className="pt-2 text-xs font-bold text-[#b8860b] hover:text-[#0f2055] flex items-center gap-1 group-hover:translate-x-1 transition-transform cursor-pointer"
-                  >
-                    Match with a Maths Tutor &rarr;
-                  </button>
-                </div>
-
-                <div className="p-6 rounded-2xl bg-[#faf9f6] border border-[#0f2055]/10 hover:border-[#d4a017] hover:shadow-lg transition-all space-y-4 group shadow-sm">
-                  <div className="w-12 h-12 rounded-xl bg-teal-500/10 text-[#00d2c4] flex items-center justify-center font-bold text-lg group-hover:scale-110 transition-transform">
-                    ⚗️
-                  </div>
-                  <h3 className="text-xl font-black text-[#0f2055]">GCSE Sciences (Triple & Combined)</h3>
-                  <p className="text-sm text-[#4a4f60] leading-relaxed">
-                    Physics, Chemistry, and Biology. Deep understanding of chemical equations, energy transfers,
-                    genetics, and required practicals with examiner mark schemes.
-                  </p>
-                  <div className="pt-2 flex flex-wrap gap-2 text-xs">
-                    <span className="px-2.5 py-1 rounded-md bg-white border border-[#0f2055]/10 text-[#1e3a8a] font-medium">Physics</span>
-                    <span className="px-2.5 py-1 rounded-md bg-white border border-[#0f2055]/10 text-[#1e3a8a] font-medium">Chemistry</span>
-                    <span className="px-2.5 py-1 rounded-md bg-white border border-[#0f2055]/10 text-[#1e3a8a] font-medium">Biology</span>
-                  </div>
-                  <button
-                    onClick={() => handleOpenBooking()}
-                    className="pt-2 text-xs font-bold text-[#b8860b] hover:text-[#0f2055] flex items-center gap-1 group-hover:translate-x-1 transition-transform cursor-pointer"
-                  >
-                    Match with a Science Specialist &rarr;
-                  </button>
-                </div>
-
-                <div className="p-6 rounded-2xl bg-[#faf9f6] border border-[#0f2055]/10 hover:border-[#d4a017] hover:shadow-lg transition-all space-y-4 group shadow-sm">
-                  <div className="w-12 h-12 rounded-xl bg-amber-500/10 text-amber-400 flex items-center justify-center font-bold text-lg group-hover:scale-110 transition-transform">
-                    📖
-                  </div>
-                  <h3 className="text-xl font-black text-[#0f2055]">GCSE English Language & Literature</h3>
-                  <p className="text-sm text-[#4a4f60] leading-relaxed">
-                    Analytical essay writing, Shakespeare, 19th-century prose, unseen poetry, and rhetoric structure to
-                    secure top Grade 8 and 9 marks.
-                  </p>
-                  <div className="pt-2 flex flex-wrap gap-2 text-xs">
-                    <span className="px-2.5 py-1 rounded-md bg-white border border-[#0f2055]/10 text-[#1e3a8a] font-medium">Essay Mastery</span>
-                    <span className="px-2.5 py-1 rounded-md bg-white border border-[#0f2055]/10 text-[#1e3a8a] font-medium">Poetry Anthology</span>
-                    <span className="px-2.5 py-1 rounded-md bg-white border border-[#0f2055]/10 text-[#1e3a8a] font-medium">AQA / Edexcel</span>
-                  </div>
-                  <button
-                    onClick={() => handleOpenBooking()}
-                    className="pt-2 text-xs font-bold text-[#b8860b] hover:text-[#0f2055] flex items-center gap-1 group-hover:translate-x-1 transition-transform cursor-pointer"
-                  >
-                    Match with an English Specialist &rarr;
-                  </button>
-                </div>
-              </>
-            )}
-
-            {/* 6. National 5 */}
-            {activeLevelTab === "nat5" && (
-              <>
-                <div className="p-6 rounded-2xl bg-[#faf9f6] border border-[#0f2055]/10 hover:border-[#d4a017] hover:shadow-lg transition-all space-y-4 group shadow-sm">
-                  <div className="w-12 h-12 rounded-xl bg-blue-600/10 text-blue-400 flex items-center justify-center font-bold text-lg group-hover:scale-110 transition-transform">
-                    🏴󠁧󠁢󠁳󠁣󠁴󠁿
-                  </div>
-                  <h3 className="text-xl font-black text-[#0f2055]">National 5 Mathematics (SQA)</h3>
-                  <p className="text-sm text-[#4a4f60] leading-relaxed">
-                    Complete coverage of SQA National 5 Maths: algebraic operations, quadratics, arcs & sectors,
-                    trigonometric equations, and Paper 1 (Non-Calculator) & Paper 2 mastery.
-                  </p>
-                  <div className="pt-2 flex flex-wrap gap-2 text-xs">
-                    <span className="px-2.5 py-1 rounded-md bg-white border border-[#0f2055]/10 text-[#1e3a8a] font-medium">SQA Curriculum</span>
-                    <span className="px-2.5 py-1 rounded-md bg-white border border-[#0f2055]/10 text-[#1e3a8a] font-medium">Paper 1 & Paper 2</span>
-                    <span className="px-2.5 py-1 rounded-md bg-white border border-[#0f2055]/10 text-[#1e3a8a] font-medium">Grade A Strategy</span>
-                  </div>
-                  <button
-                    onClick={() => handleOpenBooking()}
-                    className="pt-2 text-xs font-bold text-[#b8860b] hover:text-[#0f2055] flex items-center gap-1 group-hover:translate-x-1 transition-transform cursor-pointer"
-                  >
-                    Match National 5 Maths Tutor &rarr;
-                  </button>
-                </div>
-
-                <div className="p-6 rounded-2xl bg-[#faf9f6] border border-[#0f2055]/10 hover:border-[#d4a017] hover:shadow-lg transition-all space-y-4 group shadow-sm">
-                  <div className="w-12 h-12 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center font-bold text-lg group-hover:scale-110 transition-transform">
-                    🧪
-                  </div>
-                  <h3 className="text-xl font-black text-[#0f2055]">National 5 Physics, Chemistry & Biology</h3>
-                  <p className="text-sm text-[#4a4f60] leading-relaxed">
-                    Scottish Curriculum for Excellence science courses, assignment report coaching, experimental
-                    data evaluation, and SQA past-paper drill.
-                  </p>
-                  <div className="pt-2 flex flex-wrap gap-2 text-xs">
-                    <span className="px-2.5 py-1 rounded-md bg-white border border-[#0f2055]/10 text-[#1e3a8a] font-medium">Nat 5 Physics</span>
-                    <span className="px-2.5 py-1 rounded-md bg-white border border-[#0f2055]/10 text-[#1e3a8a] font-medium">Nat 5 Chemistry</span>
-                    <span className="px-2.5 py-1 rounded-md bg-white border border-[#0f2055]/10 text-[#1e3a8a] font-medium">Nat 5 Biology</span>
-                  </div>
-                  <button
-                    onClick={() => handleOpenBooking()}
-                    className="pt-2 text-xs font-bold text-[#b8860b] hover:text-[#0f2055] flex items-center gap-1 group-hover:translate-x-1 transition-transform cursor-pointer"
-                  >
-                    Match National 5 Science Specialist &rarr;
-                  </button>
-                </div>
-
-                <div className="p-6 rounded-2xl bg-[#faf9f6] border border-[#0f2055]/10 hover:border-[#d4a017] hover:shadow-lg transition-all space-y-4 group shadow-sm">
-                  <div className="w-12 h-12 rounded-xl bg-amber-500/10 text-amber-400 flex items-center justify-center font-bold text-lg group-hover:scale-110 transition-transform">
-                    ✍️
-                  </div>
-                  <h3 className="text-xl font-black text-[#0f2055]">National 5 English (RUAE & Essays)</h3>
-                  <p className="text-sm text-[#4a4f60] leading-relaxed">
-                    Reading for Understanding, Analysis and Evaluation (RUAE) formulas, Scottish text extract questions,
-                    and Critical Essay structuring to secure Band 1 / Grade A.
-                  </p>
-                  <div className="pt-2 flex flex-wrap gap-2 text-xs">
-                    <span className="px-2.5 py-1 rounded-md bg-white border border-[#0f2055]/10 text-[#1e3a8a] font-medium">RUAE Formulas</span>
-                    <span className="px-2.5 py-1 rounded-md bg-white border border-[#0f2055]/10 text-[#1e3a8a] font-medium">Scottish Texts</span>
-                    <span className="px-2.5 py-1 rounded-md bg-white border border-[#0f2055]/10 text-[#1e3a8a] font-medium">Critical Essays</span>
-                  </div>
-                  <button
-                    onClick={() => handleOpenBooking()}
-                    className="pt-2 text-xs font-bold text-[#b8860b] hover:text-[#0f2055] flex items-center gap-1 group-hover:translate-x-1 transition-transform cursor-pointer"
-                  >
-                    Match National 5 English Tutor &rarr;
-                  </button>
-                </div>
-              </>
-            )}
-
-            {/* 7. A Level Preparation */}
-            {activeLevelTab === "alevel" && (
-              <>
-                <div className="p-6 rounded-2xl bg-[#faf9f6] border border-[#0f2055]/10 hover:border-[#d4a017] hover:shadow-lg transition-all space-y-4 group shadow-sm">
-                  <div className="w-12 h-12 rounded-xl bg-purple-500/10 text-purple-400 flex items-center justify-center font-bold text-lg group-hover:scale-110 transition-transform">
-                    ∫dx
-                  </div>
-                  <h3 className="text-xl font-black text-[#0f2055]">A-Level Pure & Further Maths</h3>
-                  <p className="text-sm text-[#4a4f60] leading-relaxed">
-                    Differential equations, calculus, vectors, complex numbers, matrices, and mechanics tailored for
-                    high-achieving STEM aspirants and top university offers.
-                  </p>
-                  <div className="pt-2 flex flex-wrap gap-2 text-xs">
-                    <span className="px-2.5 py-1 rounded-md bg-white border border-[#0f2055]/10 text-[#1e3a8a] font-medium">Edexcel</span>
-                    <span className="px-2.5 py-1 rounded-md bg-white border border-[#0f2055]/10 text-[#1e3a8a] font-medium">OCR MEI</span>
-                    <span className="px-2.5 py-1 rounded-md bg-white border border-[#0f2055]/10 text-[#1e3a8a] font-medium">AQA Further Maths</span>
-                  </div>
-                  <button
-                    onClick={() => handleOpenBooking()}
-                    className="pt-2 text-xs font-bold text-[#b8860b] hover:text-[#0f2055] flex items-center gap-1 group-hover:translate-x-1 transition-transform cursor-pointer"
-                  >
-                    Book A-Level Maths Mentor &rarr;
-                  </button>
-                </div>
-
-                <div className="p-6 rounded-2xl bg-[#faf9f6] border border-[#0f2055]/10 hover:border-[#d4a017] hover:shadow-lg transition-all space-y-4 group shadow-sm">
-                  <div className="w-12 h-12 rounded-xl bg-cyan-500/10 text-[#00d2c4] flex items-center justify-center font-bold text-lg group-hover:scale-110 transition-transform">
-                    ⚡
-                  </div>
-                  <h3 className="text-xl font-black text-[#0f2055]">A-Level & IB Chemistry / Physics / Biology</h3>
-                  <p className="text-sm text-[#4a4f60] leading-relaxed">
-                    Organic synthesis, thermodynamics, quantum phenomena, and IB internal assessments guided by PhD
-                    and Master’s educators.
-                  </p>
-                  <div className="pt-2 flex flex-wrap gap-2 text-xs">
-                    <span className="px-2.5 py-1 rounded-md bg-white border border-[#0f2055]/10 text-[#1e3a8a] font-medium">AQA Chemistry</span>
-                    <span className="px-2.5 py-1 rounded-md bg-white border border-[#0f2055]/10 text-[#1e3a8a] font-medium">OCR Physics</span>
-                    <span className="px-2.5 py-1 rounded-md bg-white border border-[#0f2055]/10 text-[#1e3a8a] font-medium">Edexcel Biology</span>
-                  </div>
-                  <button
-                    onClick={() => handleOpenBooking()}
-                    className="pt-2 text-xs font-bold text-[#b8860b] hover:text-[#0f2055] flex items-center gap-1 group-hover:translate-x-1 transition-transform cursor-pointer"
-                  >
-                    Book Science Specialist &rarr;
-                  </button>
-                </div>
-
-                <div className="p-6 rounded-2xl bg-[#faf9f6] border border-[#0f2055]/10 hover:border-[#d4a017] hover:shadow-lg transition-all space-y-4 group shadow-sm">
-                  <div className="w-12 h-12 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center font-bold text-lg group-hover:scale-110 transition-transform">
-                    📊
-                  </div>
-                  <h3 className="text-xl font-black text-[#0f2055]">A-Level Economics, English & Humanities</h3>
-                  <p className="text-sm text-[#4a4f60] leading-relaxed">
-                    Macroeconomics, micro market failures, real-world data evaluation, and high-scoring 25-mark essay
-                    architecture for top grades (A* / A).
-                  </p>
-                  <div className="pt-2 flex flex-wrap gap-2 text-xs">
-                    <span className="px-2.5 py-1 rounded-md bg-white border border-[#0f2055]/10 text-[#1e3a8a] font-medium">Economics</span>
-                    <span className="px-2.5 py-1 rounded-md bg-white border border-[#0f2055]/10 text-[#1e3a8a] font-medium">English Literature</span>
-                    <span className="px-2.5 py-1 rounded-md bg-white border border-[#0f2055]/10 text-[#1e3a8a] font-medium">History</span>
-                  </div>
-                  <button
-                    onClick={() => handleOpenBooking()}
-                    className="pt-2 text-xs font-bold text-[#b8860b] hover:text-[#0f2055] flex items-center gap-1 group-hover:translate-x-1 transition-transform cursor-pointer"
-                  >
-                    Book Humanities Tutor &rarr;
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      </section>
-
-      {/* The Samin 4-Step Academic Mastery Method */}
-      <section id="method" className="py-16 sm:py-24 bg-[#faf9f6] border-t border-[#0f2055]/10 relative">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center max-w-3xl mx-auto mb-12 sm:mb-16 space-y-4">
-            <div className="badge-gold mx-auto">The Samin Standard</div>
-            <div className="divider-gold mx-auto" />
-            <h2 className="text-2xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight text-[#0f2055]">
-              A Scientific, 4-Step Framework for Guaranteed Progress
-            </h2>
-            <p className="text-[#5a6070] text-sm sm:text-lg leading-relaxed">
-              Generic tutoring often repeats textbook problems. Our bespoke pedagogy diagnoses the exact obstacles
-              blocking higher marks and systematically builds unbreakable mastery.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 sm:gap-8">
-            {/* Step 1 */}
-            <div className="relative p-6 rounded-2xl bg-white border border-[#0f2055]/10 hover:border-[#d4a017] hover:shadow-lg transition-all space-y-4 shadow-sm">
-              <div className="w-11 h-11 rounded-xl bg-[#0f2055] text-[#ffd56b] font-black text-lg flex items-center justify-center border border-[#d4a017]/30 shadow-md">
-                01
-              </div>
-              <h3 className="text-lg sm:text-xl font-bold text-[#0f2055]">Diagnostic &amp; Gap Assessment</h3>
-              <p className="text-sm text-[#4a4f60] leading-relaxed">
-                Before the first lesson, we pinpoint hidden gaps in prerequisite knowledge, test anxiety triggers, and
-                specific exam board weaknesses.
-              </p>
-              <div className="text-xs font-bold text-[#b8860b] flex items-center gap-1">
-                <span>Free $120 Evaluation</span>
-              </div>
-            </div>
-
-            {/* Step 2 */}
-            <div className="relative p-6 rounded-2xl bg-white border border-[#0f2055]/10 hover:border-[#d4a017] hover:shadow-lg transition-all space-y-4 shadow-sm">
-              <div className="w-11 h-11 rounded-xl bg-[#0f2055] text-[#ffd56b] font-black text-lg flex items-center justify-center border border-[#d4a017]/30 shadow-md">
-                02
-              </div>
-              <h3 className="text-lg sm:text-xl font-bold text-[#0f2055]">Elite Personality &amp; Subject Match</h3>
-              <p className="text-sm text-[#4a4f60] leading-relaxed">
-                We pair your student with a handpicked mentor from our top 3% who matches both their learning pace,
-                temperament, and specific curriculum board.
-              </p>
-              <div className="text-xs font-bold text-[#b8860b] flex items-center gap-1">
-                <span>100% Fit Guarantee</span>
-              </div>
-            </div>
-
-            {/* Step 3 */}
-            <div className="relative p-6 rounded-2xl bg-white border border-[#0f2055]/10 hover:border-[#d4a017] hover:shadow-lg transition-all space-y-4 shadow-sm">
-              <div className="w-11 h-11 rounded-xl bg-[#0f2055] text-[#ffd56b] font-black text-lg flex items-center justify-center border border-[#d4a017]/30 shadow-md">
-                03
-              </div>
-              <h3 className="text-lg sm:text-xl font-bold text-[#0f2055]">Active Mastery &amp; Exam Drills</h3>
-              <p className="text-sm text-[#4a4f60] leading-relaxed">
-                Sessions use dual-pen digital whiteboards, real past papers, examiner mark schemes, and spaced
-                repetition so techniques become second nature under time pressure.
-              </p>
-              <div className="text-xs font-bold text-[#b8860b] flex items-center gap-1">
-                <span>Recorded for 24/7 Revision</span>
-              </div>
-            </div>
-
-            {/* Step 4 */}
-            <div className="relative p-6 rounded-2xl bg-white border border-[#0f2055]/10 hover:border-[#d4a017] hover:shadow-lg transition-all space-y-4 shadow-sm">
-              <div className="w-11 h-11 rounded-xl bg-[#0f2055] text-[#ffd56b] font-black text-lg flex items-center justify-center border border-[#d4a017]/30 shadow-md">
-                04
-              </div>
-              <h3 className="text-lg sm:text-xl font-bold text-[#0f2055]">Weekly Transparency &amp; Parent Reports</h3>
-              <p className="text-sm text-[#4a4f60] leading-relaxed">
-                Parents receive concise weekly updates on syllabus milestones covered, homework completion rates, and
-                projected grade trajectory.
-              </p>
-              <div className="text-xs font-bold text-[#b8860b] flex items-center gap-1">
-                <span>Complete Peace of Mind</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Featured Elite Tutors Roster */}
-      <section id="tutors" className="py-16 sm:py-24 relative bg-white border-t border-[#0f2055]/10">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col md:flex-row md:items-end justify-between mb-12 sm:mb-16 gap-6">
-            <div className="space-y-4 max-w-2xl">
-              <div className="badge-gold">
-                Dedicated Educators • Canada 🇨🇦 • USA 🇺🇸 • UK 🇬🇧
-              </div>
-              <div className="divider-gold" />
-              <h2 className="text-2xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight text-[#0f2055]">
-                Meet Our Samin Tutors
-              </h2>
-              <p className="text-[#5a6070] text-sm sm:text-lg leading-relaxed">
-                Our vetted specialist tutors teach students across Canada, the USA, and the UK. They aren&apos;t just
-                brilliant scholars from top universities—they are empathetic, trained mentors who unlock your child&apos;s
-                academic confidence and true potential.
-              </p>
-            </div>
-            <button
-              onClick={() => handleOpenBooking()}
-              className="inline-flex items-center gap-2 text-sm font-bold text-[#b8860b] hover:text-[#0f2055] transition-colors cursor-pointer"
-            >
-              <span>Explore All 500+ Verified Tutors</span>
-              <ArrowRight className="w-4 h-4" />
-            </button>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 sm:gap-8">
-            {/* Tutor 1: David Zhang */}
-            <div className="rounded-2xl bg-[#faf9f6] border border-[#0f2055]/10 overflow-hidden hover:border-[#d4a017] hover:shadow-xl transition-all flex flex-col justify-between group shadow-sm">
-              <div>
-                <div className="relative h-64 w-full bg-slate-100 overflow-hidden">
-                  <Image
-                    src="/images/tutor-1.jpg"
-                    alt="David Zhang - Mathematics Tutor"
-                    fill
-                    className="object-cover object-top group-hover:scale-105 transition-transform duration-300"
-                  />
-                  <div className="absolute top-3 left-3 bg-white/95 backdrop-blur-md px-3 py-1 rounded-full border border-[#0f2055]/10 text-xs font-bold text-[#0f2055] flex items-center gap-1.5 shadow-sm">
-                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-                    Imperial College London
-                  </div>
-                  <div className="absolute bottom-3 right-3 bg-white/95 backdrop-blur-md px-2.5 py-1 rounded-full border border-[#0f2055]/10 text-xs font-bold text-[#b8860b] flex items-center gap-1 shadow-sm">
-                    <Star className="w-3.5 h-3.5 fill-current" />
-                    5.0 (94 reviews)
-                  </div>
-                </div>
-
-                <div className="p-6 space-y-4">
-                  <div>
-                    <h3 className="text-xl font-black text-[#0f2055]">David Zhang, MSc</h3>
-                    <p className="text-xs font-bold text-[#b8860b]">
-                      Senior Tutor • Pure Maths, Further Maths &amp; STEP
-                    </p>
-                  </div>
-
-                  <p className="text-xs text-[#4a4f60] leading-relaxed">
-                    Specialized in transforming students who struggle with abstract algebraic concepts and calculus
-                    into confident top-grade achievers. 98% of his GCSE &amp; A-Level students achieve Grades 8-9 / A*.
-                  </p>
-
-                  <div className="flex flex-wrap gap-2 text-xs">
-                    <span className="px-2.5 py-1 rounded-md bg-white border border-[#0f2055]/10 text-[#1e3a8a] font-medium">1,400+ Hours</span>
-                    <span className="px-2.5 py-1 rounded-md bg-white border border-[#0f2055]/10 text-[#1e3a8a] font-medium">Edexcel &amp; OCR Specialist</span>
-                    <span className="px-2.5 py-1 rounded-md bg-white border border-[#0f2055]/10 text-emerald-700 font-medium">DBS Enhanced</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="p-6 border-t border-[#0f2055]/10 mt-4 bg-white/50">
-                <button
-                  onClick={() => handleOpenBooking("David Zhang (Mathematics)")}
-                  className="w-full btn-primary text-xs py-3"
-                >
-                  Enroll
-                </button>
-              </div>
-            </div>
-
-            {/* Tutor 2: Dr. Sophia Ramirez */}
-            <div className="rounded-2xl bg-[#faf9f6] border border-[#0f2055]/10 overflow-hidden hover:border-[#d4a017] hover:shadow-xl transition-all flex flex-col justify-between group shadow-sm">
-              <div>
-                <div className="relative h-64 w-full bg-slate-100 overflow-hidden">
-                  <Image
-                    src="/images/tutor-2.jpg"
-                    alt="Dr. Sophia Ramirez - Science & Chemistry Tutor"
-                    fill
-                    className="object-cover object-top group-hover:scale-105 transition-transform duration-300"
-                  />
-                  <div className="absolute top-3 left-3 bg-white/95 backdrop-blur-md px-3 py-1 rounded-full border border-[#0f2055]/10 text-xs font-bold text-[#0f2055] flex items-center gap-1.5 shadow-sm">
-                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-                    Oxford University
-                  </div>
-                  <div className="absolute bottom-3 right-3 bg-white/95 backdrop-blur-md px-2.5 py-1 rounded-full border border-[#0f2055]/10 text-xs font-bold text-[#b8860b] flex items-center gap-1 shadow-sm">
-                    <Star className="w-3.5 h-3.5 fill-current" />
-                    5.0 (112 reviews)
-                  </div>
-                </div>
-
-                <div className="p-6 space-y-4">
-                  <div>
-                    <h3 className="text-xl font-black text-[#0f2055]">Dr. Sophia Ramirez, PhD</h3>
-                    <p className="text-xs font-bold text-[#b8860b]">
-                      Head of Sciences • Chemistry, Biology &amp; UCAT
-                    </p>
-                  </div>
-
-                  <p className="text-xs text-[#4a4f60] leading-relaxed">
-                    PhD in Biochemistry from Oxford. Combines passionate storytelling with rigorous past paper mark
-                    schemes, preparing aspiring doctors and biomedical engineers for medical school entry.
-                  </p>
-
-                  <div className="flex flex-wrap gap-2 text-xs">
-                    <span className="px-2.5 py-1 rounded-md bg-white border border-[#0f2055]/10 text-[#1e3a8a] font-medium">2,100+ Hours</span>
-                    <span className="px-2.5 py-1 rounded-md bg-white border border-[#0f2055]/10 text-[#1e3a8a] font-medium">Medical Admissions Coach</span>
-                    <span className="px-2.5 py-1 rounded-md bg-white border border-[#0f2055]/10 text-emerald-700 font-medium">AQA &amp; IB Expert</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="p-6 border-t border-[#0f2055]/10 mt-4 bg-white/50">
-                <button
-                  onClick={() => handleOpenBooking("Dr. Sophia Ramirez (Sciences)")}
-                  className="w-full btn-primary text-xs py-3"
-                >
-                  Enroll
-                </button>
-              </div>
-            </div>
-
-            {/* Tutor 3: Marcus Sterling */}
-            <div className="rounded-2xl bg-[#faf9f6] border border-[#0f2055]/10 overflow-hidden hover:border-[#d4a017] hover:shadow-xl transition-all flex flex-col justify-between group shadow-sm">
-              <div>
-                <div className="relative h-64 w-full bg-slate-100 overflow-hidden">
-                  <Image
-                    src="/images/tutor-3.jpg"
-                    alt="Marcus Sterling - English & Humanities Tutor"
-                    fill
-                    className="object-cover object-top group-hover:scale-105 transition-transform duration-300"
-                  />
-                  <div className="absolute top-3 left-3 bg-white/95 backdrop-blur-md px-3 py-1 rounded-full border border-[#0f2055]/10 text-xs font-bold text-[#0f2055] flex items-center gap-1.5 shadow-sm">
-                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-                    Cambridge University
-                  </div>
-                  <div className="absolute bottom-3 right-3 bg-white/95 backdrop-blur-md px-2.5 py-1 rounded-full border border-[#0f2055]/10 text-xs font-bold text-[#b8860b] flex items-center gap-1 shadow-sm">
-                    <Star className="w-3.5 h-3.5 fill-current" />
-                    4.97 (88 reviews)
-                  </div>
-                </div>
-
-                <div className="p-6 space-y-4">
-                  <div>
-                    <h3 className="text-xl font-black text-[#0f2055]">Marcus Sterling, MA</h3>
-                    <p className="text-xs font-bold text-[#b8860b]">
-                      Senior Humanities Tutor • English Lit, Lang &amp; 11+
-                    </p>
-                  </div>
-
-                  <p className="text-xs text-[#4a4f60] leading-relaxed">
-                    Cambridge graduate with 8 years of private tutoring excellence. Specializes in building confident,
-                    sophisticated essay writers who stand out to top grammar schools and competitive university panels.
-                  </p>
-
-                  <div className="flex flex-wrap gap-2 text-xs">
-                    <span className="px-2.5 py-1 rounded-md bg-white border border-[#0f2055]/10 text-[#1e3a8a] font-medium">1,800+ Hours</span>
-                    <span className="px-2.5 py-1 rounded-md bg-white border border-[#0f2055]/10 text-[#1e3a8a] font-medium">11+ Entrance Specialist</span>
-                    <span className="px-2.5 py-1 rounded-md bg-white border border-[#0f2055]/10 text-emerald-700 font-medium">DBS Enhanced</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="p-6 border-t border-[#0f2055]/10 mt-4 bg-white/50">
-                <button
-                  onClick={() => handleOpenBooking("Marcus Sterling (English & 11+)")}
-                  className="w-full btn-primary text-xs py-3"
-                >
-                  Enroll
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Interactive Tuition & Package Calculator */}
-      <section id="calculator" className="py-16 sm:py-24 bg-[#faf9f6] border-t border-[#0f2055]/10 relative">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center max-w-3xl mx-auto mb-12 sm:mb-16 space-y-4">
-            <div className="badge-gold mx-auto">Transparent Investment</div>
-            <div className="divider-gold mx-auto" />
-            <h2 className="text-2xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight text-[#0f2055]">
-              Interactive Tuition Estimator
-            </h2>
-            <p className="text-[#5a6070] text-sm sm:text-lg leading-relaxed">
-              Tailor your weekly lesson hours, learning environment, and academic tier with zero hidden fees. All plans
-              include full access to recorded sessions, lesson notes, and our diagnostic assessment.
-            </p>
-          </div>
-
-          <div className="max-w-4xl mx-auto bg-white border border-[#0f2055]/10 rounded-3xl p-6 sm:p-10 shadow-xl">
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
-              {/* Controls */}
-              <div className="lg:col-span-7 space-y-8">
-                {/* Stage selector */}
-                <div>
-                  <label className="block text-xs font-bold text-[#0f2055] uppercase tracking-wider mb-3">
-                    1. Academic Level
-                  </label>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                    {[
-                      { id: "reception", name: "Reception" },
-                      { id: "year1_6", name: "Year 1-6" },
-                      { id: "eleven_plus", name: "11 Plus Prep" },
-                      { id: "year7_12", name: "Year 7-12" },
-                      { id: "gcse", name: "GCSE Prep" },
-                      { id: "nat5", name: "National 5" },
-                      { id: "alevel", name: "A Level Prep" },
-                    ].map((item) => (
-                      <button
-                        key={item.id}
-                        type="button"
-                        onClick={() => setCalcLevel(item.id as LearnerCategory)}
-                        className={`p-2.5 rounded-xl text-xs font-semibold border transition-all cursor-pointer text-center ${
-                          calcLevel === item.id
-                            ? "bg-[#0f2055] border-[#0f2055] text-white shadow-md font-bold"
-                            : "bg-[#faf9f6] border-[#0f2055]/15 text-[#1a1a2e] hover:border-[#b8860b]"
-                        }`}
-                      >
-                        {item.name}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Format selector */}
-                <div>
-                  <label className="block text-xs font-bold text-[#0f2055] uppercase tracking-wider mb-3">
-                    2. Online Delivery Format
-                  </label>
-                  <div className="grid grid-cols-2 gap-3">
-                    <button
-                      type="button"
-                      onClick={() => setCalcFormat("1on1")}
-                      className={`p-3.5 rounded-xl border flex items-center justify-center gap-2.5 text-xs sm:text-sm font-semibold transition-all cursor-pointer ${
-                        calcFormat === "1on1"
-                          ? "bg-[#0f2055] border-[#0f2055] text-white shadow-md font-bold"
-                          : "bg-[#faf9f6] border-[#0f2055]/15 text-[#1a1a2e] hover:border-[#b8860b]"
-                      }`}
-                    >
-                      <Laptop className={`w-4 h-4 ${calcFormat === "1on1" ? "text-[#ffd56b]" : "text-[#1e3a8a]"}`} />
-                      <span>1-on-1 Dedicated Online</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setCalcFormat("pod")}
-                      className={`p-3.5 rounded-xl border flex items-center justify-center gap-2.5 text-xs sm:text-sm font-semibold transition-all cursor-pointer ${
-                        calcFormat === "pod"
-                          ? "bg-[#0f2055] border-[#0f2055] text-white shadow-md font-bold"
-                          : "bg-[#faf9f6] border-[#0f2055]/15 text-[#1a1a2e] hover:border-[#b8860b]"
-                      }`}
-                    >
-                      <Users className={`w-4 h-4 ${calcFormat === "pod" ? "text-[#ffd56b]" : "text-[#1e3a8a]"}`} />
-                      <span>Small Online Pod (Max 3)</span>
-                    </button>
-                  </div>
-                </div>
-
-                {/* Hours slider */}
-                <div>
-                  <div className="flex justify-between items-center mb-3">
-                    <label className="text-xs font-bold text-[#0f2055] uppercase tracking-wider">
-                      3. Weekly Intensity
-                    </label>
-                    <span className="text-sm font-black text-[#b8860b]">{calcHours} Hours / Week</span>
-                  </div>
-                  <input
-                    type="range"
-                    min="1"
-                    max="6"
-                    step="1"
-                    value={calcHours}
-                    onChange={(e) => setCalcHours(parseInt(e.target.value))}
-                    className="w-full accent-[#b8860b] bg-[#edeae3] h-2 rounded-lg cursor-pointer"
-                  />
-                  <div className="flex justify-between text-[11px] text-[#5a6070] mt-2 font-medium">
-                    <span>1 hr/wk (Maintenance)</span>
-                    <span>2 hrs/wk (Recommended)</span>
-                    <span>4+ hrs/wk (Exam Sprint)</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Estimate Summary Card */}
-              <div className="lg:col-span-5 bg-gradient-to-br from-[#0f2055] via-[#102244] to-[#070f2b] text-white border border-[#d4a017]/30 rounded-2xl p-6 sm:p-8 space-y-6 relative overflow-hidden shadow-2xl">
-                <div className="border-b border-white/15 pb-4">
-                  <div className="text-xs text-[#ffd56b] uppercase font-bold tracking-wider">Estimated Monthly Plan</div>
-                  <div className="flex items-baseline gap-2 mt-1">
-                    <span className="text-4xl sm:text-5xl font-black text-white">${discountedMonthlyTotal}</span>
-                    <span className="text-xs text-white/70">/ 4-week cycle</span>
-                  </div>
-                  <div className="text-xs text-[#ffd56b] mt-1.5 font-semibold">
-                    Equivalent to ${currentHourlyRate}/hr • {calcHours * 4} sessions per month
-                  </div>
-                </div>
-
-                {savings > 0 && (
-                  <div className="bg-white/10 border border-white/20 text-emerald-300 text-xs px-3 py-2 rounded-lg font-semibold flex items-center justify-between">
-                    <span>Multi-hour package applied</span>
-                    <span className="font-bold text-white">Save ${savings}/mo</span>
-                  </div>
-                )}
-
-                <div className="space-y-2.5 text-xs text-slate-200">
-                  <div className="flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-[#ffd56b] shrink-0" />
-                    <span>Free Full Academic Diagnostic ($120 value)</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-[#ffd56b] shrink-0" />
-                    <span>Recorded interactive whiteboard access</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-[#ffd56b] shrink-0" />
-                    <span>Weekly progress reports to parents</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-[#ffd56b] shrink-0" />
-                    <span>Dedicated educational advisor support</span>
-                  </div>
-                </div>
-
-                <button
-                  onClick={() => handleOpenBooking()}
-                  className="w-full btn-gold text-sm py-3.5"
-                >
-                  Reserve Consultation for This Plan
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* The Samin Virtual Classroom Experience */}
-      <section id="virtual-classroom" className="py-16 sm:py-24 bg-white border-t border-[#0f2055]/10 relative">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-12 items-center">
-            <div className="lg:col-span-6 space-y-6">
-              <div className="badge-gold">Built For Seamless Learning</div>
-              <div className="divider-gold" />
-              <h2 className="text-2xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight text-[#0f2055]">
-                An Online Classroom Experience That Beats In-Person Tutoring
-              </h2>
-              <p className="text-[#5a6070] text-sm sm:text-base leading-relaxed">
-                Gone are the days of boring video calls. Samin’s custom virtual environment lets students and tutors
-                collaborate simultaneously with interactive stylus drawing, instant past paper imports, equation
-                solvers, and synchronized graphing tools.
-              </p>
-
-              <div className="space-y-4 pt-2">
-                <div className="flex items-start gap-3.5">
-                  <div className="w-9 h-9 rounded-xl bg-[#0f2055] text-[#ffd56b] flex items-center justify-center shrink-0 mt-0.5 shadow-sm">
-                    <Video className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h4 className="text-sm font-bold text-[#0f2055]">Full HD Recordings for Revision</h4>
-                    <p className="text-xs text-[#5a6070] mt-0.5">
-                      Every lesson is archived with high-definition audio and whiteboard exports. Students rewatch
-                      before crucial tests anytime.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex items-start gap-3.5">
-                  <div className="w-9 h-9 rounded-xl bg-[#0f2055] text-[#ffd56b] flex items-center justify-center shrink-0 mt-0.5 shadow-sm">
-                    <FileCheck2 className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h4 className="text-sm font-bold text-[#0f2055]">Instant Mark Scheme Breakdown</h4>
-                    <p className="text-xs text-[#5a6070] mt-0.5">
-                      Tutors pull authentic exam papers onto the board live, highlighting examiner trigger words that
-                      secure the top marks.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex items-start gap-3.5">
-                  <div className="w-9 h-9 rounded-xl bg-[#0f2055] text-[#ffd56b] flex items-center justify-center shrink-0 mt-0.5 shadow-sm">
-                    <ShieldCheck className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h4 className="text-sm font-bold text-[#0f2055]">Safe, Monitored &amp; Secure</h4>
-                    <p className="text-xs text-[#5a6070] mt-0.5">
-                      Compliant with international child safeguarding standards. Parents can join or review anytime
-                      with complete transparency.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Classroom Preview Graphic */}
-            <div className="lg:col-span-6">
-              <div className="p-3 bg-[#faf9f6] border border-[#0f2055]/15 rounded-3xl shadow-xl relative">
-                <div className="bg-white rounded-2xl p-5 border border-[#0f2055]/10 space-y-4">
-                  {/* Top toolbar */}
-                  <div className="flex items-center justify-between border-b border-[#0f2055]/10 pb-3">
-                    <div className="flex items-center gap-2">
-                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-                      <span className="text-xs font-bold text-[#0f2055]">Interactive Whiteboard #4</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-xs">
-                      <span className="px-2.5 py-1 rounded bg-[#faf9f6] border border-[#0f2055]/10 text-[#0f2055] font-semibold">Stylus Mode</span>
-                      <span className="px-2.5 py-1 rounded bg-[#faf9f6] border border-[#0f2055]/10 text-[#0f2055] font-semibold">Graph Plotter</span>
-                    </div>
-                  </div>
-
-                  {/* Math Formula Demo Visual */}
-                  <div className="h-52 bg-[#faf9f6] rounded-xl border border-[#0f2055]/10 p-4 flex flex-col justify-center items-center text-center space-y-3">
-                    <div className="font-mono text-lg sm:text-xl text-[#0f2055] font-black">
-                      f&apos;(x) = lim[h→0] (f(x+h) - f(x)) / h
-                    </div>
-                    <div className="text-xs text-[#5a6070] font-mono font-medium">
-                      ✓ Step 2 Verified: Differentiation from First Principles
-                    </div>
-                    <div className="flex items-center gap-2 text-xs text-emerald-800 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200 font-semibold">
-                      <span>Examiner Note: Awarded Full Method &amp; Accuracy Marks (5/5)</span>
-                    </div>
-                  </div>
-
-                  {/* Tutor / Student Participants Bar */}
-                  <div className="grid grid-cols-2 gap-3 pt-2">
-                    <div className="p-2.5 rounded-xl bg-[#faf9f6] border border-[#0f2055]/10 flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-full bg-[#0f2055] flex items-center justify-center text-xs font-bold text-[#ffd56b]">
-                        DZ
-                      </div>
-                      <div className="text-left">
-                        <div className="text-xs font-bold text-[#0f2055]">David Zhang</div>
-                        <div className="text-[10px] text-[#b8860b] font-bold">Tutor (Speaking)</div>
-                      </div>
-                    </div>
-                    <div className="p-2.5 rounded-xl bg-[#faf9f6] border border-[#0f2055]/10 flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-full bg-emerald-700 flex items-center justify-center text-xs font-bold text-white">
-                        AM
-                      </div>
-                      <div className="text-left">
-                        <div className="text-xs font-bold text-[#0f2055]">Alex Morgan</div>
-                        <div className="text-[10px] text-[#5a6070] font-medium">Student (Year 11)</div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Parent & Student Reviews / Success Stories */}
-      <section className="py-16 sm:py-24 bg-[#faf9f6] border-t border-[#0f2055]/10 relative">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center max-w-3xl mx-auto mb-12 sm:mb-16 space-y-4">
-            <div className="badge-gold mx-auto">Real Grade Transformations</div>
-            <div className="divider-gold mx-auto" />
-            <h2 className="text-2xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight text-[#0f2055]">
-              Loved by Over 1,200+ Discerning Families
-            </h2>
-            <p className="text-[#5a6070] text-sm sm:text-lg leading-relaxed">
-              Here is what happens when passionate mentorship meets personalized academic roadmaps.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 sm:gap-8">
-            <div className="review-card space-y-4">
-              <div className="space-y-3">
-                <div className="flex text-[#d4a017]">
-                  {[...Array(5)].map((_, i) => (
-                    <Star key={i} className="w-4 h-4 fill-current" />
-                  ))}
-                </div>
-                <p className="text-sm text-[#3a3a5c] leading-relaxed italic">
-                  &ldquo;Our daughter was predicted a Grade 5 in GCSE Maths and felt completely overwhelmed. Her Samin
-                  tutor, David, restored her confidence within three weeks. She just received a Grade 9 on results day!
-                  Unbelievable service.&rdquo;
-                </p>
-              </div>
-              <div className="pt-4 border-t border-[#0f2055]/10 flex items-center justify-between">
-                <div>
-                  <div className="text-xs font-bold text-[#0f2055]">Claire H.</div>
-                  <div className="text-[11px] text-[#5a6070]">Parent of GCSE Student, London</div>
-                </div>
-                <div className="px-2.5 py-1 rounded bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-bold">
-                  Grade 5 ➔ 9
-                </div>
-              </div>
-            </div>
-
-            <div className="review-card space-y-4">
-              <div className="space-y-3">
-                <div className="flex text-[#d4a017]">
-                  {[...Array(5)].map((_, i) => (
-                    <Star key={i} className="w-4 h-4 fill-current" />
-                  ))}
-                </div>
-                <p className="text-sm text-[#3a3a5c] leading-relaxed italic">
-                  &ldquo;The 1-on-1 chemistry sessions with Dr. Sophia were world class. Her explanations of organic
-                  reaction pathways were clearer than anything taught at school. My son secured his offer for Imperial
-                  Medicine.&rdquo;
-                </p>
-              </div>
-              <div className="pt-4 border-t border-[#0f2055]/10 flex items-center justify-between">
-                <div>
-                  <div className="text-xs font-bold text-[#0f2055]">Tariq M.</div>
-                  <div className="text-[11px] text-[#5a6070]">Parent of A-Level Candidate</div>
-                </div>
-                <div className="px-2.5 py-1 rounded bg-[#faf9f6] text-[#1e3a8a] border border-[#0f2055]/15 text-xs font-bold">
-                  Accepted to Imperial
-                </div>
-              </div>
-            </div>
-
-            <div className="review-card space-y-4">
-              <div className="space-y-3">
-                <div className="flex text-[#d4a017]">
-                  {[...Array(5)].map((_, i) => (
-                    <Star key={i} className="w-4 h-4 fill-current" />
-                  ))}
-                </div>
-                <p className="text-sm text-[#3a3a5c] leading-relaxed italic">
-                  &ldquo;We tried multiple agency tutors before finding Samin Home Tutors. The difference in caliber and
-                  communication is night and day. The weekly parent feedback and recorded classes gave us total peace of
-                  mind.&rdquo;
-                </p>
-              </div>
-              <div className="pt-4 border-t border-[#0f2055]/10 flex items-center justify-between">
-                <div>
-                  <div className="text-xs font-bold text-[#0f2055]">Eleanor B.</div>
-                  <div className="text-[11px] text-[#5a6070]">Mother of 11+ Grammar Student</div>
-                </div>
-                <div className="px-2.5 py-1 rounded bg-amber-50 text-amber-800 border border-amber-200 text-xs font-bold">
-                  Top 1% Score
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Frequently Asked Questions */}
-      <section id="faqs" className="py-16 sm:py-24 bg-white border-t border-[#0f2055]/10 relative">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-12 sm:mb-16 space-y-4">
-            <div className="badge-gold mx-auto">Common Questions</div>
-            <div className="divider-gold mx-auto" />
-            <h2 className="text-2xl sm:text-4xl font-extrabold tracking-tight text-[#0f2055]">
-              Everything Parents Want to Know
-            </h2>
-          </div>
-
-          <div className="space-y-4">
-            {[
-              {
-                q: "How are Samin Home Tutors selected and vetted?",
-                a: "Fewer than 3% of tutor applicants are accepted onto our roster. Every candidate undergoes academic credential verification (degrees from Oxbridge, Russell Group, or Ivy League universities), rigorous pedagogical mock lesson assessments, and an Enhanced DBS background security check.",
-              },
-              {
-                q: "Can we switch tutors if the chemistry or teaching style isn't right?",
-                a: "Yes, absolutely. We offer our 100% Tutor Match Guarantee. If for any reason the first session does not meet your highest expectations, we will arrange a replacement tutor and credit that session to your account with zero hassle.",
-              },
-              {
-                q: "Why does Samin focus exclusively on 100% online tutoring?",
-                a: "Online tutoring allows us to connect your child with the top 3% of vetted subject specialists from Oxford, Cambridge, and top institutions globally without geographical limits. With live collaborative digital whiteboards, instant exam past-paper annotations, and high-definition session recordings saved for revision, online learning is demonstrably more effective and flexible than traditional in-person home tutoring.",
-              },
-              {
-                q: "How quickly can we begin our first lesson?",
-                a: "Following your free consultation and diagnostic intake, we match and introduce your specialist tutor within 24 to 48 hours. Your student can often start their diagnostic trial before the end of the week.",
-              },
-              {
-                q: "Do you cover all UK and international exam boards?",
-                a: "Yes. Our curriculum specialists cover Edexcel, AQA, OCR, Cambridge (CIE), WJEC, the International Baccalaureate (IB), and US SAT/ACT examinations.",
-              },
-            ].map((faq, idx) => (
-              <div
-                key={idx}
-                className="faq-item"
-              >
-                <button
-                  onClick={() => setActiveFaq(activeFaq === idx ? null : idx)}
-                  className="w-full p-5 text-left flex items-center justify-between gap-4 font-bold text-[#0f2055] text-sm sm:text-base cursor-pointer hover:text-[#b8860b] transition-colors"
-                >
-                  <span>{faq.q}</span>
-                  <ChevronDown
-                    className={`w-5 h-5 text-[#b8860b] shrink-0 transition-transform ${
-                      activeFaq === idx ? "rotate-180" : ""
-                    }`}
-                  />
-                </button>
-                {activeFaq === idx && (
-                  <div className="px-5 pb-5 text-xs sm:text-sm text-[#4a4f60] bg-[#faf9f6]/70 border-t border-[#0f2055]/10 pt-3 leading-relaxed">
-                    {faq.a}
-                  </div>
-                )}
+      {/* ── Stats ── */}
+      <section className="stats-section">
+        <div className="container">
+          <div className="stats-grid">
+            {stats.map((s, i) => (
+              <div key={i} className="stat-item">
+                <div className="stat-icon">{s.icon}</div>
+                <div className="stat-number">{s.number}</div>
+                <div className="stat-label">{s.label}</div>
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* Final Call to Action Hero Box */}
-      <section className="py-16 sm:py-20 relative overflow-hidden bg-[#faf9f6] border-t border-[#0f2055]/10">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <div className="p-8 sm:p-14 rounded-3xl bg-gradient-to-br from-[#0f2055] via-[#102244] to-[#070f2b] text-white border-2 border-[#d4a017] shadow-2xl relative space-y-6">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 text-[#ffd56b] border border-white/20 text-xs font-bold">
-              <Sparkles className="w-3.5 h-3.5 text-[#ffd56b]" />
-              Limited Intake for Upcoming Exam Cycles
-            </div>
-            <h2 className="text-2xl sm:text-4xl lg:text-5xl font-black tracking-tight text-white">
-              Give Your Child the Advantage of an Elite Private Tutor
-            </h2>
-            <p className="text-slate-200 text-sm sm:text-base max-w-xl mx-auto leading-relaxed">
-              Book your complimentary diagnostic assessment and 30-minute academic consultation with our Senior
-              Education Advisor today.
-            </p>
-            <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-4">
-              <button
-                onClick={() => handleOpenBooking()}
-                className="w-full sm:w-auto btn-gold text-sm sm:text-base px-8 py-4 cursor-pointer"
-              >
-                Book Your Free Diagnostic Session
-              </button>
-              <a
-                href="https://wa.me/2347059655382"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="w-full sm:w-auto px-6 py-4 rounded-xl bg-white/10 text-white font-semibold text-sm hover:bg-white/20 flex items-center justify-center gap-2 border border-white/25 transition-all"
-              >
-                <MessageCircle className="w-4 h-4 text-emerald-400" />
-                <span>WhatsApp: +234 705 965 5382</span>
-              </a>
-            </div>
+      {/* ── Instructors ── */}
+      <section className="instructors-section" id="instructors">
+        <div className="container">
+          <div className="section-header">
+            <h2>Meet Our Expert Tutors</h2>
+            <p>Every Samin tutor holds a degree from a world-leading university and has been personally vetted for academic excellence and teaching ability.</p>
+          </div>
+          <div className="grid-4">
+            {instructors.map((t, i) => (
+              <div key={i} className="instructor-card">
+                <Image src={t.img} alt={t.name} width={90} height={90} style={{ borderRadius: "50%", objectFit: "cover", border: "3px solid var(--teal-light)", margin: "0 auto 1rem", display: "block" }} />
+                <h3>{t.name}</h3>
+                <span className="instructor-role">{t.role}</span>
+                <div className="instructor-social">
+                  <a href="#" className="social-icon" aria-label="Facebook">f</a>
+                  <a href="#" className="social-icon" aria-label="Twitter">𝕏</a>
+                  <a href="#" className="social-icon" aria-label="LinkedIn">in</a>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       </section>
 
-      {/* World-Class Footer */}
-      <footer className="bg-[#070f2b] border-t-2 border-[#d4a017]/30 py-16 text-slate-300 text-xs">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-12">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-8">
-            {/* Col 1: Brand Info */}
-            <div className="lg:col-span-2 space-y-4">
-              <div className="flex items-center gap-4">
-                <div className="relative w-16 h-16 rounded-2xl overflow-hidden border-2 border-[#d4a017] bg-white p-0.5 shadow-lg shrink-0">
-                  <Image
-                    src="/images/samin_logo.jpeg"
-                    alt="Samin Home Tutors"
-                    width={64}
-                    height={64}
-                    className="w-full h-full object-cover rounded-xl"
-                  />
+      {/* ── Pricing ── */}
+      <section className="pricing-section" id="pricing">
+        <div className="container">
+          <div className="section-header">
+            <h2>Transparent Tuition Pricing</h2>
+            <p>No hidden fees. Pay per hour with flexible scheduling. All plans include a free first consultation and diagnostic assessment.</p>
+          </div>
+          <div className="grid-3">
+            {pricingPlans.map((plan, i) => (
+              <div key={i} className="pricing-card">
+                <div className={`pricing-header ${plan.featured ? "featured" : ""}`}>
+                  <h3>{plan.name}</h3>
+                  <div className="pricing-amount">{plan.price}</div>
+                  <div className="pricing-period">{plan.period}</div>
                 </div>
-                <div>
-                  <div className="text-xl font-black text-white leading-none">
-                    <span className="text-[#38bdf8]">SAMIN</span> HOME TUTORS
-                  </div>
-                  <div className="text-[10px] tracking-widest text-[#ffd56b] font-bold uppercase mt-1">
-                    Canada • USA • UK Online Tutoring
+                <div className="pricing-body">
+                  {plan.features.map((f, j) => (
+                    <div key={j} className="pricing-feature">
+                      <CheckCircle2 size={15} />
+                      {f}
+                    </div>
+                  ))}
+                </div>
+                <button
+                  className={`btn-pricing ${plan.featured ? "featured" : ""}`}
+                  onClick={() => setIsModalOpen(true)}
+                >
+                  {plan.featured ? "Get Started Now" : "Choose Plan"}
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── Testimonials ── */}
+      <section className="testimonials-section" id="testimonials">
+        <div className="container">
+          <div className="section-header">
+            <h2>What Families Say About Us</h2>
+            <p>Over 1,200 families across Canada, USA and the UK trust Samin Home Tutors to guide their children to academic excellence.</p>
+          </div>
+          <div className="grid-3">
+            {testimonials.map((t, i) => (
+              <div key={i} className="testimonial-card">
+                <div style={{ marginBottom: "0.75rem" }}>
+                  {[...Array(t.stars)].map((_, j) => (
+                    <Star key={j} size={14} fill="#f5a623" color="#f5a623" style={{ display: "inline" }} />
+                  ))}
+                </div>
+                <p className="testimonial-text">&ldquo;{t.text}&rdquo;</p>
+                <div className="testimonial-author">
+                  <Image src={t.img} alt={t.name} width={44} height={44} style={{ borderRadius: "50%", objectFit: "cover", border: "2px solid var(--teal-light)", flexShrink: 0 }} />
+                  <div className="testimonial-author-info">
+                    <h4>{t.name}</h4>
+                    <span>{t.role}</span>
                   </div>
                 </div>
               </div>
-              <p className="text-slate-300 text-xs leading-relaxed max-w-sm">
-                Empowering students with personalized mastery curricula, handpicked Oxbridge &amp; Ivy League educators,
-                and weekly transparent parental reporting.
-              </p>
-              <div className="text-slate-300 flex items-center gap-3 pt-2">
-                <span className="text-white font-semibold">Accreditations:</span>
-                <span className="bg-white/10 px-2 py-1 rounded border border-white/15 text-white font-medium">DBS Verified</span>
-                <span className="bg-white/10 px-2 py-1 rounded border border-white/15 text-white font-medium">Tutors&apos; Association</span>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── App Banner ── */}
+      <section className="app-section">
+        <Image src="/images/hero-conference.jpg" alt="Access anywhere" fill className="app-bg" style={{ objectFit: "cover", filter: "brightness(0.35)" }} />
+        <div className="container app-content">
+          <h2>Access your lessons anytime, anywhere.</h2>
+          <div className="app-badges">
+            <a href="#" className="app-badge" aria-label="Get it on Google Play">
+              <span style={{ fontSize: "1.8rem" }}>▶</span>
+              <div className="app-badge-text">
+                <span>GET IT ON</span>
+                <span>Google Play</span>
+              </div>
+            </a>
+            <a href="#" className="app-badge" aria-label="Download on App Store">
+              <span style={{ fontSize: "1.8rem" }}>📱</span>
+              <div className="app-badge-text">
+                <span>Available on the</span>
+                <span>App Store</span>
+              </div>
+            </a>
+          </div>
+        </div>
+      </section>
+
+      {/* ── FAQ ── */}
+      <section className="faq-section" id="faqs">
+        <div className="container" style={{ maxWidth: "760px" }}>
+          <div className="section-header">
+            <h2>Frequently Asked Questions</h2>
+            <p>Have a question? We have got you covered.</p>
+          </div>
+          {faqs.map((faq, i) => (
+            <div key={i} className="faq-item">
+              <button
+                className={`faq-question ${activeFaq === i ? "open" : ""}`}
+                onClick={() => setActiveFaq(activeFaq === i ? null : i)}
+              >
+                {faq.q}
+                <ChevronDown size={18} className={`faq-chevron ${activeFaq === i ? "rotated" : ""}`} />
+              </button>
+              {activeFaq === i && (
+                <div className="faq-answer">{faq.a}</div>
+              )}
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* ── Footer ── */}
+      <footer className="site-footer" id="contact">
+        <div className="container">
+          <div className="footer-grid">
+            {/* About */}
+            <div className="footer-col">
+              <h4>About Samin Tutors</h4>
+              <p>We are a world-class online tutoring platform connecting ambitious students across Canada, USA and the UK with elite subject specialists from top universities.</p>
+              <p style={{ marginTop: "0.75rem" }}>Rated <strong style={{ color: "var(--teal)" }}>4.9 / 5</strong> by over 1,200 families.</p>
+            </div>
+
+            {/* Get in touch */}
+            <div className="footer-col">
+              <h4>Get In Touch</h4>
+              <div className="footer-contact-item">
+                <MapPin size={15} />
+                <span>Serving Canada 🇨🇦, USA 🇺🇸 &amp; UK 🇬🇧 — fully online</span>
+              </div>
+              <div className="footer-contact-item">
+                <Phone size={15} />
+                <a href="https://wa.me/2347059655382?text=Hello%20Samin%20Home%20Tutors!%20%F0%9F%8E%93%0A%0AI%20found%20your%20website%20and%20I%E2%80%99m%20interested%20in%20booking%20a%20FREE%20trial%20lesson.%0A%0APlease%20could%20you%20help%20me%20with%20more%20information%20about%3A%0A%E2%80%A2%20Available%20tutors%0A%E2%80%A2%20Subjects%20%26%20levels%20covered%0A%E2%80%A2%20Pricing%20%26%20scheduling%0A%0AThank%20you!" target="_blank" rel="noopener noreferrer" style={{ color: "var(--text-muted)", textDecoration: "none" }}>WhatsApp: +234 705 965 5382</a>
+              </div>
+              <div className="footer-contact-item">
+                <Mail size={15} />
+                <a href="mailto:saminhometutors@gmail.com" style={{ color: "var(--text-muted)", textDecoration: "none" }}>saminhometutors@gmail.com</a>
               </div>
             </div>
 
-            {/* Col 2: Categories */}
-            <div className="space-y-3">
-              <h4 className="text-[#ffd56b] font-bold uppercase tracking-wider text-xs border-b border-[#d4a017]/30 pb-2">Learner Categories</h4>
-              <ul className="space-y-2">
-                <li><a href="#levels" className="hover:text-white transition-colors">Reception</a></li>
-                <li><a href="#levels" className="hover:text-white transition-colors">Year 1-6</a></li>
-                <li><a href="#levels" className="hover:text-white transition-colors">11 plus preparation</a></li>
-                <li><a href="#levels" className="hover:text-white transition-colors">Year 7-12</a></li>
-                <li><a href="#levels" className="hover:text-white transition-colors">GCSE preparation</a></li>
-                <li><a href="#levels" className="hover:text-white transition-colors">National 5</a></li>
-                <li><a href="#levels" className="hover:text-white transition-colors">A level preparation</a></li>
+            {/* Links */}
+            <div className="footer-col">
+              <h4>Useful Links</h4>
+              <ul className="footer-links">
+                {["#courses", "#features", "#instructors", "#pricing", "#testimonials", "#faqs"].map((href) => (
+                  <li key={href}>
+                    <a href={href}>› {href.replace("#", "").charAt(0).toUpperCase() + href.slice(2)}</a>
+                  </li>
+                ))}
+                <li><a href="/admin/login">› Admin Portal</a></li>
               </ul>
             </div>
 
-            {/* Col 3: Programs */}
-            <div className="space-y-3">
-              <h4 className="text-[#ffd56b] font-bold uppercase tracking-wider text-xs border-b border-[#d4a017]/30 pb-2">Programs &amp; Admissions</h4>
-              <ul className="space-y-2">
-                <li><a href="#levels" className="hover:text-white transition-colors">Oxbridge Interview Prep</a></li>
-                <li><a href="#levels" className="hover:text-white transition-colors">Medical School (UCAT / BMAT)</a></li>
-                <li><a href="#levels" className="hover:text-white transition-colors">STEP &amp; MAT Mathematics</a></li>
-                <li><a href="#virtual-classroom" className="hover:text-white transition-colors">1-on-1 Online Classroom</a></li>
-                <li><a href="#virtual-classroom" className="hover:text-white transition-colors">Virtual Classroom HD</a></li>
-              </ul>
-            </div>
-
-            {/* Col 4: Contact */}
-            <div className="space-y-3">
-              <h4 className="text-[#ffd56b] font-bold uppercase tracking-wider text-xs border-b border-[#d4a017]/30 pb-2">Direct Support</h4>
-              <ul className="space-y-2.5">
-                <li>
-                  <a
-                    href="tel:+2347059655382"
-                    className="text-slate-200 hover:text-white transition-colors flex items-center gap-1.5"
-                  >
-                    <Phone className="w-3.5 h-3.5 text-[#ffd56b]" />
-                    <span>Hotline / Call: +234 705 965 5382</span>
-                  </a>
-                </li>
-                <li>
-                  <a
-                    href="https://wa.me/2347059655382"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-emerald-400 hover:underline flex items-center gap-1.5 font-medium"
-                  >
-                    <MessageCircle className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>WhatsApp: +234 705 965 5382</span>
-                  </a>
-                </li>
-                <li>
-                  <a
-                    href="mailto:saminhometutors@gmail.com?subject=Tutoring%20Inquiry%20-%20Samin%20Home%20Tutors"
-                    className="text-[#ffd56b] hover:underline flex items-center gap-1.5 font-medium"
-                    title="Click to compose an email to Samin Home Tutors"
-                  >
-                    <Mail className="w-3.5 h-3.5 text-[#ffd56b]" />
-                    <span>Email: saminhometutors@gmail.com</span>
-                  </a>
-                </li>
-                <li className="text-slate-400 flex items-center gap-1.5">
-                  <Clock className="w-3.5 h-3.5 text-slate-400" />
-                  <span>Hours: Mon–Sun 8:00 AM – 9:00 PM GMT</span>
-                </li>
-              </ul>
+            {/* Newsletter */}
+            <div className="footer-col">
+              <h4>Subscribe Newsletter</h4>
+              <p>Get the latest study tips, free resources and exclusive offers delivered to your inbox.</p>
+              <div className="newsletter-input">
+                <input type="email" placeholder="Enter Your E-mail" />
+                <button aria-label="Subscribe">
+                  <Send size={15} />
+                </button>
+              </div>
             </div>
           </div>
 
-          <div className="pt-8 border-t border-white/10 flex flex-col sm:flex-row items-center justify-between gap-4 text-[11px] text-slate-400">
-            <div>&copy; {new Date().getFullYear()} Samin Home Tutors Ltd. All rights reserved.</div>
-            <div className="flex flex-wrap gap-6 items-center">
-              <a href="#" className="hover:text-white transition-colors">Privacy Policy</a>
-              <a href="#" className="hover:text-white transition-colors">Safeguarding Code</a>
-              <a href="#" className="hover:text-white transition-colors">Terms of Tuition</a>
-              <a href="/admin/login" className="text-[#ffd56b] hover:underline font-bold flex items-center gap-1">
-                <ShieldCheck className="w-3.5 h-3.5 text-[#ffd56b]" />
-                <span>Admin Login</span>
-              </a>
-            </div>
+          <div className="footer-bottom">
+            © {new Date().getFullYear()} Samin Home Tutors. All rights reserved. &nbsp;|&nbsp; Serving Canada, USA &amp; UK
           </div>
         </div>
       </footer>
 
-      {/* Floating Interactive "Enroll" Action Button with Samin Logo */}
-      <aside aria-label="Quick Enroll" className="fixed bottom-6 right-6 z-40 group">
-        <button
-          onClick={() => handleOpenBooking()}
-          className="relative flex items-center gap-3 p-1.5 pr-4 rounded-full bg-[#0f2055] border-2 border-[#d4a017] shadow-2xl shadow-[#0f2055]/50 hover:shadow-[#0f2055]/80 hover:scale-105 active:scale-95 transition-all duration-300 cursor-pointer overflow-hidden backdrop-blur-md"
-          title="Click to Enroll - Free Diagnostic Trial"
-        >
-          {/* Glowing Animated Ring */}
-          <span className="absolute -inset-0.5 rounded-full bg-gradient-to-r from-[#d4a017] via-[#ffd56b] to-[#b8860b] opacity-25 group-hover:opacity-75 blur-sm transition-opacity duration-300 pointer-events-none" />
+      {/* ── Scroll to top ── */}
+      <button className="scroll-top" onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })} aria-label="Scroll to top">
+        ▲
+      </button>
 
-          {/* Logo Badge Container */}
-          <div className="relative w-12 h-12 rounded-full overflow-hidden border-2 border-[#d4a017] bg-white p-0.5 shrink-0 shadow-inner group-hover:rotate-6 transition-transform duration-300">
-            <Image
-              src="/images/samin_logo.jpeg"
-              alt="Samin Home Tutors Emblem"
-              width={48}
-              height={48}
-              className="w-full h-full object-cover rounded-full"
-            />
-            {/* Live Indicator Dot */}
-            <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-emerald-500 border-2 border-[#0f2055]" />
-          </div>
-
-          {/* Text Label that highlights */}
-          <div className="flex flex-col text-left">
-            <div className="flex items-center gap-1.5">
-              <span className="text-xs sm:text-sm font-black tracking-wide text-white group-hover:text-[#ffd56b] transition-colors uppercase">
-                Enroll Now
-              </span>
-              <Sparkles className="w-3.5 h-3.5 text-[#ffd56b] animate-pulse" />
-            </div>
-            <span className="text-[9px] font-bold text-[#ffd56b] uppercase tracking-wider">
-              Free Trial • 🇨🇦 🇺🇸 🇬🇧
-            </span>
-          </div>
-        </button>
-      </aside>
-
-      {/* Interactive Consultation / Trial Booking Modal */}
+      {/* ── Booking Modal ── */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/65 backdrop-blur-sm animate-fadeIn">
-          <div className="relative w-full max-w-lg rounded-t-3xl sm:rounded-3xl bg-white border border-[#0f2055]/15 shadow-2xl flex flex-col max-h-[92vh] sm:max-h-[90vh] overflow-hidden">
-            {/* Modal Header: Pinned at top with title and close button */}
-            <div className="px-5 py-4 sm:px-7 sm:py-5 border-b border-[#0f2055]/10 flex items-start justify-between bg-white shrink-0">
-              <div className="text-left space-y-0.5 pr-4">
-                <div className="text-[10px] sm:text-xs font-bold text-[#b8860b] uppercase tracking-wider">
-                  {selectedTutorForBooking ? `Booking with ${selectedTutorForBooking}` : "Fast-Track Consultation"}
-                </div>
-                <h3 className="text-xl sm:text-2xl font-black text-[#0f2055] leading-tight">
-                  Book Free Diagnostic Trial
-                </h3>
-                <p className="text-[11px] sm:text-xs text-[#5a6070] leading-snug">
-                  Complimentary 30-min evaluation &amp; tailored study plan ($120 value).
-                </p>
-              </div>
-              <button
-                onClick={() => setIsModalOpen(false)}
-                className="p-2 rounded-full text-[#0f2055] hover:bg-[#faf9f6] transition-colors cursor-pointer shrink-0 -mr-1 -mt-1 border border-[#0f2055]/10 bg-[#faf9f6]"
-                aria-label="Close dialog"
-              >
-                <X className="w-5 h-5" />
+        <div className="modal-overlay" onClick={() => setIsModalOpen(false)}>
+          <div className="modal-box" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>
+                <GraduationCap size={18} style={{ display: "inline", marginRight: "0.5rem" }} />
+                Book Your Free Trial Lesson
+              </h2>
+              <button className="modal-close" onClick={() => setIsModalOpen(false)} aria-label="Close modal">
+                <X size={15} />
               </button>
             </div>
 
-            {!bookingSuccess ? (
-              <form onSubmit={handleBookingSubmit} className="overflow-y-auto px-5 py-4 sm:px-7 sm:py-5 space-y-3.5 sm:space-y-4 overscroll-contain">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[11px] font-bold text-[#0f2055] uppercase mb-1">
-                      Parent / Guardian Name *
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      autoComplete="name"
-                      value={bookingForm.parentName}
-                      onChange={(e) => setBookingForm({ ...bookingForm, parentName: e.target.value })}
-                      placeholder="e.g. Sarah Jenkins"
-                      className="w-full px-3.5 py-2.5 rounded-xl bg-[#faf9f6] border border-[#0f2055]/15 text-[#1a1a2e] text-base sm:text-xs focus:bg-white focus:border-[#d4a017] focus:outline-none transition-colors"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] font-bold text-[#0f2055] uppercase mb-1">
-                      Student Name &amp; Year *
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={bookingForm.studentName}
-                      onChange={(e) => setBookingForm({ ...bookingForm, studentName: e.target.value })}
-                      placeholder="e.g. Liam (Year 11)"
-                      className="w-full px-3.5 py-2.5 rounded-xl bg-[#faf9f6] border border-[#0f2055]/15 text-[#1a1a2e] text-base sm:text-xs focus:bg-white focus:border-[#d4a017] focus:outline-none transition-colors"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[11px] font-bold text-[#0f2055] uppercase mb-1">
-                      Email Address *
-                    </label>
-                    <input
-                      type="email"
-                      required
-                      autoComplete="email"
-                      inputMode="email"
-                      value={bookingForm.email}
-                      onChange={(e) => setBookingForm({ ...bookingForm, email: e.target.value })}
-                      placeholder="sarah@example.com"
-                      className="w-full px-3.5 py-2.5 rounded-xl bg-[#faf9f6] border border-[#0f2055]/15 text-[#1a1a2e] text-base sm:text-xs focus:bg-white focus:border-[#d4a017] focus:outline-none transition-colors"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] font-bold text-[#0f2055] uppercase mb-1">
-                      Phone / WhatsApp *
-                    </label>
-                    <input
-                      type="tel"
-                      required
-                      autoComplete="tel"
-                      inputMode="tel"
-                      value={bookingForm.phone}
-                      onChange={(e) => setBookingForm({ ...bookingForm, phone: e.target.value })}
-                      placeholder="+234 705 965 5382"
-                      className="w-full px-3.5 py-2.5 rounded-xl bg-[#faf9f6] border border-[#0f2055]/15 text-[#1a1a2e] text-base sm:text-xs focus:bg-white focus:border-[#d4a017] focus:outline-none transition-colors"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[11px] font-bold text-[#0f2055] uppercase mb-1">
-                      Target Level
-                    </label>
-                    <select
-                      value={bookingForm.gradeLevel}
-                      onChange={(e) => setBookingForm({ ...bookingForm, gradeLevel: e.target.value })}
-                      className="w-full px-3.5 py-2.5 rounded-xl bg-[#faf9f6] border border-[#0f2055]/15 text-[#1a1a2e] text-base sm:text-xs focus:bg-white focus:border-[#d4a017] focus:outline-none transition-colors"
-                    >
-                      <option>Reception</option>
-                      <option>Year 1-6</option>
-                      <option>11 plus preparation</option>
-                      <option>Year 7-12</option>
-                      <option>GCSE preparation</option>
-                      <option>National 5</option>
-                      <option>A level preparation</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-[11px] font-bold text-[#0f2055] uppercase mb-1">
-                      Preferred Online Format
-                    </label>
-                    <select
-                      value={bookingForm.mode}
-                      onChange={(e) => setBookingForm({ ...bookingForm, mode: e.target.value })}
-                      className="w-full px-3.5 py-2.5 rounded-xl bg-[#faf9f6] border border-[#0f2055]/15 text-[#1a1a2e] text-base sm:text-xs focus:bg-white focus:border-[#d4a017] focus:outline-none transition-colors"
-                    >
-                      <option>100% Live Online 1-on-1</option>
-                      <option>Online Small Study Pod (2-3 Students)</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-bold text-[#0f2055] uppercase mb-1">
-                    Specific Subject &amp; Goal (Optional)
-                  </label>
-                  <textarea
-                    rows={2}
-                    value={bookingForm.notes}
-                    onChange={(e) => setBookingForm({ ...bookingForm, notes: e.target.value })}
-                    placeholder="e.g. Struggling with Edexcel Maths grade 5, wants grade 8 or 9."
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-[#faf9f6] border border-[#0f2055]/15 text-[#1a1a2e] text-base sm:text-xs focus:bg-white focus:border-[#d4a017] focus:outline-none resize-none transition-colors"
-                  />
-                </div>
-
-                <div className="pt-2">
-                  <button
-                    type="submit"
-                    className="w-full btn-primary py-3.5 text-sm sm:text-base font-bold shadow-lg shadow-[#0f2055]/20 active:scale-[0.99] transition-transform cursor-pointer"
-                  >
-                    Confirm Diagnostic Session Booking
+            <div className="modal-body">
+              {bookingSuccess ? (
+                <div style={{ textAlign: "center", padding: "2rem 0" }}>
+                  <div style={{ fontSize: "3rem", marginBottom: "1rem" }}>✅</div>
+                  <h3 style={{ color: "var(--teal)", marginBottom: "0.5rem" }}>Enquiry Received!</h3>
+                  <p style={{ color: "var(--text-muted)" }}>
+                    Thank you! A member of our team will contact you within 24 hours to confirm your free trial session.
+                  </p>
+                  <button className="btn-enroll" style={{ marginTop: "1.5rem" }} onClick={() => { setIsModalOpen(false); setBookingSuccess(false); }}>
+                    Close
                   </button>
-                  <div className="flex items-center justify-center gap-1.5 text-[10px] sm:text-[11px] text-[#5a6070] mt-2 text-center">
-                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                    <span>Zero obligation • No card required • 4-hour response</span>
+                </div>
+              ) : (
+                <form onSubmit={handleSubmit}>
+                  <div className="form-row">
+                    <div className="form-group">
+                      <label htmlFor="parentName">Parent / Guardian Name *</label>
+                      <input id="parentName" className="form-control" required placeholder="Your full name" value={form.parentName} onChange={(e) => setForm({ ...form, parentName: e.target.value })} />
+                    </div>
+                    <div className="form-group">
+                      <label htmlFor="studentName">Student Name *</label>
+                      <input id="studentName" className="form-control" required placeholder="Student's name" value={form.studentName} onChange={(e) => setForm({ ...form, studentName: e.target.value })} />
+                    </div>
                   </div>
-                </div>
-              </form>
-            ) : (
-              <div className="text-center p-6 sm:p-8 space-y-4 my-auto">
-                <div className="w-16 h-16 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-200 mx-auto flex items-center justify-center shadow-sm">
-                  <CheckCircle2 className="w-8 h-8" />
-                </div>
-                <h3 className="text-xl sm:text-2xl font-bold text-[#0f2055]">Consultation Request Received!</h3>
-                <p className="text-xs sm:text-sm text-[#5a6070] max-w-sm mx-auto leading-relaxed">
-                  Thank you, <span className="font-bold text-[#0f2055]">{bookingForm.parentName || "Parent"}</span>.
-                  One of our Senior Academic Advisors will contact you at{" "}
-                  <span className="font-bold text-[#b8860b]">{bookingForm.phone || bookingForm.email}</span> within 4
-                  business hours to schedule your student&apos;s free diagnostic assessment.
-                </p>
-                <button
-                  onClick={() => setIsModalOpen(false)}
-                  className="w-full sm:w-auto px-8 py-3 rounded-xl bg-[#0f2055] text-white text-xs sm:text-sm font-bold hover:bg-[#1a3275] transition-colors cursor-pointer shadow-md"
-                >
-                  Done &amp; Close Window
-                </button>
-              </div>
-            )}
+                  <div className="form-row">
+                    <div className="form-group">
+                      <label htmlFor="email">Email Address *</label>
+                      <input id="email" type="email" className="form-control" required placeholder="you@email.com" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+                    </div>
+                    <div className="form-group">
+                      <label htmlFor="phone">Phone / WhatsApp</label>
+                      <input id="phone" className="form-control" placeholder="+1 / +44 / +234..." value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
+                    </div>
+                  </div>
+                  <div className="form-row">
+                    <div className="form-group">
+                      <label htmlFor="subject">Subject *</label>
+                      <select id="subject" className="form-control" value={form.subject} onChange={(e) => setForm({ ...form, subject: e.target.value })}>
+                        {["Mathematics", "Physics", "Chemistry", "Biology", "English", "Computer Science", "History", "Economics", "Other"].map((s) => <option key={s}>{s}</option>)}
+                      </select>
+                    </div>
+                    <div className="form-group">
+                      <label htmlFor="level">Level / Grade *</label>
+                      <select id="level" className="form-control" value={form.level} onChange={(e) => setForm({ ...form, level: e.target.value })}>
+                        {["Reception–Year 6", "Year 7–9", "11+ Preparation", "GCSE / National 5", "A-Level / IB / AP", "University", "Other"].map((l) => <option key={l}>{l}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                  <div className="form-group">
+                    <label htmlFor="notes">Additional Notes</label>
+                    <textarea id="notes" className="form-control" rows={3} placeholder="Tell us about your child's current level, targets, and any specific concerns..." value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
+                  </div>
+                  <button type="submit" className="btn-submit">
+                    🎓 Request My Free Trial Lesson
+                  </button>
+                </form>
+              )}
+            </div>
           </div>
         </div>
       )}
+
+      {/* Hidden style to show hamburger only on mobile */}
+      <style>{`
+        .mobile-menu-btn { display: none !important; }
+        @media (max-width: 768px) {
+          .mobile-menu-btn { display: flex !important; }
+        }
+      `}</style>
     </div>
   );
 }
