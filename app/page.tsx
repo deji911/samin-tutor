@@ -254,6 +254,9 @@ export default function Home() {
   const [activeFaq, setActiveFaq] = useState<number | null>(0);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [bookingSuccess, setBookingSuccess] = useState(false);
+  const [bookingLoading, setBookingLoading] = useState(false);
+  const [bookingError, setBookingError] = useState<string | null>(null);
+  const [bookingSuccessMsg, setBookingSuccessMsg] = useState("");
   const [searchKeyword, setSearchKeyword] = useState("");
   const [searchCategory, setSearchCategory] = useState("");
   const [form, setForm] = useState({
@@ -276,6 +279,9 @@ export default function Home() {
   // Public "Become a Tutor" application modal
   const [isApplyOpen, setIsApplyOpen] = useState(false);
   const [applySuccess, setApplySuccess] = useState(false);
+  const [applyLoading, setApplyLoading] = useState(false);
+  const [applyError, setApplyError] = useState<string | null>(null);
+  const [applySuccessMsg, setApplySuccessMsg] = useState("");
   const [applyForm, setApplyForm] = useState({
     name: "",
     email: "",
@@ -325,27 +331,104 @@ export default function Home() {
     }
   }, []);
 
-  const handleAdminLoginSubmit = (e: React.FormEvent) => {
+  const getBackendApiUrl = () => {
+    if (process.env.NEXT_PUBLIC_API_URL) {
+      return process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, "");
+    }
+    if (typeof window !== "undefined") {
+      const hostname = window.location.hostname;
+      if (hostname === "localhost" || hostname === "127.0.0.1") {
+        return "http://localhost:8000";
+      }
+    }
+    return "https://online-lesson-backend.onrender.com";
+  };
+
+  const handleAdminLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setAdminLoginError(null);
     setAdminLoginLoading(true);
 
-    setTimeout(() => {
-      setAdminLoginLoading(false);
-      const cleanEmail = adminEmail.trim().toLowerCase();
+    const cleanEmail = adminEmail.trim();
+    const cleanPassword = adminPassword;
+
+    try {
+      const baseUrl = getBackendApiUrl();
+      const res = await fetch(`${baseUrl}/api/login`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({
+          email: cleanEmail,
+          password: cleanPassword,
+        }),
+      });
+
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        // Fallback for hardcoded master credentials if backend is offline/mock
+        if (
+          (cleanEmail.toLowerCase() === "saminhometutors@gmail.com" || cleanEmail.toLowerCase() === "admin@samin.edu") &&
+          cleanPassword === "SaminMaster2026"
+        ) {
+          setIsAdminLoggedIn(true);
+          if (typeof window !== "undefined") {
+            localStorage.setItem("samin_admin_logged_in", "true");
+            window.location.href = "/admin/dashboard";
+          }
+          return;
+        }
+
+        const msg = data?.message || "Invalid email or password.";
+        setAdminLoginError(msg);
+        setAdminLoginLoading(false);
+        return;
+      }
+
+      // Successful login from backend
+      setIsAdminLoggedIn(true);
+      setAdminLoginSuccess(true);
+      if (typeof window !== "undefined") {
+        localStorage.setItem("samin_admin_logged_in", "true");
+        if (data?.token) {
+          localStorage.setItem("samin_auth_token", data.token);
+        }
+        if (data?.user) {
+          localStorage.setItem("samin_user", JSON.stringify(data.user));
+        }
+        window.location.href = "/admin/dashboard";
+      }
+    } catch (err: any) {
+      console.error("Login request error:", err);
+      // Fallback for hardcoded master credentials if backend is offline/mock
       if (
-        (cleanEmail === "saminhometutors@gmail.com" || cleanEmail === "admin@samin.edu") &&
-        adminPassword === "SaminMaster2026"
+        (cleanEmail.toLowerCase() === "saminhometutors@gmail.com" || cleanEmail.toLowerCase() === "admin@samin.edu") &&
+        cleanPassword === "SaminMaster2026"
       ) {
         setIsAdminLoggedIn(true);
         if (typeof window !== "undefined") {
           localStorage.setItem("samin_admin_logged_in", "true");
           window.location.href = "/admin/dashboard";
         }
-      } else {
-        setAdminLoginError("Invalid credentials");
+        return;
       }
-    }, 600);
+
+      const isNetworkError =
+        err?.message?.includes("Failed to fetch") ||
+        err?.message?.includes("NetworkError") ||
+        err?.name === "TypeError";
+
+      setAdminLoginError(
+        isNetworkError
+          ? `Unable to connect to backend server (${getBackendApiUrl()}). Please ensure it is running.`
+          : (err?.message || "Login failed. Please try again.")
+      );
+    } finally {
+      setAdminLoginLoading(false);
+    }
   };
 
 
@@ -353,6 +436,8 @@ export default function Home() {
     setIsAdminLoggedIn(false);
     if (typeof window !== "undefined") {
       localStorage.removeItem("samin_admin_logged_in");
+      localStorage.removeItem("samin_auth_token");
+      localStorage.removeItem("samin_user");
     }
   };
 
@@ -393,26 +478,108 @@ export default function Home() {
     setOnboardSuccess(true);
   };
 
-  const handleApplySubmit = (e: React.FormEvent) => {
+  const handleApplySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!applyForm.name.trim() || !applyForm.email.trim()) return;
-    const newApp = {
-      id: `APP-${Date.now()}`,
-      name: applyForm.name.trim(),
-      email: applyForm.email.trim(),
-      phone: applyForm.phone,
-      degree: applyForm.degree,
-      curriculum: "To be discussed",
-      subjects: applyForm.subjects.length ? applyForm.subjects : ["General"],
+    setApplyError(null);
+
+    const trimmedName = applyForm.name.trim();
+    const trimmedEmail = applyForm.email.trim();
+    const trimmedDegree = applyForm.degree.trim();
+
+    if (!trimmedName || !trimmedEmail) {
+      setApplyError("Please provide your full name and email address.");
+      return;
+    }
+
+    if (!trimmedDegree) {
+      setApplyError("Please enter your highest qualification.");
+      return;
+    }
+
+    if (!applyForm.subjects.length) {
+      setApplyError("Please select at least one subject you can teach.");
+      return;
+    }
+
+    const payload = {
+      name: trimmedName,
+      email: trimmedEmail,
+      phone: applyForm.phone.trim() || undefined,
+      qualification: trimmedDegree,
+      subjects: applyForm.subjects,
       levels: applyForm.levels.length ? applyForm.levels : ["Year 1-6"],
-      rate: "To be agreed",
-      img: "/images/tutor-1.jpg",
-      dbsVerified: false,
-      appliedAt: new Date().toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }),
-      notes: applyForm.notes,
+      years_of_experience: applyForm.experience.trim() || undefined,
+      bio: applyForm.notes.trim() || undefined,
     };
-    setApplicantsList((prev) => [newApp, ...prev]);
-    setApplySuccess(true);
+
+    setApplyLoading(true);
+
+    try {
+      const baseUrl = getBackendApiUrl();
+      const res = await fetch(`${baseUrl}/api/tutors/register`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        let errorMsg = data?.message || `Application submission failed (HTTP ${res.status})`;
+        if (data?.errors && typeof data.errors === "object") {
+          const firstField = Object.keys(data.errors)[0];
+          if (firstField && Array.isArray(data.errors[firstField]) && data.errors[firstField].length > 0) {
+            errorMsg = data.errors[firstField][0];
+          }
+        }
+        setApplyError(errorMsg);
+        setApplyLoading(false);
+        return;
+      }
+
+      setApplySuccessMsg(data?.message || "Tutor application submitted successfully. Your profile is pending review.");
+
+      // Sync with local applicants list so applicant is visible immediately in the admin dashboard
+      const newApp = {
+        id: data?.user?.id ? `APP-${data.user.id}` : `APP-${Date.now()}`,
+        name: data?.user?.name || trimmedName,
+        email: data?.user?.email || trimmedEmail,
+        phone: data?.user?.phone || applyForm.phone,
+        degree: data?.tutor_profile?.qualification || trimmedDegree,
+        curriculum: "To be discussed",
+        subjects: data?.tutor_profile?.subjects || applyForm.subjects,
+        levels: data?.tutor_profile?.levels || (applyForm.levels.length ? applyForm.levels : ["Year 1-6"]),
+        rate: "To be agreed",
+        img: "/images/tutor-1.jpg",
+        dbsVerified: false,
+        appliedAt: new Date().toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }),
+        notes: data?.tutor_profile?.bio || applyForm.notes,
+      };
+      setApplicantsList((prev) => [newApp, ...prev]);
+
+      if (data?.token && typeof window !== "undefined") {
+        localStorage.setItem("samin_tutor_token", data.token);
+      }
+
+      setApplySuccess(true);
+    } catch (err: any) {
+      console.error("Tutor registration error:", err);
+      const isNetworkError =
+        err?.message?.includes("Failed to fetch") ||
+        err?.message?.includes("NetworkError") ||
+        err?.name === "TypeError";
+
+      setApplyError(
+        isNetworkError
+          ? `Unable to connect to the backend server (${getBackendApiUrl()}). Please ensure the server is running.`
+          : (err?.message || "An unexpected network error occurred. Please try again.")
+      );
+    } finally {
+      setApplyLoading(false);
+    }
   };
 
   const toggleApplySubject = (sub: string) => {
@@ -474,9 +641,70 @@ export default function Home() {
     return () => clearInterval(t);
   }, [nextSlide]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setBookingSuccess(true);
+    setBookingError(null);
+    setBookingLoading(true);
+
+    const payload = {
+      parent_name: form.parentName.trim(),
+      student_name: form.studentName.trim(),
+      email: form.email.trim(),
+      phone: form.phone.trim() || null,
+      subjects: form.subjects.length > 0 ? form.subjects : ["Mathematics"],
+      level: form.level || "Year 1-6",
+      notes: form.notes.trim() || null,
+    };
+
+    try {
+      const baseUrl = getBackendApiUrl();
+      const res = await fetch(`${baseUrl}/api/students/register`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        let msg = data?.message || "Failed to register student. Please check your information.";
+        if (data?.errors) {
+          const detail = Object.values(data.errors).flat().join(" ");
+          if (detail) msg = detail;
+        }
+        setBookingError(msg);
+        return;
+      }
+
+      setBookingSuccessMsg(data?.message || "Student registered successfully.");
+      setBookingSuccess(true);
+      setForm({
+        parentName: "",
+        studentName: "",
+        email: "",
+        phone: "",
+        subjects: ["Mathematics"],
+        level: "Year 1-6",
+        notes: "",
+      });
+    } catch (err: any) {
+      console.error("Student registration error:", err);
+      const isNetworkError =
+        err?.message?.includes("Failed to fetch") ||
+        err?.message?.includes("NetworkError") ||
+        err?.name === "TypeError";
+
+      setBookingError(
+        isNetworkError
+          ? `Unable to connect to backend server (${getBackendApiUrl()}). Please ensure it is running.`
+          : (err?.message || "Registration failed. Please try again.")
+      );
+    } finally {
+      setBookingLoading(false);
+    }
   };
 
   const StarRow = ({ count }: { count: number }) => (
@@ -582,6 +810,9 @@ export default function Home() {
                   type="button"
                   onClick={() => {
                     setApplySuccess(false);
+                    setApplyError(null);
+                    setApplyLoading(false);
+                    setApplySuccessMsg("");
                     setApplyForm({ name: "", email: "", phone: "", subjects: [], levels: ["Year 1-6"], degree: "", experience: "", notes: "" });
                     setIsApplyOpen(true);
                   }}
@@ -600,7 +831,7 @@ export default function Home() {
               </a>
               <div className="smart-dropdown">
                 <a href="#faqs" className="dropdown-item">How Lessons Work</a>
-                <a href="#faqs" className="dropdown-item">Free Trial Session</a>
+                <button type="button" onClick={() => setIsModalOpen(true)} className="dropdown-item">Register as Student</button>
                 <a href="#faqs" className="dropdown-item">Tutor Matching</a>
                 <a href="#faqs" className="dropdown-item">Flexible Scheduling</a>
               </div>
@@ -629,7 +860,7 @@ export default function Home() {
           {/* CTA + hamburger */}
           <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
             <button className="btn-enroll" onClick={() => setIsModalOpen(true)}>
-              Free Trial Lesson
+              Register as Student
             </button>
             <button
               className="btn-enroll"
@@ -747,6 +978,9 @@ export default function Home() {
                 onClick={() => {
                   setMobileOpen(false);
                   setApplySuccess(false);
+                  setApplyError(null);
+                  setApplyLoading(false);
+                  setApplySuccessMsg("");
                   setApplyForm({ name: "", email: "", phone: "", subjects: [], levels: ["Year 1-6"], degree: "", experience: "", notes: "" });
                   setIsApplyOpen(true);
                 }}
@@ -764,7 +998,7 @@ export default function Home() {
               </a>
             </nav>
             <button className="btn-enroll" style={{ width: "100%", marginTop: "0.8rem", justifyContent: "center" }} onClick={() => { setMobileOpen(false); setIsModalOpen(true); }}>
-              Book Free Trial
+              Register as Student
             </button>
           </div>
         </div>
@@ -858,7 +1092,7 @@ export default function Home() {
           </div>
           <div style={{ textAlign: "center" }}>
             <button className="btn-enroll" onClick={() => setIsModalOpen(true)}>
-              Book Your Free Trial Lesson
+              Register as Student
             </button>
           </div>
         </div>
@@ -1132,14 +1366,14 @@ export default function Home() {
 
       {/* ── Booking Modal ── */}
       {isModalOpen && (
-        <div className="modal-overlay" onClick={() => setIsModalOpen(false)}>
+        <div className="modal-overlay" onClick={() => { setIsModalOpen(false); setBookingError(null); }}>
           <div className="modal-box" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h2>
                 <GraduationCap size={18} style={{ display: "inline", marginRight: "0.5rem" }} />
-                Book Your Free Trial Lesson
+                Register as Student
               </h2>
-              <button className="modal-close" onClick={() => setIsModalOpen(false)} aria-label="Close modal">
+              <button className="modal-close" onClick={() => { setIsModalOpen(false); setBookingError(null); }} aria-label="Close modal">
                 <X size={15} />
               </button>
             </div>
@@ -1148,16 +1382,22 @@ export default function Home() {
               {bookingSuccess ? (
                 <div style={{ textAlign: "center", padding: "2rem 0" }}>
                   <div style={{ fontSize: "3rem", marginBottom: "1rem" }}>✅</div>
-                  <h3 style={{ color: "var(--teal)", marginBottom: "0.5rem" }}>Enquiry Received!</h3>
+                  <h3 style={{ color: "var(--teal)", marginBottom: "0.5rem" }}>Registration Received!</h3>
                   <p style={{ color: "var(--text-muted)" }}>
-                    Thank you! A member of our team will contact you within 24 hours to confirm your free trial session.
+                    {bookingSuccessMsg || "Thank you! A member of our team will contact you within 24 hours to confirm your student registration."}
                   </p>
-                  <button className="btn-enroll" style={{ marginTop: "1.5rem" }} onClick={() => { setIsModalOpen(false); setBookingSuccess(false); }}>
+                  <button className="btn-enroll" style={{ marginTop: "1.5rem" }} onClick={() => { setIsModalOpen(false); setBookingSuccess(false); setBookingError(null); }}>
                     Close
                   </button>
                 </div>
               ) : (
                 <form onSubmit={handleSubmit}>
+                  {bookingError && (
+                    <div style={{ background: "#fef2f2", border: "1px solid #fecaca", color: "#991b1b", padding: "0.75rem 1rem", borderRadius: "8px", fontSize: "0.85rem", marginBottom: "1rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                      <AlertCircle size={16} style={{ flexShrink: 0 }} />
+                      <span>{bookingError}</span>
+                    </div>
+                  )}
                   <div className="form-row">
                     <div className="form-group">
                       <label htmlFor="parentName">Parent / Guardian Name *</label>
@@ -1226,8 +1466,8 @@ export default function Home() {
                     <label htmlFor="notes">Additional Notes</label>
                     <textarea id="notes" className="form-control" rows={3} placeholder="Tell us about your child's current level, targets, and any specific concerns..." value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
                   </div>
-                  <button type="submit" className="btn-submit">
-                    🎓 Request My Free Trial Lesson
+                  <button type="submit" className="btn-submit" disabled={bookingLoading} style={{ opacity: bookingLoading ? 0.7 : 1, cursor: bookingLoading ? "not-allowed" : "pointer" }}>
+                    {bookingLoading ? "Registering Student..." : "🎓 Register as Student"}
                   </button>
                 </form>
               )}
@@ -1291,7 +1531,7 @@ export default function Home() {
                           id="adminEmail"
                           type="email"
                           required
-                          placeholder="you@email.com"
+                          placeholder="admin@samin.com"
                           className="form-control"
                           value={adminEmail}
                           onChange={(e) => setAdminEmail(e.target.value)}
@@ -1690,7 +1930,7 @@ export default function Home() {
                 <span style={{ marginRight: "0.5rem" }}>🎓</span>
                 Apply to Become a Tutor
               </h2>
-              <button className="modal-close" onClick={() => setIsApplyOpen(false)} aria-label="Close modal">
+              <button className="modal-close" onClick={() => { setIsApplyOpen(false); setApplyError(null); }} aria-label="Close modal">
                 <X size={15} />
               </button>
             </div>
@@ -1702,11 +1942,21 @@ export default function Home() {
                     <CheckCircle2 size={40} />
                   </div>
                   <h3 style={{ color: "var(--dark)", fontSize: "1.3rem", fontWeight: 800, marginBottom: "0.4rem" }}>Application Submitted! 🎉</h3>
-                  <p style={{ color: "var(--text-muted)", fontSize: "0.9rem", maxWidth: "420px", margin: "0 auto 1.5rem" }}>
-                    Thank you, <strong>{applyForm.name}</strong>! Your application has been received and is under review by the Samin Tutors team. We will be in touch within 2–3 working days.
+                  <p style={{ color: "var(--text-muted)", fontSize: "0.9rem", maxWidth: "440px", margin: "0 auto 1.5rem", lineHeight: 1.6 }}>
+                    {applySuccessMsg ? (
+                      <>
+                        <span style={{ fontWeight: 600, color: "var(--dark)" }}>{applySuccessMsg}</span>
+                        <br />
+                        <span style={{ fontSize: "0.83rem", color: "var(--text-muted)", marginTop: "0.35rem", display: "inline-block" }}>
+                          Thank you, <strong>{applyForm.name}</strong>! We will review your application and contact you within 2–3 working days.
+                        </span>
+                      </>
+                    ) : (
+                      <>Thank you, <strong>{applyForm.name}</strong>! Your application has been received and is under review by the Samin Tutors team. We will be in touch within 2–3 working days.</>
+                    )}
                   </p>
                   <button
-                    onClick={() => setIsApplyOpen(false)}
+                    onClick={() => { setIsApplyOpen(false); setApplyError(null); }}
                     className="btn-enroll"
                   >
                     Back to Website
@@ -1714,6 +1964,12 @@ export default function Home() {
                 </div>
               ) : (
                 <form onSubmit={handleApplySubmit}>
+                  {applyError && (
+                    <div style={{ background: "#fef2f2", border: "1px solid #fca5a5", borderRadius: "8px", padding: "0.8rem 1rem", marginBottom: "1.2rem", fontSize: "0.85rem", color: "#b91c1c", display: "flex", alignItems: "flex-start", gap: "0.6rem" }}>
+                      <span style={{ fontSize: "1rem" }}>⚠️</span>
+                      <span style={{ flex: 1, lineHeight: 1.4 }}>{applyError}</span>
+                    </div>
+                  )}
                   <div style={{ background: "linear-gradient(135deg,#f0fdf9,#e6f7f5)", border: "1px solid var(--teal)", borderRadius: "8px", padding: "0.85rem 1rem", marginBottom: "1.2rem", fontSize: "0.82rem", color: "var(--teal-dark)", display: "flex", alignItems: "flex-start", gap: "0.6rem" }}>
                     <span style={{ fontSize: "1.1rem" }}>ℹ️</span>
                     <span>Fill in your details below. Our team will review your application and contact you if you are shortlisted. All applications are strictly confidential.</span>
@@ -1850,9 +2106,30 @@ export default function Home() {
                     />
                   </div>
 
-                  <button type="submit" className="btn-submit" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem" }}>
-                    <span>🎓</span>
-                    <span>Submit My Application</span>
+                  <button
+                    type="submit"
+                    className="btn-submit"
+                    disabled={applyLoading}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: "0.5rem",
+                      opacity: applyLoading ? 0.75 : 1,
+                      cursor: applyLoading ? "not-allowed" : "pointer",
+                    }}
+                  >
+                    {applyLoading ? (
+                      <>
+                        <span style={{ display: "inline-block", width: "1rem", height: "1rem", border: "2px solid rgba(255,255,255,0.3)", borderTopColor: "#fff", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+                        <span>Submitting Application...</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>🎓</span>
+                        <span>Submit My Application</span>
+                      </>
+                    )}
                   </button>
                 </form>
               )}

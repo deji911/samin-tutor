@@ -27,6 +27,8 @@ import {
   EyeOff,
   Plus,
   Phone,
+  RefreshCw,
+  Users,
 } from "lucide-react";
 
 /* ─── Constants ───────────────────────────────────────────── */
@@ -46,6 +48,49 @@ type Applicant = {
   appliedAt: string;
 };
 
+type TutorStats = {
+  total: number;
+  pending: number;
+  approved: number;
+  rejected: number;
+};
+
+type AttachedStudent = {
+  id: string | number;
+  name: string;
+  parent?: string;
+  subject?: string;
+  level?: string;
+  status?: string;
+  phone?: string;
+  email?: string;
+};
+
+type TutorDetail = {
+  id: number | string;
+  name: string;
+  email: string;
+  role?: string;
+  phone?: string;
+  created_at?: string;
+  students_count?: number;
+  students?: any[];
+  assigned_students?: any[];
+  matched_students?: any[];
+  tutor_profile?: {
+    id?: number;
+    user_id?: number;
+    qualification?: string;
+    subjects?: string[];
+    levels?: string[];
+    years_of_experience?: string;
+    bio?: string;
+    approval_status?: "pending" | "approved" | "rejected" | string;
+    created_at?: string;
+    students?: any[];
+  };
+};
+
 type Tutor = {
   id: string;
   name: string;
@@ -57,7 +102,46 @@ type Tutor = {
   rate: string;
 };
 
-type BookingStatus = "New Inquiry" | "Diagnostic Scheduled" | "Tutor Matched" | "Active Student";
+type BookingStatus = "New Inquiry" | "Diagnostic Scheduled" | "Tutor Matched" | "Active Student" | "pending_match" | "matched" | "completed" | "cancelled" | string;
+
+type StudentStats = {
+  total: number;
+  pending_match: number;
+  matched: number;
+  cancelled: number;
+};
+
+type AssignedTutor = {
+  id: number | string;
+  name: string;
+  email: string;
+  phone?: string;
+  subject?: string;
+  qualification?: string;
+  pivot_notes?: string;
+};
+
+type StudentDetail = {
+  id: number | string;
+  parent_name?: string;
+  student_name: string;
+  email: string;
+  phone?: string;
+  subjects?: string[];
+  level?: string;
+  notes?: string;
+  status: "pending_match" | "matched" | "completed" | "cancelled" | string;
+  created_at?: string;
+  assigned_tutors?: AssignedTutor[];
+};
+
+type ApprovedTutor = {
+  id: number | string;
+  name: string;
+  email: string;
+  qualification?: string;
+  subjects?: string[];
+};
 
 type Booking = {
   id: string;
@@ -69,57 +153,25 @@ type Booking = {
   phone: string;
   email: string;
   status: BookingStatus;
+  rawStatus?: string;
   date: string;
   tutorAssigned: string;
+  notes?: string;
+  subjects?: string[];
+  assignedTutors?: AssignedTutor[];
 };
 
 type NavTab = "overview" | "applicants" | "tutors" | "bookings";
 
-/* ─── Seed data ───────────────────────────────────────────── */
-const seedApplicants: Applicant[] = [
-  {
-    id: "APP-101",
-    name: "Dr. Evelyn Reed",
-    email: "evelyn.reed@oxfordalumni.org",
-    phone: "+44 7922 419283",
-    degree: "PhD Astrophysics \u00b7 Oxford University",
-    subjects: ["Physics", "Mathematics"],
-    levels: ["GCSE preparation", "A level preparation"],
-    appliedAt: "Today, 11:20 AM",
-    notes: "Over 6 years tutoring A-Level Physics and Further Maths with a 94% A*/A track record.",
-  },
-  {
-    id: "APP-102",
-    name: "Marcus Vance",
-    email: "m.vance@ucl.ac.uk",
-    phone: "+44 7710 882910",
-    degree: "BSc Computer Science \u00b7 UCL",
-    subjects: ["Computer Science", "Mathematics"],
-    levels: ["Year 7-11", "GCSE preparation"],
-    appliedAt: "Yesterday, 3:45 PM",
-    notes: "Software engineer and seasoned coding tutor for Python, GCSE CS and algebra.",
-  },
-];
-
-const seedTutors: Tutor[] = [
-  { id: "TUT-01", name: "David Zhang, MSc", school: "Imperial College London", subject: "Pure & Further Maths", students: 18, region: "UK & Canada", img: "/images/tutor-1.jpg", rate: "\u00a345/hr" },
-  { id: "TUT-02", name: "Dr. Sophia Ramirez, PhD", school: "Oxford University", subject: "Chemistry, Biology & Med", students: 22, region: "UK & USA", img: "/images/tutor-2.jpg", rate: "\u00a355/hr" },
-  { id: "TUT-03", name: "Marcus Sterling, MA", school: "Cambridge University", subject: "English Lit & 11+", students: 16, region: "All Timezones", img: "/images/tutor-3.jpg", rate: "\u00a340/hr" },
-];
-
-const seedBookings: Booking[] = [
-  { id: "SAM-8021", parent: "Sarah Jenkins", student: "Liam (Year 11)", subject: "Higher Mathematics", level: "GCSE preparation", country: "\ud83c\uddec\ud83c\udde7 UK (London)", phone: "+44 7911 123456", email: "sarah.j@email.com", status: "Diagnostic Scheduled", date: "Today, 10:30 AM", tutorAssigned: "David Zhang, MSc" },
-  { id: "SAM-8022", parent: "Dr. Matthew Cole", student: "Emily (Grade 12)", subject: "Pure Maths & Calculus", level: "A level preparation", country: "\ud83c\udde8\ud83c\udde6 Canada (Toronto)", phone: "+1 416 555 0192", email: "m.cole@email.com", status: "New Inquiry", date: "Today, 09:15 AM", tutorAssigned: "Pending Match" },
-  { id: "SAM-8023", parent: "Olivia Fraser", student: "Callum (S4)", subject: "Nat 5 Physics & Maths", level: "National 5 preparation", country: "\ud83c\uddec\ud83c\udde7 UK (Edinburgh)", phone: "+44 7700 900821", email: "o.fraser@email.com", status: "Tutor Matched", date: "Yesterday", tutorAssigned: "Dr. Sophia Ramirez" },
-  { id: "SAM-8024", parent: "Robert Vance", student: "Alexander (Grade 5)", subject: "Numeracy & Phonics", level: "Year 1-6", country: "\ud83c\uddfa\ud83c\uddf8 USA (New York)", phone: "+1 212 555 7834", email: "r.vance@email.com", status: "Active Student", date: "2 days ago", tutorAssigned: "Marcus Sterling, MA" },
-  { id: "SAM-8025", parent: "Grace Adebayo", student: "Tobi (Year 5)", subject: "Verbal & Non-Verbal Logic", level: "11 Plus preparation", country: "\ud83c\uddec\ud83c\udde7 UK (Birmingham)", phone: "+44 7820 445566", email: "g.adebayo@email.com", status: "New Inquiry", date: "3 days ago", tutorAssigned: "Pending Match" },
-];
-
-const statusStyle: Record<BookingStatus, { bg: string; color: string }> = {
-  "New Inquiry": { bg: "#fef3c7", color: "#b45309" },
-  "Diagnostic Scheduled": { bg: "#dbeafe", color: "#1d4ed8" },
-  "Tutor Matched": { bg: "#d1fae5", color: "#065f46" },
-  "Active Student": { bg: "#e0f2fe", color: "#0369a1" },
+const statusStyle: Record<string, { bg: string; color: string; label?: string }> = {
+  "New Inquiry": { bg: "#fef3c7", color: "#b45309", label: "New Inquiry" },
+  "Diagnostic Scheduled": { bg: "#dbeafe", color: "#1d4ed8", label: "Diagnostic Scheduled" },
+  "Tutor Matched": { bg: "#d1fae5", color: "#065f46", label: "Tutor Matched" },
+  "Active Student": { bg: "#e0f2fe", color: "#0369a1", label: "Active Student" },
+  "pending_match": { bg: "#fef3c7", color: "#b45309", label: "Pending Match" },
+  "matched": { bg: "#d1fae5", color: "#065f46", label: "Matched" },
+  "completed": { bg: "#e0f2fe", color: "#0369a1", label: "Completed" },
+  "cancelled": { bg: "#fee2e2", color: "#991b1b", label: "Cancelled" },
 };
 
 /* ─── Component ───────────────────────────────────────────── */
@@ -134,14 +186,15 @@ export default function AdminDashboard() {
   const [loginLoading, setLoginLoading] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
 
-  // Dashboard
   const [activeTab, setActiveTab] = useState<NavTab>("overview");
-  const [applicants, setApplicants] = useState<Applicant[]>(seedApplicants);
-  const [tutors, setTutors] = useState<Tutor[]>(seedTutors);
-  const [bookings, setBookings] = useState<Booking[]>(seedBookings);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [applicants, setApplicants] = useState<Applicant[]>([]);
+  const [tutors, setTutors] = useState<Tutor[]>([]);
+  const [bookings, setBookings] = useState<Booking[]>([]);
   const [searchApplicants, setSearchApplicants] = useState("");
   const [searchTutors, setSearchTutors] = useState("");
   const [searchBookings, setSearchBookings] = useState("");
+  const [studentStatusFilter, setStudentStatusFilter] = useState<string>("all");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [expandedApplicant, setExpandedApplicant] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -155,9 +208,480 @@ export default function AdminDashboard() {
     img: "/images/tutor-1.jpg",
   });
 
+  const [currentUser, setCurrentUser] = useState<{ name?: string; email?: string; role?: string } | null>(null);
+  const [tutorStats, setTutorStats] = useState<TutorStats>({
+    total: 0,
+    pending: 0,
+    approved: 0,
+    rejected: 0,
+  });
+  const [isLoadingTutors, setIsLoadingTutors] = useState(false);
+
+  // Single tutor detail modal state (GET /api/admin/tutors/{id})
+  const [isDetailOpen, setIsDetailOpen] = useState(false);
+  const [selectedTutor, setSelectedTutor] = useState<TutorDetail | null>(null);
+  const [loadingDetail, setLoadingDetail] = useState(false);
+
+  // Student list & single student detail modal state (GET /api/admin/students, GET /api/admin/students/{id})
+  const [studentStats, setStudentStats] = useState<StudentStats>({
+    total: 0,
+    pending_match: 0,
+    matched: 0,
+    cancelled: 0,
+  });
+  const [isLoadingStudents, setIsLoadingStudents] = useState(false);
+  const [isStudentDetailOpen, setIsStudentDetailOpen] = useState(false);
+  const [selectedStudent, setSelectedStudent] = useState<StudentDetail | null>(null);
+  const [loadingStudentDetail, setLoadingStudentDetail] = useState(false);
+
+  // Match-tutors sub-modal state
+  const [isMatchModalOpen, setIsMatchModalOpen] = useState(false);
+  const [approvedTutors, setApprovedTutors] = useState<ApprovedTutor[]>([]);
+  const [selectedTutorIds, setSelectedTutorIds] = useState<Set<number | string>>(new Set());
+  const [matchNotes, setMatchNotes] = useState("");
+  const [isMatchingLoading, setIsMatchingLoading] = useState(false);
+
+  const getBackendApiUrl = () => {
+    if (process.env.NEXT_PUBLIC_API_URL) {
+      return process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, "");
+    }
+    if (typeof window !== "undefined") {
+      const hostname = window.location.hostname;
+      if (hostname === "localhost" || hostname === "127.0.0.1") {
+        return "http://localhost:8000";
+      }
+    }
+    return "https://online-lesson-backend.onrender.com";
+  };
+
+  const getAuthHeaders = () => {
+    const token = typeof window !== "undefined" ? localStorage.getItem("samin_auth_token") : null;
+    return {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    };
+  };
+
+  const fetchTutorsFromApi = async () => {
+    const token = typeof window !== "undefined" ? localStorage.getItem("samin_auth_token") : null;
+    if (!token) return;
+
+    setIsLoadingTutors(true);
+    try {
+      const baseUrl = getBackendApiUrl();
+      const res = await fetch(`${baseUrl}/api/admin/tutors?per_page=all`, {
+        headers: getAuthHeaders(),
+      });
+
+      if (!res.ok) {
+        if (res.status === 401) {
+          console.warn("Admin session expired or token invalid");
+        }
+        return;
+      }
+
+      const json = await res.json();
+      if (json.stats) {
+        setTutorStats(json.stats);
+      }
+
+      const list = json.tutors?.data || (Array.isArray(json.tutors) ? json.tutors : []);
+      if (Array.isArray(list)) {
+        const liveApplicants: Applicant[] = [];
+        const liveTutors: Tutor[] = [];
+
+        list.forEach((item: any) => {
+          const profile = item.tutor_profile || {};
+          const status = profile.approval_status || "pending";
+
+          if (status === "pending") {
+            liveApplicants.push({
+              id: String(item.id),
+              name: item.name,
+              email: item.email,
+              phone: item.phone || "—",
+              degree: profile.qualification || "Registered Tutor",
+              subjects: Array.isArray(profile.subjects) ? profile.subjects : ["General"],
+              levels: Array.isArray(profile.levels) ? profile.levels : ["All Levels"],
+              notes: profile.bio || (profile.years_of_experience ? `Experience: ${profile.years_of_experience}` : "No additional bio."),
+              appliedAt: item.created_at ? new Date(item.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "Recent",
+            });
+          } else if (status === "approved") {
+            liveTutors.push({
+              id: String(item.id),
+              name: item.name,
+              school: profile.qualification || "Verified Faculty",
+              subject: Array.isArray(profile.subjects) ? profile.subjects.join(", ") : "Specialist",
+              students: 0,
+              region: "UK & International 🌍",
+              img: "/images/tutor-1.jpg",
+              rate: "£45/hr",
+            });
+          }
+        });
+
+        setApplicants(liveApplicants);
+        setTutors(liveTutors);
+      }
+    } catch (err) {
+      console.error("Error fetching tutors from API:", err);
+    } finally {
+      setIsLoadingTutors(false);
+    }
+  };
+
+  const getAttachedStudentsForTutor = (tutorId: string | number, tutorName?: string, tutorObj?: any): AttachedStudent[] => {
+    const list: AttachedStudent[] = [];
+    const seenIds = new Set<string>();
+
+    // 1. From tutorObj if backend returned students/assigned_students/matched_students
+    const apiStudents =
+      tutorObj?.students ||
+      tutorObj?.assigned_students ||
+      tutorObj?.matched_students ||
+      tutorObj?.tutor_profile?.students ||
+      [];
+
+    if (Array.isArray(apiStudents)) {
+      apiStudents.forEach((s: any) => {
+        const sid = String(s.id || s.student_id || "");
+        if (sid) seenIds.add(sid);
+        list.push({
+          id: s.id || sid,
+          name: s.student_name || s.name || "Student",
+          parent: s.parent_name || s.parent,
+          subject: Array.isArray(s.subjects) ? s.subjects.join(", ") : (s.subject || s.subjects),
+          level: s.level,
+          status: s.status,
+          phone: s.phone,
+          email: s.email,
+        });
+      });
+    }
+
+    // 2. From frontend bookings (student registrations)
+    const cleanTutorId = String(tutorId).replace(/^(APP-|TUT-)/, "").toLowerCase();
+    const cleanTutorName = (tutorName || tutorObj?.name || "").trim().toLowerCase();
+
+    bookings.forEach((b) => {
+      const isMatched =
+        b.assignedTutors?.some((at) => {
+          const atCleanId = String(at.id).replace(/^(APP-|TUT-)/, "").toLowerCase();
+          const atCleanName = (at.name || "").trim().toLowerCase();
+          return (cleanTutorId && atCleanId === cleanTutorId) || (cleanTutorName && atCleanName === cleanTutorName);
+        }) ||
+        (cleanTutorName && b.tutorAssigned && b.tutorAssigned.toLowerCase() === cleanTutorName);
+
+      if (isMatched && !seenIds.has(String(b.id))) {
+        seenIds.add(String(b.id));
+        list.push({
+          id: b.id,
+          name: b.student,
+          parent: b.parent,
+          subject: b.subject,
+          level: b.level,
+          status: b.rawStatus || b.status,
+          phone: b.phone,
+          email: b.email,
+        });
+      }
+    });
+
+    return list;
+  };
+
+  const modalAttachedStudents = selectedTutor ? getAttachedStudentsForTutor(selectedTutor.id, selectedTutor.name, selectedTutor) : [];
+
+  const openTutorDetail = async (id: string | number, fallbackData?: any) => {
+    setIsDetailOpen(true);
+    setLoadingDetail(true);
+
+    if (fallbackData) {
+      setSelectedTutor({
+        id: fallbackData.id,
+        name: fallbackData.name,
+        email: fallbackData.email || "",
+        phone: fallbackData.phone || "",
+        role: "tutor",
+        tutor_profile: {
+          qualification: fallbackData.school || fallbackData.degree || "Qualified Educator",
+          subjects: Array.isArray(fallbackData.subjects)
+            ? fallbackData.subjects
+            : typeof fallbackData.subject === "string"
+            ? fallbackData.subject.split(",").map((s: string) => s.trim())
+            : [],
+          levels: Array.isArray(fallbackData.levels) ? fallbackData.levels : [],
+          years_of_experience: fallbackData.notes || "",
+          bio: fallbackData.notes || "",
+          approval_status: fallbackData.approvalStatus || (tutors.some((t) => String(t.id) === String(fallbackData.id)) ? "approved" : "pending"),
+        },
+      });
+    }
+
+    const token = typeof window !== "undefined" ? localStorage.getItem("samin_auth_token") : null;
+    const baseUrl = getBackendApiUrl();
+    const cleanId = String(id).replace(/^(APP-|TUT-)/, "");
+    const targetId = /^\d+$/.test(cleanId) ? cleanId : id;
+
+    if (token) {
+      try {
+        const res = await fetch(`${baseUrl}/api/admin/tutors/${targetId}`, {
+          headers: getAuthHeaders(),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.tutor) {
+            setSelectedTutor(data.tutor);
+          }
+        }
+      } catch (err) {
+        console.error("Error fetching single tutor profile:", err);
+      }
+    }
+
+    setLoadingDetail(false);
+  };
+
+  const fetchStudentsFromApi = async () => {
+    const token = typeof window !== "undefined" ? localStorage.getItem("samin_auth_token") : null;
+    if (!token) return;
+
+    setIsLoadingStudents(true);
+    try {
+      const baseUrl = getBackendApiUrl();
+      const res = await fetch(`${baseUrl}/api/admin/students?per_page=all`, {
+        headers: getAuthHeaders(),
+      });
+
+      if (!res.ok) return;
+
+      const json = await res.json();
+      if (json.stats) {
+        setStudentStats(json.stats);
+      }
+
+      const list = json.students?.data || (Array.isArray(json.students) ? json.students : []);
+      if (Array.isArray(list)) {
+        const liveBookings: Booking[] = list.map((item: any) => ({
+          id: String(item.id),
+          parent: item.parent_name || "Parent / Guardian",
+          student: item.student_name,
+          subject: Array.isArray(item.subjects) ? item.subjects.join(", ") : (item.subjects || "General"),
+          level: item.level || "Standard Level",
+          country: item.phone?.startsWith("+44") ? "🇬🇧 UK" : item.phone?.startsWith("+1") ? "🇺🇸/🇨🇦 North America" : "🌍 International",
+          phone: item.phone || "—",
+          email: item.email,
+          status: item.status || "pending_match",
+          rawStatus: item.status || "pending_match",
+          date: item.created_at
+            ? new Date(item.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })
+            : "Recent",
+          tutorAssigned: item.status === "matched" ? "Matched" : "Pending Match",
+          notes: item.notes || "",
+          subjects: Array.isArray(item.subjects) ? item.subjects : [],
+          assignedTutors: Array.isArray(item.assigned_tutors) ? item.assigned_tutors : [],
+        }));
+        setBookings(liveBookings);
+      }
+    } catch (err) {
+      console.error("Error fetching students from API:", err);
+    } finally {
+      setIsLoadingStudents(false);
+    }
+  };
+
+  const openStudentDetail = async (id: string | number, fallbackData?: any) => {
+    setIsStudentDetailOpen(true);
+    setLoadingStudentDetail(true);
+
+    if (fallbackData) {
+      setSelectedStudent({
+        id: fallbackData.id,
+        parent_name: fallbackData.parent_name || fallbackData.parent || "Parent / Guardian",
+        student_name: fallbackData.student_name || fallbackData.student || fallbackData.name || "Student",
+        email: fallbackData.email || "",
+        phone: fallbackData.phone || "",
+        subjects: fallbackData.subjects || (fallbackData.subject ? [fallbackData.subject] : []),
+        level: fallbackData.level || "Standard Level",
+        notes: fallbackData.notes || "",
+        status: fallbackData.rawStatus || fallbackData.status || "pending_match",
+        created_at: fallbackData.date || "",
+        assigned_tutors: Array.isArray(fallbackData.assignedTutors)
+          ? fallbackData.assignedTutors
+          : Array.isArray(fallbackData.assigned_tutors)
+          ? fallbackData.assigned_tutors
+          : [],
+      });
+    }
+
+    const token = typeof window !== "undefined" ? localStorage.getItem("samin_auth_token") : null;
+    const baseUrl = getBackendApiUrl();
+    const cleanId = String(id).replace(/^(SAM-|STU-)/, "");
+    const targetId = /^\d+$/.test(cleanId) ? cleanId : id;
+
+    if (token) {
+      try {
+        const res = await fetch(`${baseUrl}/api/admin/students/${targetId}`, {
+          headers: getAuthHeaders(),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.student) {
+            setSelectedStudent(data.student);
+          }
+        }
+      } catch (err) {
+        console.error("Error fetching single student profile:", err);
+      }
+    }
+
+    setLoadingStudentDetail(false);
+  };
+
+  const updateStudentStatusApi = async (id: string | number, newStatus: string) => {
+    const cleanId = String(id).replace(/^(SAM-|STU-)/, "");
+    const targetId = /^\d+$/.test(cleanId) ? cleanId : id;
+
+    try {
+      const baseUrl = getBackendApiUrl();
+      const token = typeof window !== "undefined" ? localStorage.getItem("samin_auth_token") : null;
+
+      if (token) {
+        const res = await fetch(`${baseUrl}/api/admin/students/${targetId}/status`, {
+          method: "PATCH",
+          headers: getAuthHeaders(),
+          body: JSON.stringify({ status: newStatus }),
+        });
+        if (!res.ok) {
+          const errData = await res.json().catch(() => null);
+          throw new Error(errData?.message || `Failed to update student status (HTTP ${res.status})`);
+        }
+      }
+
+      setBookings((prev) =>
+        prev.map((b) => (String(b.id) === String(id) ? { ...b, status: newStatus as any, rawStatus: newStatus } : b))
+      );
+
+      if (selectedStudent && String(selectedStudent.id) === String(id)) {
+        setSelectedStudent((prev) => (prev ? { ...prev, status: newStatus } : null));
+      }
+
+      const readableStatus = newStatus === "pending_match" ? "Pending Match" : newStatus === "matched" ? "Matched" : newStatus;
+      showToast(`Student status updated to ${readableStatus}.`);
+    } catch (err: any) {
+      console.error("Update student status error:", err);
+      showToast(`⚠️ ${err.message || "Failed to update student status."}`);
+    }
+  };
+
+  const openMatchModal = async () => {
+    setSelectedTutorIds(new Set());
+    setMatchNotes("");
+    setIsMatchModalOpen(true);
+
+    // If we already have approved tutors from the list, use them; else re-fetch
+    const alreadyLoaded = approvedTutors.length > 0;
+    if (alreadyLoaded) return;
+
+    try {
+      const baseUrl = getBackendApiUrl();
+      const res = await fetch(`${baseUrl}/api/admin/tutors?per_page=all&status=approved`, {
+        headers: getAuthHeaders(),
+      });
+      if (!res.ok) return;
+      const json = await res.json();
+      const list = json.tutors?.data || (Array.isArray(json.tutors) ? json.tutors : []);
+      const parsed: ApprovedTutor[] = list
+        .filter((t: any) => t.tutor_profile?.approval_status === "approved")
+        .map((t: any) => ({
+          id: t.id,
+          name: t.name,
+          email: t.email,
+          qualification: t.tutor_profile?.qualification || "",
+          subjects: Array.isArray(t.tutor_profile?.subjects) ? t.tutor_profile.subjects : [],
+        }));
+      setApprovedTutors(parsed);
+    } catch (err) {
+      console.error("Failed to load approved tutors for matching:", err);
+    }
+  };
+
+  const toggleTutorSelection = (id: number | string) => {
+    setSelectedTutorIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const submitMatchTutors = async () => {
+    if (!selectedStudent || selectedTutorIds.size === 0) return;
+    setIsMatchingLoading(true);
+
+    const cleanId = String(selectedStudent.id).replace(/^(SAM-|STU-)/, "");
+    const targetId = /^\d+$/.test(cleanId) ? cleanId : selectedStudent.id;
+
+    try {
+      const baseUrl = getBackendApiUrl();
+      const res = await fetch(`${baseUrl}/api/admin/students/${targetId}/match-tutors`, {
+        method: "POST",
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          tutor_ids: Array.from(selectedTutorIds),
+          ...(matchNotes.trim() ? { notes: matchNotes.trim() } : {}),
+        }),
+      });
+
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        throw new Error(data?.message || `HTTP ${res.status}`);
+      }
+
+      // Update local state
+      const count = selectedTutorIds.size;
+      setSelectedStudent((prev) => (prev ? { ...prev, status: "matched" } : null));
+      setBookings((prev) =>
+        prev.map((b) =>
+          String(b.id) === String(selectedStudent.id)
+            ? { ...b, status: "matched", rawStatus: "matched", tutorAssigned: "Matched" }
+            : b
+        )
+      );
+      setStudentStats((prev) => ({
+        ...prev,
+        pending_match: Math.max(0, prev.pending_match - 1),
+        matched: prev.matched + 1,
+      }));
+
+      showToast(`✅ Student matched with ${count} tutor${count === 1 ? "" : "s"} successfully!`);
+      setIsMatchModalOpen(false);
+    } catch (err: any) {
+      console.error("Match tutors error:", err);
+      showToast(`⚠️ ${err.message || "Failed to match tutors."}`);
+    } finally {
+      setIsMatchingLoading(false);
+    }
+  };
+
   useEffect(() => {
     const stored = typeof window !== "undefined" ? localStorage.getItem("samin_admin_logged_in") : null;
-    if (stored === "true") setIsAuthed(true);
+    if (stored === "true") {
+      setIsAuthed(true);
+      Promise.all([fetchTutorsFromApi(), fetchStudentsFromApi()]).finally(() => {
+        setInitialLoading(false);
+      });
+    } else {
+      setInitialLoading(false);
+    }
+    const u = typeof window !== "undefined" ? localStorage.getItem("samin_user") : null;
+    if (u) {
+      try {
+        setCurrentUser(JSON.parse(u));
+      } catch {}
+    }
     setChecking(false);
   }, []);
 
@@ -166,59 +690,196 @@ export default function AdminDashboard() {
     setTimeout(() => setToast(null), 3500);
   };
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError(null);
     setLoginLoading(true);
-    setTimeout(() => {
-      setLoginLoading(false);
-      const cleanEmail = loginEmail.trim().toLowerCase();
-      if ((cleanEmail === ADMIN_EMAIL.toLowerCase() || cleanEmail === "admin@samin.edu") && loginPassword === ADMIN_PASSWORD) {
+
+    const cleanEmail = loginEmail.trim();
+    const cleanPassword = loginPassword;
+
+    try {
+      const baseUrl = getBackendApiUrl();
+      const res = await fetch(`${baseUrl}/api/login`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({
+          email: cleanEmail,
+          password: cleanPassword,
+        }),
+      });
+
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        // Fallback for hardcoded credentials if backend is offline
+        if ((cleanEmail.toLowerCase() === ADMIN_EMAIL.toLowerCase() || cleanEmail.toLowerCase() === "admin@samin.edu") && cleanPassword === ADMIN_PASSWORD) {
+          localStorage.setItem("samin_admin_logged_in", "true");
+          setIsAuthed(true);
+          return;
+        }
+
+        const msg = data?.message || "Invalid email or password.";
+        setLoginError(msg);
+        return;
+      }
+
+      // Success from API
+      localStorage.setItem("samin_admin_logged_in", "true");
+      if (data?.token) {
+        localStorage.setItem("samin_auth_token", data.token);
+      }
+      if (data?.user) {
+        localStorage.setItem("samin_user", JSON.stringify(data.user));
+        setCurrentUser(data.user);
+      }
+      setIsAuthed(true);
+      setInitialLoading(true);
+      Promise.all([fetchTutorsFromApi(), fetchStudentsFromApi()]).finally(() => {
+        setInitialLoading(false);
+      });
+      showToast(data?.message || "Welcome back, Admin!");
+    } catch (err: any) {
+      console.error("Dashboard login error:", err);
+      // Fallback for hardcoded credentials if backend is offline
+      if ((cleanEmail.toLowerCase() === ADMIN_EMAIL.toLowerCase() || cleanEmail.toLowerCase() === "admin@samin.edu") && cleanPassword === ADMIN_PASSWORD) {
         localStorage.setItem("samin_admin_logged_in", "true");
         setIsAuthed(true);
-      } else {
-        setLoginError("Invalid credentials");
+        setInitialLoading(true);
+        Promise.all([fetchTutorsFromApi(), fetchStudentsFromApi()]).finally(() => {
+          setInitialLoading(false);
+        });
+        return;
       }
-    }, 700);
+
+      setLoginError(
+        err?.message?.includes("Failed to fetch")
+          ? `Unable to connect to backend server (${getBackendApiUrl()}).`
+          : (err?.message || "Login failed. Please try again.")
+      );
+    } finally {
+      setLoginLoading(false);
+    }
   };
 
   const handleLogout = () => {
     if (typeof window !== "undefined") {
       localStorage.removeItem("samin_admin_logged_in");
+      localStorage.removeItem("samin_auth_token");
+      localStorage.removeItem("samin_user");
       window.location.href = "/";
     }
   };
 
-  const approveApplicant = (id: string) => {
+  const approveApplicant = async (id: string) => {
     const app = applicants.find((a) => a.id === id);
     if (!app) return;
-    const newTutor: Tutor = {
-      id: `TUT-0${tutors.length + 1}`,
-      name: app.name,
-      school: app.degree,
-      subject: app.subjects.join(", "),
-      students: 0,
-      region: "UK \ud83c\uddec\ud83c\udde7",
-      img: "/images/tutor-1.jpg",
-      rate: "\u00a345/hr",
-    };
-    setTutors((prev) => [newTutor, ...prev]);
-    setApplicants((prev) => prev.filter((a) => a.id !== id));
-    setExpandedApplicant(null);
-    showToast(`\u2705 ${app.name} approved and added to the tutor roster!`);
+
+    try {
+      const baseUrl = getBackendApiUrl();
+      const token = typeof window !== "undefined" ? localStorage.getItem("samin_auth_token") : null;
+
+      if (token) {
+        const res = await fetch(`${baseUrl}/api/admin/tutors/${id}/status`, {
+          method: "PATCH",
+          headers: getAuthHeaders(),
+          body: JSON.stringify({ status: "approved" }),
+        });
+        if (!res.ok) {
+          const errData = await res.json().catch(() => null);
+          throw new Error(errData?.message || `Failed to update status on server (HTTP ${res.status})`);
+        }
+      }
+
+      const newTutor: Tutor = {
+        id: id.startsWith("TUT-") ? id : `TUT-${id}`,
+        name: app.name,
+        school: app.degree,
+        subject: app.subjects.join(", "),
+        students: 0,
+        region: "UK 🇬🇧",
+        img: "/images/tutor-1.jpg",
+        rate: "£45/hr",
+      };
+      setTutors((prev) => [newTutor, ...prev]);
+      setApplicants((prev) => prev.filter((a) => a.id !== id));
+      setExpandedApplicant(null);
+      setTutorStats((prev) => ({
+        ...prev,
+        pending: Math.max(0, prev.pending - 1),
+        approved: prev.approved + 1,
+      }));
+      showToast(`✅ ${app.name} approved and onboarded to active tutors!`);
+    } catch (err: any) {
+      console.error("Approve error:", err);
+      showToast(`⚠️ ${err.message || "Failed to update tutor status."}`);
+    }
   };
 
-  const declineApplicant = (id: string) => {
+  const declineApplicant = async (id: string) => {
     const app = applicants.find((a) => a.id === id);
-    setApplicants((prev) => prev.filter((a) => a.id !== id));
-    setExpandedApplicant(null);
-    if (app) showToast(`\u274c ${app.name}'s application has been declined.`);
+    if (!app) return;
+
+    try {
+      const baseUrl = getBackendApiUrl();
+      const token = typeof window !== "undefined" ? localStorage.getItem("samin_auth_token") : null;
+
+      if (token) {
+        const res = await fetch(`${baseUrl}/api/admin/tutors/${id}/status`, {
+          method: "PATCH",
+          headers: getAuthHeaders(),
+          body: JSON.stringify({ status: "rejected" }),
+        });
+        if (!res.ok) {
+          const errData = await res.json().catch(() => null);
+          throw new Error(errData?.message || `Failed to decline applicant on server (HTTP ${res.status})`);
+        }
+      }
+
+      setApplicants((prev) => prev.filter((a) => a.id !== id));
+      setExpandedApplicant(null);
+      setTutorStats((prev) => ({
+        ...prev,
+        pending: Math.max(0, prev.pending - 1),
+        rejected: prev.rejected + 1,
+      }));
+      showToast(`❌ ${app.name}'s application marked as rejected.`);
+    } catch (err: any) {
+      console.error("Decline error:", err);
+      showToast(`⚠️ ${err.message || "Failed to decline applicant."}`);
+    }
   };
 
-  const removeTutor = (id: string) => {
+  const removeTutor = async (id: string) => {
     const t = tutors.find((x) => x.id === id);
-    setTutors((prev) => prev.filter((x) => x.id !== id));
-    if (t) showToast(`🗑️ ${t.name} removed from the roster.`);
+    if (!t) return;
+
+    try {
+      const baseUrl = getBackendApiUrl();
+      const token = typeof window !== "undefined" ? localStorage.getItem("samin_auth_token") : null;
+
+      if (token) {
+        await fetch(`${baseUrl}/api/admin/tutors/${id}/status`, {
+          method: "PATCH",
+          headers: getAuthHeaders(),
+          body: JSON.stringify({ status: "rejected" }),
+        });
+      }
+
+      setTutors((prev) => prev.filter((x) => x.id !== id));
+      setTutorStats((prev) => ({
+        ...prev,
+        approved: Math.max(0, prev.approved - 1),
+        rejected: prev.rejected + 1,
+      }));
+      showToast(`🗑️ ${t.name} removed from the roster.`);
+    } catch (err) {
+      setTutors((prev) => prev.filter((x) => x.id !== id));
+      showToast(`🗑️ ${t.name} removed from the roster.`);
+    }
   };
 
   const handleAddTutorSubmit = (e: React.FormEvent) => {
@@ -267,11 +928,18 @@ export default function AdminDashboard() {
   const filteredTutors = tutors.filter((t) =>
     `${t.name} ${t.school} ${t.subject}`.toLowerCase().includes(searchTutors.toLowerCase())
   );
-  const filteredBookings = bookings.filter((b) =>
-    `${b.parent} ${b.student} ${b.subject} ${b.status}`.toLowerCase().includes(searchBookings.toLowerCase())
-  );
+  const filteredBookings = bookings.filter((b) => {
+    const matchesSearch = `${b.parent} ${b.student} ${b.subject} ${b.status} ${b.email} ${b.phone}`
+      .toLowerCase()
+      .includes(searchBookings.toLowerCase());
+    const matchesStatus =
+      studentStatusFilter === "all" ||
+      b.rawStatus === studentStatusFilter ||
+      b.status === studentStatusFilter;
+    return matchesSearch && matchesStatus;
+  });
 
-  const newInquiries = bookings.filter((b) => b.status === "New Inquiry").length;
+  const newInquiries = bookings.filter((b) => b.status === "New Inquiry" || b.status === "pending_match").length;
 
   /* ── Loading spinner ── */
   if (checking) {
@@ -304,7 +972,7 @@ export default function AdminDashboard() {
             )}
             <div style={{ marginBottom: "1rem" }}>
               <label style={{ fontSize: "0.8rem", fontWeight: 700, color: "#374151", display: "block", marginBottom: "0.4rem" }}>Email</label>
-              <input type="email" required value={loginEmail} onChange={(e) => setLoginEmail(e.target.value)} placeholder="saminhometutors@gmail.com"
+              <input type="email" required value={loginEmail} onChange={(e) => setLoginEmail(e.target.value)} placeholder="admin@samin.com"
                 style={{ width: "100%", padding: "0.65rem 0.85rem", border: "1.5px solid #d1d5db", borderRadius: "8px", fontSize: "0.9rem", outline: "none", boxSizing: "border-box" }} />
             </div>
             <div style={{ marginBottom: "1.5rem", position: "relative" }}>
@@ -331,9 +999,9 @@ export default function AdminDashboard() {
   /* ── Dashboard ── */
   const navItems: { tab: NavTab; icon: React.ReactNode; label: string; badge?: number }[] = [
     { tab: "overview",    icon: <LayoutDashboard size={18} />, label: "Overview" },
-    { tab: "applicants",  icon: <UserPlus size={18} />,        label: "Applicants",  badge: applicants.length },
-    { tab: "tutors",      icon: <GraduationCap size={18} />,   label: "Tutors",      badge: tutors.length },
-    { tab: "bookings",    icon: <Calendar size={18} />,        label: "Bookings",    badge: newInquiries },
+    { tab: "applicants",  icon: <UserPlus size={18} />,        label: "Applicants",  badge: (tutorStats.pending || applicants.length) || undefined },
+    { tab: "tutors",      icon: <GraduationCap size={18} />,   label: "Tutors",      badge: (tutorStats.approved || tutors.length) || undefined },
+    { tab: "bookings",    icon: <Calendar size={18} />,        label: "Students",    badge: (studentStats.pending_match || newInquiries) || undefined },
   ];
 
   return (
@@ -438,7 +1106,7 @@ export default function AdminDashboard() {
                 {activeTab === "overview" && "Dashboard Overview"}
                 {activeTab === "applicants" && "Tutor Applicants"}
                 {activeTab === "tutors" && "Enrolled Tutors"}
-                {activeTab === "bookings" && "Trial Booking Requests"}
+                {activeTab === "bookings" && "Student Registrations"}
               </h1>
               <p style={{ fontSize: "0.73rem", color: "#94a3b8", margin: 0 }}>
                 {new Date().toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
@@ -446,9 +1114,35 @@ export default function AdminDashboard() {
             </div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>
+            <button
+              onClick={() => {
+                fetchTutorsFromApi();
+                fetchStudentsFromApi();
+              }}
+              disabled={isLoadingTutors || isLoadingStudents}
+              title="Sync live tutor & student data from backend"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "0.35rem",
+                padding: "0.38rem 0.65rem",
+                borderRadius: "8px",
+                border: "1px solid #e2e8f0",
+                background: "#fff",
+                color: "#475569",
+                fontSize: "0.75rem",
+                fontWeight: 600,
+                cursor: (isLoadingTutors || isLoadingStudents) ? "not-allowed" : "pointer",
+              }}
+            >
+              <RefreshCw size={13} style={{ animation: (isLoadingTutors || isLoadingStudents) ? "spin 0.8s linear infinite" : "none" }} />
+              <span>Sync</span>
+            </button>
             <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", background: "#f0fdf9", border: "1px solid #99f6e4", borderRadius: "8px", padding: "0.38rem 0.75rem" }}>
               <ShieldCheck size={14} color="#0d9488" />
-              <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "#0d9488" }}>Admin Active</span>
+              <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "#0d9488" }}>
+                {currentUser?.name || "Admin"} ({currentUser?.role || "Active"})
+              </span>
             </div>
             <button
               onClick={handleLogout}
@@ -476,22 +1170,46 @@ export default function AdminDashboard() {
         {/* Content */}
         <main style={{ flex: 1, overflowY: "auto", padding: "1.5rem" }} className="page-enter">
 
+          {initialLoading ? (
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "55vh", gap: "1.25rem" }}>
+              <div style={{ position: "relative", width: "3.75rem", height: "3.75rem", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <div style={{ position: "absolute", inset: 0, border: "3.5px solid #e2e8f0", borderRadius: "50%" }} />
+                <div style={{ position: "absolute", inset: 0, border: "3.5px solid #20b2a4", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.75s linear infinite" }} />
+                <ShieldCheck size={24} color="#0d9488" />
+              </div>
+              <div style={{ textAlign: "center" }}>
+                <h3 style={{ fontSize: "1.1rem", fontWeight: 800, color: "#0f172a", margin: "0 0 0.35rem" }}>
+                  Loading Dashboard Data…
+                </h3>
+                <p style={{ fontSize: "0.82rem", color: "#64748b", margin: 0 }}>
+                  Fetching live tutors, applicants, and student registrations from server
+                </p>
+              </div>
+            </div>
+          ) : (
+            <>
           {/* ── OVERVIEW ─────────────────────────────────── */}
           {activeTab === "overview" && (
             <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
               {/* Stats */}
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(185px,1fr))", gap: "1rem" }}>
                 {[
-                  { icon: <GraduationCap size={22} color="#20b2a4" />, label: "Active Tutors", value: tutors.length, bg: "#f0fdf9", border: "#99f6e4" },
-                  { icon: <UserPlus size={22} color="#d97706" />, label: "Pending Applicants", value: applicants.length, bg: "#fffbeb", border: "#fde68a" },
-                  { icon: <Calendar size={22} color="#3b82f6" />, label: "Trial Requests", value: bookings.length, bg: "#eff6ff", border: "#bfdbfe" },
-                  { icon: <Star size={22} color="#8b5cf6" />, label: "Satisfaction Rate", value: "98%", bg: "#f5f3ff", border: "#ddd6fe" },
-                  { icon: <TrendingUp size={22} color="#10b981" />, label: "Students Helped", value: "5k+", bg: "#ecfdf5", border: "#a7f3d0" },
+                  { icon: <GraduationCap size={22} color="#20b2a4" />, label: "Active Tutors", value: tutorStats.approved ?? tutors.length, bg: "#f0fdf9", border: "#99f6e4" },
+                  { icon: <UserPlus size={22} color="#d97706" />, label: "Pending Applicants", value: tutorStats.pending ?? applicants.length, bg: "#fffbeb", border: "#fde68a" },
+                  { icon: <Calendar size={22} color="#3b82f6" />, label: "Student Registrations", value: studentStats.total ?? bookings.length, bg: "#eff6ff", border: "#bfdbfe" },
+                  { icon: <AlertCircle size={22} color="#ef4444" />, label: "Pending Matches", value: studentStats.pending_match ?? newInquiries, bg: "#fffbeb", border: "#fde68a" },
+                  { icon: <TrendingUp size={22} color="#10b981" />, label: "Matched Students", value: studentStats.matched ?? 0, bg: "#ecfdf5", border: "#a7f3d0" },
                 ].map(({ icon, label, value, bg, border }) => (
                   <div key={label} className="dash-card" style={{ padding: "1.15rem 1.3rem", display: "flex", alignItems: "center", gap: "1rem", border: `1.5px solid ${border}`, background: bg }}>
                     <div style={{ width: "2.8rem", height: "2.8rem", borderRadius: "10px", background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, boxShadow: "0 2px 6px rgba(0,0,0,0.06)" }}>{icon}</div>
                     <div>
-                      <div style={{ fontSize: "1.45rem", fontWeight: 800, color: "#0f172a", lineHeight: 1 }}>{value}</div>
+                      <div style={{ fontSize: "1.45rem", fontWeight: 800, color: "#0f172a", lineHeight: 1 }}>
+                        {(isLoadingTutors || isLoadingStudents) ? (
+                          <span style={{ display: "inline-block", width: "16px", height: "16px", border: "2px solid #20b2a4", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />
+                        ) : (
+                          value
+                        )}
+                      </div>
                       <div style={{ fontSize: "0.75rem", color: "#64748b", fontWeight: 500, marginTop: "0.1rem" }}>{label}</div>
                     </div>
                   </div>
@@ -520,28 +1238,39 @@ export default function AdminDashboard() {
               {/* Recent bookings preview */}
               <div className="dash-card" style={{ padding: "1.25rem 1.5rem" }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "1rem" }}>
-                  <h3 style={{ fontSize: "0.88rem", fontWeight: 700, color: "#0f172a" }}>Recent Trial Requests</h3>
+                  <h3 style={{ fontSize: "0.88rem", fontWeight: 700, color: "#0f172a" }}>Recent Student Registrations</h3>
                   <button onClick={() => setActiveTab("bookings")} style={{ background: "none", border: "none", color: "#20b2a4", fontWeight: 700, fontSize: "0.8rem", cursor: "pointer", display: "flex", alignItems: "center", gap: "0.2rem" }}>
                     View all <ChevronRight size={14} />
                   </button>
                 </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: "0.55rem" }}>
-                  {bookings.slice(0, 4).map((b) => (
-                    <div key={b.id} className="table-row" style={{ display: "flex", alignItems: "center", gap: "0.85rem", padding: "0.6rem 0.75rem", borderRadius: "8px", border: "1px solid #f1f5f9" }}>
-                      <div style={{ width: "34px", height: "34px", borderRadius: "50%", background: "linear-gradient(135deg,#20b2a4,#0d9488)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: "0.88rem", flexShrink: 0 }}>
-                        {b.parent.charAt(0)}
+                {isLoadingStudents ? (
+                  <div style={{ padding: "2.5rem 1rem", textAlign: "center", color: "#64748b" }}>
+                    <div style={{ width: "24px", height: "24px", border: "2.5px solid #20b2a4", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.7s linear infinite", margin: "0 auto 0.6rem" }} />
+                    <span style={{ fontSize: "0.82rem" }}>Loading student registrations…</span>
+                  </div>
+                ) : bookings.length === 0 ? (
+                  <div style={{ padding: "2.5rem 1rem", textAlign: "center", color: "#94a3b8", fontSize: "0.85rem" }}>
+                    No student registrations found yet.
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: "0.55rem" }}>
+                    {bookings.slice(0, 4).map((b) => (
+                      <div key={b.id} className="table-row" style={{ display: "flex", alignItems: "center", gap: "0.85rem", padding: "0.6rem 0.75rem", borderRadius: "8px", border: "1px solid #f1f5f9" }}>
+                        <div style={{ width: "34px", height: "34px", borderRadius: "50%", background: "linear-gradient(135deg,#20b2a4,#0d9488)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: "0.88rem", flexShrink: 0 }}>
+                          {b.parent.charAt(0)}
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: 700, fontSize: "0.83rem", color: "#0f172a", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{b.parent}</div>
+                          <div style={{ fontSize: "0.73rem", color: "#64748b" }}>{b.student} \u00b7 {b.subject}</div>
+                        </div>
+                        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "0.15rem", flexShrink: 0 }}>
+                          <span style={{ fontSize: "0.68rem", fontWeight: 700, padding: "0.15rem 0.5rem", borderRadius: "20px", ...statusStyle[b.status] }}>{b.status}</span>
+                          <span style={{ fontSize: "0.68rem", color: "#94a3b8" }}>{b.date}</span>
+                        </div>
                       </div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontWeight: 700, fontSize: "0.83rem", color: "#0f172a", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{b.parent}</div>
-                        <div style={{ fontSize: "0.73rem", color: "#64748b" }}>{b.student} \u00b7 {b.subject}</div>
-                      </div>
-                      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "0.15rem", flexShrink: 0 }}>
-                        <span style={{ fontSize: "0.68rem", fontWeight: 700, padding: "0.15rem 0.5rem", borderRadius: "20px", ...statusStyle[b.status] }}>{b.status}</span>
-                        <span style={{ fontSize: "0.68rem", color: "#94a3b8" }}>{b.date}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -552,30 +1281,65 @@ export default function AdminDashboard() {
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "0.75rem" }}>
                 <div className="search-box" style={{ flex: 1, maxWidth: "340px" }}>
                   <Search size={15} color="#94a3b8" />
-                  <input value={searchApplicants} onChange={(e) => setSearchApplicants(e.target.value)} placeholder="Search applicants\u2026" />
+                  <input value={searchApplicants} onChange={(e) => setSearchApplicants(e.target.value)} placeholder="Search applicants…" />
                 </div>
-                <span style={{ fontSize: "0.78rem", color: "#64748b", fontWeight: 600 }}>{filteredApplicants.length} pending</span>
+                <div style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>
+                  <span style={{ fontSize: "0.78rem", color: "#64748b", fontWeight: 600 }}>
+                    {isLoadingTutors ? "Loading..." : `${filteredApplicants.length} pending`}
+                  </span>
+                  <button
+                    onClick={fetchTutorsFromApi}
+                    disabled={isLoadingTutors}
+                    title="Reload live tutor applications from API"
+                    style={{
+                      background: "#f1f5f9",
+                      border: "1px solid #e2e8f0",
+                      borderRadius: "6px",
+                      padding: "0.35rem 0.65rem",
+                      fontSize: "0.75rem",
+                      fontWeight: 600,
+                      color: "#475569",
+                      cursor: isLoadingTutors ? "not-allowed" : "pointer",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "0.35rem",
+                    }}
+                  >
+                    <RefreshCw size={12} style={{ animation: isLoadingTutors ? "spin 0.8s linear infinite" : "none" }} />
+                    <span>Refresh</span>
+                  </button>
+                </div>
               </div>
 
-              {filteredApplicants.length === 0 ? (
+              {isLoadingTutors ? (
+                <div className="dash-card" style={{ padding: "3.5rem 2rem", textAlign: "center" }}>
+                  <div style={{ width: "32px", height: "32px", border: "3px solid #20b2a4", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.7s linear infinite", margin: "0 auto 0.75rem" }} />
+                  <p style={{ fontWeight: 700, color: "#0f172a", margin: "0 0 0.3rem" }}>Loading tutor applications…</p>
+                  <p style={{ fontSize: "0.82rem", color: "#64748b", margin: 0 }}>Fetching pending applications from server</p>
+                </div>
+              ) : filteredApplicants.length === 0 ? (
                 <div className="dash-card" style={{ padding: "3.5rem 2rem", textAlign: "center" }}>
                   <CheckCircle2 size={40} color="#20b2a4" style={{ marginBottom: "0.75rem" }} />
                   <p style={{ fontWeight: 700, color: "#0f172a", margin: "0 0 0.3rem" }}>All clear!</p>
-                  <p style={{ fontSize: "0.85rem", color: "#64748b", margin: 0 }}>No pending applicants right now.</p>
+                  <p style={{ fontSize: "0.85rem", color: "#64748b", margin: 0 }}>
+                    {searchApplicants ? "No applicants match your search." : "No pending applicants right now."}
+                  </p>
                 </div>
               ) : (
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(330px,1fr))", gap: "1rem" }}>
                   {filteredApplicants.map((app) => (
-                    <div key={app.id} className="dash-card" style={{ padding: "1.2rem", border: "1.5px solid #e2e8f0", cursor: "pointer" }}
-                      onClick={() => setExpandedApplicant(expandedApplicant === app.id ? null : app.id)}>
+                    <div key={app.id} className="dash-card" style={{ padding: "1.2rem", border: "1.5px solid #e2e8f0", cursor: "pointer", transition: "all 0.15s" }}
+                      onClick={() => openTutorDetail(app.id, app)}
+                      title="Click card to view full tutor profile dossier"
+                    >
                       {/* Header */}
                       <div style={{ display: "flex", alignItems: "flex-start", gap: "0.8rem", marginBottom: "0.8rem" }}>
                         <div style={{ width: "44px", height: "44px", borderRadius: "50%", background: "linear-gradient(135deg,#20b2a4,#0d9488)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: "1.1rem", flexShrink: 0 }}>
                           {app.name.charAt(0)}
                         </div>
-                        <div style={{ flex: 1 }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ fontWeight: 800, fontSize: "0.93rem", color: "#0f172a" }}>{app.name}</div>
-                          <div style={{ fontSize: "0.76rem", color: "#64748b" }}>{app.degree}</div>
+                          <div style={{ fontSize: "0.76rem", color: "#64748b", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{app.degree}</div>
                           <div style={{ fontSize: "0.7rem", color: "#94a3b8", marginTop: "0.1rem" }}>Applied: {app.appliedAt}</div>
                         </div>
                         <span style={{ background: "#fef3c7", color: "#b45309", fontSize: "0.68rem", fontWeight: 700, padding: "0.15rem 0.5rem", borderRadius: "10px", flexShrink: 0 }}>Pending</span>
@@ -591,23 +1355,21 @@ export default function AdminDashboard() {
                         ))}
                       </div>
 
-                      {/* Email */}
-                      <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontSize: "0.76rem", color: "#64748b", marginBottom: "0.8rem" }}>
-                        <Mail size={12} /> {app.email}
-                      </div>
-
-                      {/* Expanded bio */}
-                      {expandedApplicant === app.id && (
-                        <div style={{ background: "#f8fafc", borderRadius: "8px", padding: "0.7rem 0.85rem", marginBottom: "0.8rem", fontSize: "0.78rem", color: "#475569", lineHeight: 1.65, borderLeft: "3px solid #20b2a4" }}>
-                          {app.notes}
+                      {/* Contact Info Preview */}
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.4rem", fontSize: "0.76rem", color: "#64748b", marginBottom: "0.8rem" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
+                          <Mail size={12} /> {app.email}
                         </div>
-                      )}
+                        <span style={{ color: "#20b2a4", fontWeight: 700, fontSize: "0.72rem", display: "inline-flex", alignItems: "center", gap: "0.2rem" }}>
+                          <Eye size={12} /> View Profile ›
+                        </span>
+                      </div>
 
                       {/* Actions */}
                       <div style={{ display: "flex", gap: "0.45rem" }}>
                         <button onClick={(e) => { e.stopPropagation(); approveApplicant(app.id); }}
                           className="action-btn" style={{ background: "#d1fae5", color: "#065f46", flex: 1, justifyContent: "center" }}>
-                          <CheckCircle2 size={13} /> Approve & Onboard
+                          <CheckCircle2 size={13} /> Approve &amp; Onboard
                         </button>
                         <button onClick={(e) => { e.stopPropagation(); declineApplicant(app.id); }}
                           className="action-btn" style={{ background: "#fee2e2", color: "#991b1b" }}>
@@ -632,6 +1394,27 @@ export default function AdminDashboard() {
                 <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
                   <span style={{ fontSize: "0.78rem", color: "#64748b", fontWeight: 600 }}>{filteredTutors.length} enrolled</span>
                   <button
+                    onClick={fetchTutorsFromApi}
+                    disabled={isLoadingTutors}
+                    title="Reload live tutors from API"
+                    style={{
+                      background: "#f1f5f9",
+                      border: "1px solid #e2e8f0",
+                      borderRadius: "6px",
+                      padding: "0.45rem 0.65rem",
+                      fontSize: "0.75rem",
+                      fontWeight: 600,
+                      color: "#475569",
+                      cursor: isLoadingTutors ? "not-allowed" : "pointer",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "0.35rem",
+                    }}
+                  >
+                    <RefreshCw size={12} style={{ animation: isLoadingTutors ? "spin 0.8s linear infinite" : "none" }} />
+                    <span>Refresh</span>
+                  </button>
+                  <button
                     onClick={() => setIsAddTutorOpen(true)}
                     style={{
                       background: "linear-gradient(135deg,#20b2a4,#0d9488)",
@@ -654,133 +1437,282 @@ export default function AdminDashboard() {
                 </div>
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(270px,1fr))", gap: "1rem" }}>
-                {filteredTutors.map((t) => (
-                  <div key={t.id} className="dash-card" style={{ padding: "1.2rem", border: "1.5px solid #e2e8f0" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "0.8rem", marginBottom: "0.85rem" }}>
-                      <div style={{ width: "48px", height: "48px", borderRadius: "50%", overflow: "hidden", border: "2px solid #20b2a4", flexShrink: 0 }}>
-                        <Image src={t.img} alt={t.name} width={48} height={48} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                      </div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontWeight: 800, fontSize: "0.88rem", color: "#0f172a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.name}</div>
-                        <div style={{ fontSize: "0.73rem", color: "#64748b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.school}</div>
-                      </div>
-                    </div>
-
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: "0.35rem", marginBottom: "0.75rem" }}>
-                      {t.subject.split(",").map((s) => (
-                        <span key={s} style={{ fontSize: "0.7rem", background: "#f0fdf9", color: "#0d9488", border: "1px solid #99f6e4", padding: "0.12rem 0.45rem", borderRadius: "20px", fontWeight: 600 }}>{s.trim()}</span>
-                      ))}
-                    </div>
-
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.4rem", marginBottom: "0.85rem" }}>
-                      {[
-                        { l: "Students", v: `${t.students} active` },
-                        { l: "Rate", v: t.rate },
-                        { l: "Region", v: t.region },
-                        { l: "ID", v: t.id },
-                      ].map(({ l, v }) => (
-                        <div key={l} style={{ background: "#f8fafc", borderRadius: "6px", padding: "0.32rem 0.55rem" }}>
-                          <div style={{ fontSize: "0.62rem", color: "#94a3b8", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em" }}>{l}</div>
-                          <div style={{ fontSize: "0.76rem", color: "#0f172a", fontWeight: 700 }}>{v}</div>
+              {isLoadingTutors ? (
+                <div className="dash-card" style={{ padding: "3.5rem 2rem", textAlign: "center" }}>
+                  <div style={{ width: "32px", height: "32px", border: "3px solid #20b2a4", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.7s linear infinite", margin: "0 auto 0.75rem" }} />
+                  <p style={{ fontWeight: 700, color: "#0f172a", margin: "0 0 0.3rem" }}>Loading enrolled tutors…</p>
+                  <p style={{ fontSize: "0.82rem", color: "#64748b", margin: 0 }}>Fetching active tutor roster from server</p>
+                </div>
+              ) : filteredTutors.length === 0 ? (
+                <div className="dash-card" style={{ padding: "3.5rem 2rem", textAlign: "center" }}>
+                  <GraduationCap size={40} color="#94a3b8" style={{ marginBottom: "0.75rem" }} />
+                  <p style={{ fontWeight: 700, color: "#0f172a", margin: "0 0 0.3rem" }}>No enrolled tutors yet</p>
+                  <p style={{ fontSize: "0.85rem", color: "#64748b", margin: 0 }}>
+                    {searchTutors ? "No tutors match your search criteria." : "Approve pending applicants or click 'Add New Tutor' above."}
+                  </p>
+                </div>
+              ) : (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(270px,1fr))", gap: "1rem" }}>
+                  {filteredTutors.map((t) => {
+                    const attachedStudents = getAttachedStudentsForTutor(t.id, t.name, t);
+                    const studentCount = attachedStudents.length;
+                    return (
+                      <div key={t.id} className="dash-card" style={{ padding: "1.2rem", border: "1.5px solid #e2e8f0", cursor: "pointer", transition: "all 0.15s" }}
+                        onClick={() => openTutorDetail(t.id, t)}
+                        title="Click card to view full tutor profile dossier"
+                      >
+                        <div style={{ display: "flex", alignItems: "center", gap: "0.8rem", marginBottom: "0.85rem" }}>
+                          <div style={{ width: "48px", height: "48px", borderRadius: "50%", overflow: "hidden", border: "2px solid #20b2a4", flexShrink: 0 }}>
+                            <Image src={t.img} alt={t.name} width={48} height={48} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                          </div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontWeight: 800, fontSize: "0.88rem", color: "#0f172a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.name}</div>
+                            <div style={{ fontSize: "0.73rem", color: "#64748b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.school}</div>
+                          </div>
+                          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "0.25rem", flexShrink: 0 }}>
+                            <span style={{ background: "#d1fae5", color: "#065f46", fontSize: "0.68rem", fontWeight: 700, padding: "0.15rem 0.5rem", borderRadius: "10px" }}>Active</span>
+                            <span style={{
+                              background: studentCount > 0 ? "#ecfdf5" : "#f1f5f9",
+                              color: studentCount > 0 ? "#065f46" : "#64748b",
+                              border: `1px solid ${studentCount > 0 ? "#a7f3d0" : "#e2e8f0"}`,
+                              fontSize: "0.65rem",
+                              fontWeight: 700,
+                              padding: "0.1rem 0.45rem",
+                              borderRadius: "8px",
+                              whiteSpace: "nowrap",
+                            }}>
+                              Student {studentCount} active
+                            </span>
+                          </div>
                         </div>
-                      ))}
-                    </div>
 
-                    <button onClick={() => removeTutor(t.id)}
-                      className="action-btn" style={{ background: "#fee2e2", color: "#991b1b", width: "100%", justifyContent: "center" }}>
-                      <Trash2 size={13} /> Remove from Roster
-                    </button>
-                  </div>
-                ))}
-              </div>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: "0.35rem", marginBottom: "0.75rem" }}>
+                          {t.subject.split(",").map((s) => (
+                            <span key={s} style={{ fontSize: "0.7rem", background: "#f0fdf9", color: "#0d9488", border: "1px solid #99f6e4", padding: "0.12rem 0.45rem", borderRadius: "20px", fontWeight: 600 }}>{s.trim()}</span>
+                          ))}
+                        </div>
+
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.4rem", marginBottom: "0.75rem" }}>
+                          {[
+                            { l: "Students", v: `Student ${studentCount} active` },
+                            { l: "Rate", v: t.rate },
+                            { l: "Region", v: t.region },
+                            { l: "ID", v: `#${t.id}` },
+                          ].map(({ l, v }) => (
+                            <div key={l} style={{ background: "#f8fafc", borderRadius: "6px", padding: "0.32rem 0.55rem" }}>
+                              <div style={{ fontSize: "0.62rem", color: "#94a3b8", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em" }}>{l}</div>
+                              <div style={{ fontSize: "0.76rem", color: l === "Students" && studentCount > 0 ? "#0d9488" : "#0f172a", fontWeight: 700 }}>{v}</div>
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Attached Student(s) Preview */}
+                        <div style={{ background: attachedStudents.length > 0 ? "#f0fdf9" : "#f8fafc", border: `1px solid ${attachedStudents.length > 0 ? "#99f6e4" : "#e2e8f0"}`, borderRadius: "8px", padding: "0.45rem 0.65rem", marginBottom: "0.75rem" }}>
+                          <div style={{ fontSize: "0.64rem", fontWeight: 800, color: attachedStudents.length > 0 ? "#0d9488" : "#64748b", textTransform: "uppercase", letterSpacing: "0.03em", marginBottom: "0.25rem", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                            <span style={{ display: "inline-flex", alignItems: "center", gap: "0.3rem" }}>
+                              <Users size={11} /> Attached Student{attachedStudents.length === 1 ? "" : "s"}
+                            </span>
+                            <span style={{ fontWeight: 700, color: attachedStudents.length > 0 ? "#065f46" : "#94a3b8" }}>
+                              Student {studentCount} active
+                            </span>
+                          </div>
+                          {attachedStudents.length > 0 ? (
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: "0.25rem" }}>
+                              {attachedStudents.map((st) => (
+                                <span key={st.id} style={{ fontSize: "0.68rem", fontWeight: 700, color: "#0f172a", background: "#fff", border: "1px solid #99f6e4", borderRadius: "10px", padding: "0.12rem 0.45rem", whiteSpace: "nowrap", display: "inline-flex", alignItems: "center", gap: "0.2rem" }}>
+                                  <span>👤</span> {st.name}
+                                </span>
+                              ))}
+                            </div>
+                          ) : (
+                            <div style={{ fontSize: "0.68rem", color: "#94a3b8", fontStyle: "italic" }}>
+                              No students attached yet
+                            </div>
+                          )}
+                        </div>
+
+                        <div style={{ display: "flex", gap: "0.45rem" }}>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); openTutorDetail(t.id, t); }}
+                            className="action-btn"
+                            style={{ background: "#f0fdf9", color: "#0d9488", border: "1px solid #99f6e4", flex: 1, justifyContent: "center" }}
+                          >
+                            <Eye size={13} /> View Profile
+                          </button>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); removeTutor(t.id); }}
+                            className="action-btn"
+                            style={{ background: "#fee2e2", color: "#991b1b" }}
+                            title="Remove from roster"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
 
-          {/* ── BOOKINGS ─────────────────────────────────── */}
+          {/* ── BOOKINGS / STUDENT REGISTRATIONS ───────────── */}
           {activeTab === "bookings" && (
             <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }} className="page-enter">
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "0.75rem" }}>
                 <div className="search-box" style={{ flex: 1, maxWidth: "340px" }}>
                   <Search size={15} color="#94a3b8" />
-                  <input value={searchBookings} onChange={(e) => setSearchBookings(e.target.value)} placeholder="Search bookings\u2026" />
+                  <input value={searchBookings} onChange={(e) => setSearchBookings(e.target.value)} placeholder="Search students / registrations\u2026" />
                 </div>
-                <span style={{ fontSize: "0.78rem", color: "#64748b", fontWeight: 600 }}>{filteredBookings.length} request{filteredBookings.length !== 1 ? "s" : ""}</span>
+                <div style={{ display: "flex", alignItems: "center", gap: "0.45rem", flexWrap: "wrap" }}>
+                  {[
+                    { id: "all", label: `All (${bookings.length})` },
+                    { id: "pending_match", label: `Pending Match (${studentStats.pending_match || 0})` },
+                    { id: "matched", label: `Matched (${studentStats.matched || 0})` },
+                    { id: "completed", label: `Completed (${studentStats.total ? studentStats.total - (studentStats.pending_match + studentStats.matched + studentStats.cancelled) : 0})` },
+                    { id: "cancelled", label: `Cancelled (${studentStats.cancelled || 0})` },
+                  ].map((tab) => (
+                    <button
+                      key={tab.id}
+                      onClick={() => setStudentStatusFilter(tab.id)}
+                      style={{
+                        padding: "0.3rem 0.65rem",
+                        borderRadius: "20px",
+                        fontSize: "0.74rem",
+                        fontWeight: 700,
+                        border: "1px solid",
+                        cursor: "pointer",
+                        borderColor: studentStatusFilter === tab.id ? "#20b2a4" : "#e2e8f0",
+                        background: studentStatusFilter === tab.id ? "#f0fdf9" : "#fff",
+                        color: studentStatusFilter === tab.id ? "#0d9488" : "#64748b",
+                      }}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
+                  <button
+                    onClick={() => fetchStudentsFromApi()}
+                    style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: "8px", padding: "0.35rem 0.65rem", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "0.3rem", fontSize: "0.75rem", color: "#64748b", fontWeight: 600 }}
+                  >
+                    <RefreshCw size={13} className={isLoadingStudents ? "spin" : ""} /> Refresh
+                  </button>
+                </div>
               </div>
 
               {/* Desktop table */}
-              <div className="dash-card" style={{ overflow: "hidden" }}>
-                <div style={{ overflowX: "auto" }}>
-                  <table style={{ width: "100%", borderCollapse: "collapse", minWidth: "700px" }}>
-                    <thead>
-                      <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
-                        {["ID", "Parent / Student", "Subject & Level", "Country", "Tutor Assigned", "Status", "Date"].map((h) => (
-                          <th key={h} style={{ padding: "0.7rem 1rem", fontSize: "0.7rem", fontWeight: 700, color: "#64748b", textAlign: "left", textTransform: "uppercase", letterSpacing: "0.04em", whiteSpace: "nowrap" }}>{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredBookings.map((b, i) => (
-                        <tr key={b.id} className="table-row" style={{ borderBottom: i < filteredBookings.length - 1 ? "1px solid #f1f5f9" : "none" }}>
-                          <td style={{ padding: "0.85rem 1rem", fontSize: "0.72rem", fontWeight: 700, color: "#64748b", fontFamily: "monospace" }}>{b.id}</td>
-                          <td style={{ padding: "0.85rem 1rem" }}>
-                            <div style={{ fontWeight: 700, fontSize: "0.83rem", color: "#0f172a" }}>{b.parent}</div>
-                            <div style={{ fontSize: "0.73rem", color: "#64748b" }}>{b.student}</div>
-                          </td>
-                          <td style={{ padding: "0.85rem 1rem" }}>
-                            <div style={{ fontWeight: 600, fontSize: "0.8rem", color: "#0f172a" }}>{b.subject}</div>
-                            <div style={{ fontSize: "0.72rem", color: "#94a3b8" }}>{b.level}</div>
-                          </td>
-                          <td style={{ padding: "0.85rem 1rem", fontSize: "0.8rem", color: "#0f172a", whiteSpace: "nowrap" }}>{b.country}</td>
-                          <td style={{ padding: "0.85rem 1rem", fontSize: "0.8rem" }}>
-                            <select
-                              value={b.tutorAssigned}
-                              onChange={(e) => assignTutorToBooking(b.id, e.target.value)}
-                              style={{
-                                padding: "0.25rem 0.5rem",
-                                borderRadius: "6px",
-                                border: "1px solid #d1d5db",
-                                fontSize: "0.78rem",
-                                fontWeight: b.tutorAssigned === "Pending Match" ? 700 : 500,
-                                color: b.tutorAssigned === "Pending Match" ? "#d97706" : "#0f172a",
-                                background: "#fff",
-                                cursor: "pointer",
-                              }}
-                            >
-                              <option value="Pending Match">Pending Match</option>
-                              {tutors.map((t) => (
-                                <option key={t.id} value={t.name}>{t.name}</option>
-                              ))}
-                            </select>
-                          </td>
-                          <td style={{ padding: "0.85rem 1rem" }}>
-                            <select
-                              value={b.status}
-                              onChange={(e) => updateBookingStatus(b.id, e.target.value as BookingStatus)}
-                              style={{
-                                fontSize: "0.7rem",
-                                fontWeight: 700,
-                                padding: "0.2rem 0.55rem",
-                                borderRadius: "20px",
-                                border: "none",
-                                cursor: "pointer",
-                                ...statusStyle[b.status],
-                              }}
-                            >
-                              <option value="New Inquiry">New Inquiry</option>
-                              <option value="Diagnostic Scheduled">Diagnostic Scheduled</option>
-                              <option value="Tutor Matched">Tutor Matched</option>
-                              <option value="Active Student">Active Student</option>
-                            </select>
-                          </td>
-                          <td style={{ padding: "0.85rem 1rem", fontSize: "0.73rem", color: "#94a3b8", whiteSpace: "nowrap" }}>{b.date}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+              {isLoadingStudents ? (
+                <div className="dash-card" style={{ padding: "3.5rem 2rem", textAlign: "center" }}>
+                  <div style={{ width: "32px", height: "32px", border: "3px solid #20b2a4", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.7s linear infinite", margin: "0 auto 0.75rem" }} />
+                  <p style={{ fontWeight: 700, color: "#0f172a", margin: "0 0 0.3rem" }}>Loading student registrations…</p>
+                  <p style={{ fontSize: "0.82rem", color: "#64748b", margin: 0 }}>Fetching student inquiries and assigned tutors</p>
                 </div>
-              </div>
+              ) : filteredBookings.length === 0 ? (
+                <div className="dash-card" style={{ padding: "3.5rem 2rem", textAlign: "center" }}>
+                  <Calendar size={40} color="#94a3b8" style={{ marginBottom: "0.75rem" }} />
+                  <p style={{ fontWeight: 700, color: "#0f172a", margin: "0 0 0.3rem" }}>No registrations found</p>
+                  <p style={{ fontSize: "0.85rem", color: "#64748b", margin: 0 }}>
+                    {searchBookings || studentStatusFilter !== "all"
+                      ? "No student registrations match your filter criteria."
+                      : "No students registered yet."}
+                  </p>
+                </div>
+              ) : (
+                <div className="dash-card" style={{ overflow: "hidden" }}>
+                  <div style={{ overflowX: "auto" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse", minWidth: "750px" }}>
+                      <thead>
+                        <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
+                          {["ID", "Student / Parent", "Subject & Level", "Contact", "Matching Status", "Date", "Action"].map((h) => (
+                            <th key={h} style={{ padding: "0.7rem 1rem", fontSize: "0.7rem", fontWeight: 700, color: "#64748b", textAlign: "left", textTransform: "uppercase", letterSpacing: "0.04em", whiteSpace: "nowrap" }}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredBookings.map((b, i) => {
+                          const currentBadge = statusStyle[b.status] || { bg: "#f1f5f9", color: "#475569", label: b.status };
+                          return (
+                            <tr
+                              key={b.id}
+                              className="table-row"
+                              onClick={() => openStudentDetail(b.id, b)}
+                              style={{ borderBottom: i < filteredBookings.length - 1 ? "1px solid #f1f5f9" : "none", cursor: "pointer" }}
+                            >
+                              <td style={{ padding: "0.85rem 1rem", fontSize: "0.72rem", fontWeight: 700, color: "#64748b", fontFamily: "monospace" }}>#{b.id}</td>
+                              <td style={{ padding: "0.85rem 1rem" }}>
+                                <div style={{ fontWeight: 700, fontSize: "0.84rem", color: "#0f172a" }}>{b.student}</div>
+                                <div style={{ fontSize: "0.73rem", color: "#64748b" }}>Parent: {b.parent}</div>
+                              </td>
+                              <td style={{ padding: "0.85rem 1rem" }}>
+                                <div style={{ fontWeight: 600, fontSize: "0.8rem", color: "#0f172a" }}>{b.subject}</div>
+                                <div style={{ fontSize: "0.72rem", color: "#94a3b8" }}>{b.level}</div>
+                              </td>
+                              <td style={{ padding: "0.85rem 1rem" }}>
+                                <div style={{ fontSize: "0.78rem", color: "#0f172a", fontWeight: 500 }}>{b.email}</div>
+                                <div style={{ fontSize: "0.72rem", color: "#64748b" }}>{b.phone}</div>
+                              </td>
+                              <td style={{ padding: "0.85rem 1rem" }} onClick={(e) => e.stopPropagation()}>
+                                <select
+                                  value={b.rawStatus || b.status}
+                                  onChange={(e) => updateStudentStatusApi(b.id, e.target.value)}
+                                  style={{
+                                    fontSize: "0.72rem",
+                                    fontWeight: 700,
+                                    padding: "0.25rem 0.65rem",
+                                    borderRadius: "20px",
+                                    border: "1px solid rgba(0,0,0,0.08)",
+                                    cursor: "pointer",
+                                    background: currentBadge.bg,
+                                    color: currentBadge.color,
+                                  }}
+                                >
+                                  <option value="pending_match">Pending Match</option>
+                                  <option value="matched">Matched</option>
+                                  <option value="completed">Completed</option>
+                                  <option value="cancelled">Cancelled</option>
+                                </select>
+                                {/* Compact tutor pills below status */}
+                                {Array.isArray(b.assignedTutors) && b.assignedTutors.length > 0 && (
+                                  <div style={{ display: "flex", flexDirection: "column", gap: "0.2rem", marginTop: "0.35rem" }}>
+                                    {b.assignedTutors.map((t) => (
+                                      <span key={t.id} style={{ display: "inline-flex", alignItems: "center", gap: "0.25rem", fontSize: "0.66rem", background: "#f0fdf9", color: "#0d9488", border: "1px solid #99f6e4", padding: "0.1rem 0.45rem", borderRadius: "20px", fontWeight: 700, whiteSpace: "nowrap" }}>
+                                        <GraduationCap size={10} /> {t.name}{t.subject ? ` · ${t.subject}` : ""}
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+                              </td>
+                              <td style={{ padding: "0.85rem 1rem", fontSize: "0.73rem", color: "#94a3b8", whiteSpace: "nowrap" }}>{b.date}</td>
+                              <td style={{ padding: "0.85rem 1rem" }} onClick={(e) => e.stopPropagation()}>
+                                <button
+                                  onClick={() => openStudentDetail(b.id, b)}
+                                  style={{
+                                    background: "#f0fdf9",
+                                    border: "1px solid #99f6e4",
+                                    color: "#0d9488",
+                                    borderRadius: "6px",
+                                    padding: "0.3rem 0.65rem",
+                                    fontSize: "0.75rem",
+                                    fontWeight: 700,
+                                    cursor: "pointer",
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: "0.3rem",
+                                  }}
+                                >
+                                  <Eye size={12} /> View Profile
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
             </div>
+          )}
+            </>
           )}
 
         </main>
@@ -872,6 +1804,793 @@ export default function AdminDashboard() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── Tutor Profile Detail Modal (GET /api/admin/tutors/{id}) ── */}
+      {isDetailOpen && selectedTutor && (
+        <div
+          className="modal-overlay"
+          onClick={() => setIsDetailOpen(false)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15,23,42,0.65)",
+            backdropFilter: "blur(4px)",
+            zIndex: 1000,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "1rem",
+            animation: "fadeUp 0.2s ease",
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "100%",
+              maxWidth: "600px",
+              background: "#fff",
+              borderRadius: "16px",
+              boxShadow: "0 25px 60px rgba(0,0,0,0.25)",
+              overflow: "hidden",
+              maxHeight: "90vh",
+              display: "flex",
+              flexDirection: "column",
+            }}
+          >
+            {/* Header */}
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                padding: "1.1rem 1.5rem",
+                borderBottom: "1px solid #e2e8f0",
+                background: "linear-gradient(135deg, #f0fdf9, #f8fafc)",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>
+                <div style={{ width: "2rem", height: "2rem", borderRadius: "50%", background: "rgba(32,178,164,0.15)", color: "#0d9488", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <GraduationCap size={16} />
+                </div>
+                <div>
+                  <h2 style={{ fontSize: "1.05rem", fontWeight: 800, color: "#0f172a", margin: 0 }}>
+                    Tutor Profile Dossier
+                  </h2>
+                  <p style={{ fontSize: "0.72rem", color: "#64748b", margin: 0 }}>
+                    Full verified records via Admin Management API
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsDetailOpen(false)}
+                aria-label="Close"
+                style={{
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                  color: "#64748b",
+                  padding: "0.3rem",
+                  borderRadius: "6px",
+                }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Scrollable Content */}
+            <div style={{ padding: "1.5rem", overflowY: "auto", display: "flex", flexDirection: "column", gap: "1.25rem" }}>
+              {loadingDetail && (
+                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.55rem 0.85rem", background: "#f0fdf9", border: "1px solid #99f6e4", borderRadius: "8px", fontSize: "0.78rem", color: "#0d9488" }}>
+                  <span style={{ display: "inline-block", width: "12px", height: "12px", border: "2px solid #0d9488", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />
+                  <span>Syncing profile from /api/admin/tutors/{selectedTutor.id}...</span>
+                </div>
+              )}
+
+              {/* Profile Card Header */}
+              <div style={{ display: "flex", alignItems: "center", gap: "1rem", background: "#f8fafc", padding: "1.2rem", borderRadius: "12px", border: "1px solid #e2e8f0" }}>
+                <div style={{ width: "64px", height: "64px", borderRadius: "50%", background: "linear-gradient(135deg,#20b2a4,#0d9488)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: "1.6rem", flexShrink: 0, boxShadow: "0 4px 12px rgba(32,178,164,0.3)" }}>
+                  {selectedTutor.name?.charAt(0) || "T"}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.6rem", flexWrap: "wrap", marginBottom: "0.2rem" }}>
+                    <h3 style={{ fontSize: "1.2rem", fontWeight: 800, color: "#0f172a", margin: 0 }}>
+                      {selectedTutor.name}
+                    </h3>
+                    <span style={{
+                      fontSize: "0.68rem",
+                      fontWeight: 800,
+                      padding: "0.15rem 0.55rem",
+                      borderRadius: "12px",
+                      textTransform: "uppercase",
+                      letterSpacing: "0.03em",
+                      background: selectedTutor.tutor_profile?.approval_status === "approved" ? "#d1fae5" : selectedTutor.tutor_profile?.approval_status === "rejected" ? "#fee2e2" : "#fef3c7",
+                      color: selectedTutor.tutor_profile?.approval_status === "approved" ? "#065f46" : selectedTutor.tutor_profile?.approval_status === "rejected" ? "#991b1b" : "#b45309",
+                    }}>
+                      {selectedTutor.tutor_profile?.approval_status || "Pending"}
+                    </span>
+                    <span style={{
+                      fontSize: "0.72rem",
+                      fontWeight: 700,
+                      padding: "0.15rem 0.6rem",
+                      borderRadius: "12px",
+                      background: modalAttachedStudents.length > 0 ? "#ecfdf5" : "#f1f5f9",
+                      color: modalAttachedStudents.length > 0 ? "#065f46" : "#64748b",
+                      border: `1px solid ${modalAttachedStudents.length > 0 ? "#a7f3d0" : "#cbd5e1"}`,
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "0.3rem",
+                    }}>
+                      <Users size={12} /> Student {modalAttachedStudents.length} active
+                    </span>
+                  </div>
+                  <div style={{ fontSize: "0.78rem", color: "#64748b" }}>
+                    ID: #{selectedTutor.id} • Role: {selectedTutor.role || "tutor"}
+                  </div>
+                </div>
+              </div>
+
+              {/* Contact Information */}
+              <div>
+                <h4 style={{ fontSize: "0.82rem", fontWeight: 700, color: "#374151", marginBottom: "0.55rem", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                  Contact Information
+                </h4>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: "0.65rem" }}>
+                  <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: "8px", padding: "0.65rem 0.85rem", display: "flex", alignItems: "center", gap: "0.55rem" }}>
+                    <Mail size={15} color="#20b2a4" style={{ flexShrink: 0 }} />
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: "0.65rem", color: "#94a3b8", fontWeight: 600 }}>Email Address</div>
+                      <a href={`mailto:${selectedTutor.email}`} style={{ fontSize: "0.82rem", color: "#0f172a", fontWeight: 600, textDecoration: "none", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", display: "block" }}>
+                        {selectedTutor.email || "Not specified"}
+                      </a>
+                    </div>
+                  </div>
+
+                  <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: "8px", padding: "0.65rem 0.85rem", display: "flex", alignItems: "center", gap: "0.55rem" }}>
+                    <Phone size={15} color="#20b2a4" style={{ flexShrink: 0 }} />
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: "0.65rem", color: "#94a3b8", fontWeight: 600 }}>Phone / WhatsApp</div>
+                      <a href={selectedTutor.phone ? `tel:${selectedTutor.phone}` : undefined} style={{ fontSize: "0.82rem", color: "#0f172a", fontWeight: 600, textDecoration: "none" }}>
+                        {selectedTutor.phone || "Not specified"}
+                      </a>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Academic & Experience */}
+              <div>
+                <h4 style={{ fontSize: "0.82rem", fontWeight: 700, color: "#374151", marginBottom: "0.55rem", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                  Qualifications &amp; Experience
+                </h4>
+                <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: "8px", padding: "0.85rem 1rem", display: "flex", flexDirection: "column", gap: "0.6rem" }}>
+                  <div>
+                    <div style={{ fontSize: "0.68rem", color: "#94a3b8", fontWeight: 600 }}>Highest Qualification / Alma Mater</div>
+                    <div style={{ fontSize: "0.9rem", fontWeight: 700, color: "#0f172a" }}>
+                      {selectedTutor.tutor_profile?.qualification || "Qualified Educator"}
+                    </div>
+                  </div>
+                  {selectedTutor.tutor_profile?.years_of_experience && (
+                    <div style={{ borderTop: "1px solid #f1f5f9", paddingTop: "0.5rem" }}>
+                      <div style={{ fontSize: "0.68rem", color: "#94a3b8", fontWeight: 600 }}>Years of Teaching Experience</div>
+                      <div style={{ fontSize: "0.85rem", fontWeight: 600, color: "#334155" }}>
+                        {selectedTutor.tutor_profile.years_of_experience}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Attached Student(s) */}
+              <div>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.55rem", flexWrap: "wrap", gap: "0.4rem" }}>
+                  <h4 style={{ fontSize: "0.82rem", fontWeight: 700, color: "#374151", margin: 0, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                    Attached Student(s)
+                  </h4>
+                  <span style={{
+                    fontSize: "0.72rem",
+                    fontWeight: 700,
+                    padding: "0.15rem 0.55rem",
+                    borderRadius: "10px",
+                    background: modalAttachedStudents.length > 0 ? "#d1fae5" : "#f1f5f9",
+                    color: modalAttachedStudents.length > 0 ? "#065f46" : "#64748b",
+                    border: `1px solid ${modalAttachedStudents.length > 0 ? "#99f6e4" : "#e2e8f0"}`,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "0.3rem",
+                  }}>
+                    <Users size={12} /> Student {modalAttachedStudents.length} active
+                  </span>
+                </div>
+
+                {modalAttachedStudents.length === 0 ? (
+                  <div style={{ background: "#f8fafc", border: "1px dashed #cbd5e1", borderRadius: "10px", padding: "1.2rem", textAlign: "center" }}>
+                    <Users size={22} color="#94a3b8" style={{ marginBottom: "0.35rem" }} />
+                    <div style={{ fontSize: "0.82rem", fontWeight: 700, color: "#475569" }}>No students attached yet</div>
+                    <div style={{ fontSize: "0.74rem", color: "#94a3b8", marginTop: "0.2rem" }}>
+                      Assign students to {selectedTutor.name} from the Bookings tab.
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: "0.55rem" }}>
+                    {modalAttachedStudents.map((st) => (
+                      <div
+                        key={st.id}
+                        style={{
+                          background: "#fff",
+                          border: "1.5px solid #ccfbf1",
+                          borderRadius: "10px",
+                          padding: "0.8rem 1rem",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          gap: "0.75rem",
+                          boxShadow: "0 1px 3px rgba(0,0,0,0.03)",
+                        }}
+                      >
+                        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", minWidth: 0 }}>
+                          <div
+                            style={{
+                              width: "36px",
+                              height: "36px",
+                              borderRadius: "50%",
+                              background: "linear-gradient(135deg, #20b2a4, #0d9488)",
+                              color: "#fff",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              fontWeight: 800,
+                              fontSize: "0.85rem",
+                              flexShrink: 0,
+                            }}
+                          >
+                            {st.name?.charAt(0) || "S"}
+                          </div>
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", flexWrap: "wrap" }}>
+                              <span style={{ fontSize: "0.88rem", fontWeight: 800, color: "#0f172a" }}>
+                                {st.name}
+                              </span>
+                              <span
+                                style={{
+                                  fontSize: "0.65rem",
+                                  fontWeight: 700,
+                                  padding: "0.1rem 0.45rem",
+                                  borderRadius: "10px",
+                                  background: st.status === "matched" ? "#d1fae5" : "#fef3c7",
+                                  color: st.status === "matched" ? "#065f46" : "#b45309",
+                                  textTransform: "capitalize",
+                                }}
+                              >
+                                {st.status?.replace("_", " ") || "Active"}
+                              </span>
+                            </div>
+                            <div style={{ fontSize: "0.74rem", color: "#64748b", marginTop: "0.15rem", display: "flex", alignItems: "center", gap: "0.4rem", flexWrap: "wrap" }}>
+                              {st.parent && <span>Parent: <strong style={{ color: "#334155" }}>{st.parent}</strong></span>}
+                              {st.subject && <span>• Subject: <strong style={{ color: "#0d9488" }}>{st.subject}</strong></span>}
+                              {st.level && <span>• {st.level}</span>}
+                            </div>
+                            {(st.email || st.phone) && (
+                              <div style={{ fontSize: "0.72rem", color: "#94a3b8", marginTop: "0.15rem" }}>
+                                {st.email} {st.phone && st.phone !== "—" ? `• ${st.phone}` : ""}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        <button
+                          onClick={() => {
+                            setIsDetailOpen(false);
+                            openStudentDetail(st.id, {
+                              id: st.id,
+                              student_name: st.name,
+                              parent_name: st.parent,
+                              subject: st.subject,
+                              subjects: st.subject ? [st.subject] : [],
+                              level: st.level,
+                              status: st.status,
+                              phone: st.phone,
+                              email: st.email,
+                            });
+                          }}
+                          style={{
+                            padding: "0.35rem 0.75rem",
+                            background: "#f0fdf9",
+                            color: "#0d9488",
+                            border: "1px solid #99f6e4",
+                            borderRadius: "6px",
+                            fontSize: "0.74rem",
+                            fontWeight: 700,
+                            cursor: "pointer",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "0.3rem",
+                            flexShrink: 0,
+                            whiteSpace: "nowrap",
+                          }}
+                          title="Open student profile dossier"
+                        >
+                          <Eye size={12} /> View Student
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Subjects & Levels */}
+              <div>
+                <h4 style={{ fontSize: "0.82rem", fontWeight: 700, color: "#374151", marginBottom: "0.55rem", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                  Subjects &amp; Levels Offered
+                </h4>
+                <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                  <div>
+                    <span style={{ fontSize: "0.72rem", color: "#64748b", fontWeight: 600, display: "block", marginBottom: "0.3rem" }}>Subjects:</span>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "0.35rem" }}>
+                      {selectedTutor.tutor_profile?.subjects && selectedTutor.tutor_profile.subjects.length > 0 ? (
+                        selectedTutor.tutor_profile.subjects.map((sub: string) => (
+                          <span key={sub} style={{ fontSize: "0.75rem", background: "#f0fdf9", color: "#0d9488", border: "1px solid #99f6e4", padding: "0.2rem 0.6rem", borderRadius: "20px", fontWeight: 600 }}>
+                            ✓ {sub}
+                          </span>
+                        ))
+                      ) : (
+                        <span style={{ fontSize: "0.75rem", color: "#94a3b8" }}>No subjects specified</span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div>
+                    <span style={{ fontSize: "0.72rem", color: "#64748b", fontWeight: 600, display: "block", marginBottom: "0.3rem" }}>Teaching Levels:</span>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "0.35rem" }}>
+                      {selectedTutor.tutor_profile?.levels && selectedTutor.tutor_profile.levels.length > 0 ? (
+                        selectedTutor.tutor_profile.levels.map((lvl: string) => (
+                          <span key={lvl} style={{ fontSize: "0.75rem", background: "#f8fafc", color: "#334155", border: "1px solid #cbd5e1", padding: "0.2rem 0.6rem", borderRadius: "20px", fontWeight: 600 }}>
+                            🎓 {lvl}
+                          </span>
+                        ))
+                      ) : (
+                        <span style={{ fontSize: "0.75rem", color: "#94a3b8" }}>All standard levels</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Bio / Teaching Philosophy */}
+              <div>
+                <h4 style={{ fontSize: "0.82rem", fontWeight: 700, color: "#374151", marginBottom: "0.55rem", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                  Tell Us About Yourself / Bio
+                </h4>
+                <div style={{ background: "#f8fafc", borderLeft: "3px solid #20b2a4", borderRadius: "8px", padding: "0.85rem 1rem", fontSize: "0.84rem", color: "#334155", lineHeight: 1.65 }}>
+                  {selectedTutor.tutor_profile?.bio || "No biography submitted yet."}
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Footer with Actions */}
+            <div style={{ padding: "1rem 1.5rem", borderTop: "1px solid #e2e8f0", background: "#f8fafc", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.75rem", flexWrap: "wrap" }}>
+              <div style={{ display: "flex", gap: "0.5rem" }}>
+                {selectedTutor.tutor_profile?.approval_status === "pending" && (
+                  <>
+                    <button
+                      onClick={() => {
+                        approveApplicant(String(selectedTutor.id));
+                        setIsDetailOpen(false);
+                      }}
+                      style={{ padding: "0.55rem 1rem", background: "linear-gradient(135deg,#20b2a4,#0d9488)", color: "#fff", border: "none", borderRadius: "8px", fontWeight: 700, fontSize: "0.82rem", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "0.35rem" }}
+                    >
+                      <CheckCircle2 size={14} /> Approve &amp; Onboard
+                    </button>
+                    <button
+                      onClick={() => {
+                        declineApplicant(String(selectedTutor.id));
+                        setIsDetailOpen(false);
+                      }}
+                      style={{ padding: "0.55rem 0.9rem", background: "#fee2e2", color: "#991b1b", border: "1px solid #fca5a5", borderRadius: "8px", fontWeight: 700, fontSize: "0.82rem", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "0.35rem" }}
+                    >
+                      <XCircle size={14} /> Decline
+                    </button>
+                  </>
+                )}
+                {selectedTutor.tutor_profile?.approval_status === "approved" && (
+                  <button
+                    onClick={() => {
+                      removeTutor(String(selectedTutor.id));
+                      setIsDetailOpen(false);
+                    }}
+                    style={{ padding: "0.55rem 0.9rem", background: "#fee2e2", color: "#991b1b", border: "1px solid #fca5a5", borderRadius: "8px", fontWeight: 700, fontSize: "0.82rem", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "0.35rem" }}
+                  >
+                    <Trash2 size={14} /> Remove from Roster
+                  </button>
+                )}
+              </div>
+
+              <button
+                onClick={() => setIsDetailOpen(false)}
+                style={{ padding: "0.55rem 1.1rem", background: "#fff", border: "1.5px solid #cbd5e1", borderRadius: "8px", fontWeight: 600, fontSize: "0.82rem", color: "#475569", cursor: "pointer" }}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Single Student Profile Dossier Modal (GET /api/admin/students/{id}) ── */}
+      {isStudentDetailOpen && selectedStudent && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15,23,42,0.65)",
+            backdropFilter: "blur(4px)",
+            zIndex: 1000,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "1rem",
+          }}
+          onClick={() => setIsStudentDetailOpen(false)}
+        >
+          <div
+            style={{
+              background: "#fff",
+              borderRadius: "16px",
+              width: "100%",
+              maxWidth: "600px",
+              maxHeight: "90vh",
+              overflowY: "auto",
+              boxShadow: "0 25px 50px -12px rgba(0,0,0,0.25)",
+              border: "1px solid #e2e8f0",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div style={{ background: "linear-gradient(135deg,#0f172a,#1e293b)", color: "#fff", padding: "1.25rem 1.5rem", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+                <div style={{ width: "42px", height: "42px", borderRadius: "10px", background: "linear-gradient(135deg,#20b2a4,#0d9488)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: "1.1rem" }}>
+                  {selectedStudent.student_name?.charAt(0) || "S"}
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: "1.1rem", fontWeight: 700, color: "#fff" }}>
+                    {selectedStudent.student_name || "Student"}
+                  </h3>
+                  <div style={{ fontSize: "0.75rem", color: "#94a3b8", display: "flex", alignItems: "center", gap: "0.45rem", marginTop: "0.15rem" }}>
+                    <span>Parent: {selectedStudent.parent_name || "—"}</span>
+                    <span>•</span>
+                    <span style={{ fontFamily: "monospace", color: "#38bdf8" }}>ID: #{selectedStudent.id}</span>
+                  </div>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setIsStudentDetailOpen(false)}
+                style={{ background: "rgba(255,255,255,0.1)", border: "none", color: "#fff", width: "30px", height: "30px", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div style={{ padding: "1.5rem", display: "flex", flexDirection: "column", gap: "1.2rem" }}>
+              {/* Status Header */}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "#f8fafc", padding: "0.75rem 1rem", borderRadius: "10px", border: "1px solid #e2e8f0" }}>
+                <div>
+                  <div style={{ fontSize: "0.68rem", color: "#94a3b8", fontWeight: 700, textTransform: "uppercase" }}>Matching Status</div>
+                  <div style={{ fontSize: "0.85rem", fontWeight: 700, color: "#0f172a", textTransform: "capitalize" }}>
+                    {selectedStudent.status ? selectedStudent.status.replace("_", " ") : "Pending Match"}
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: "0.35rem" }}>
+                  <button
+                    onClick={() => updateStudentStatusApi(selectedStudent.id, "matched")}
+                    style={{ padding: "0.35rem 0.7rem", borderRadius: "6px", border: "none", background: selectedStudent.status === "matched" ? "#0d9488" : "#f0fdf9", color: selectedStudent.status === "matched" ? "#fff" : "#0d9488", fontWeight: 700, fontSize: "0.72rem", cursor: "pointer" }}
+                  >
+                    Matched
+                  </button>
+                  <button
+                    onClick={() => updateStudentStatusApi(selectedStudent.id, "pending_match")}
+                    style={{ padding: "0.35rem 0.7rem", borderRadius: "6px", border: "none", background: selectedStudent.status === "pending_match" ? "#d97706" : "#fffbeb", color: selectedStudent.status === "pending_match" ? "#fff" : "#d97706", fontWeight: 700, fontSize: "0.72rem", cursor: "pointer" }}
+                  >
+                    Pending
+                  </button>
+                  <button
+                    onClick={() => updateStudentStatusApi(selectedStudent.id, "completed")}
+                    style={{ padding: "0.35rem 0.7rem", borderRadius: "6px", border: "none", background: selectedStudent.status === "completed" ? "#0284c7" : "#e0f2fe", color: selectedStudent.status === "completed" ? "#fff" : "#0284c7", fontWeight: 700, fontSize: "0.72rem", cursor: "pointer" }}
+                  >
+                    Completed
+                  </button>
+                </div>
+              </div>
+
+              {/* Contact Information */}
+              <div>
+                <h4 style={{ fontSize: "0.8rem", fontWeight: 700, color: "#374151", marginBottom: "0.5rem", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                  Contact Information
+                </h4>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: "0.65rem" }}>
+                  <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: "8px", padding: "0.65rem 0.85rem", display: "flex", alignItems: "center", gap: "0.55rem" }}>
+                    <Mail size={15} color="#20b2a4" style={{ flexShrink: 0 }} />
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: "0.65rem", color: "#94a3b8", fontWeight: 600 }}>Parent / Contact Email</div>
+                      <a href={`mailto:${selectedStudent.email}`} style={{ fontSize: "0.82rem", color: "#0f172a", fontWeight: 600, textDecoration: "none", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", display: "block" }}>
+                        {selectedStudent.email || "Not specified"}
+                      </a>
+                    </div>
+                  </div>
+
+                  <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: "8px", padding: "0.65rem 0.85rem", display: "flex", alignItems: "center", gap: "0.55rem" }}>
+                    <Phone size={15} color="#20b2a4" style={{ flexShrink: 0 }} />
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: "0.65rem", color: "#94a3b8", fontWeight: 600 }}>Phone / WhatsApp</div>
+                      <a href={selectedStudent.phone ? `tel:${selectedStudent.phone}` : undefined} style={{ fontSize: "0.82rem", color: "#0f172a", fontWeight: 600, textDecoration: "none" }}>
+                        {selectedStudent.phone || "Not specified"}
+                      </a>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Academic Subjects & Level */}
+              <div>
+                <h4 style={{ fontSize: "0.8rem", fontWeight: 700, color: "#374151", marginBottom: "0.5rem", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                  Required Subjects &amp; Level
+                </h4>
+                <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: "8px", padding: "0.85rem 1rem", display: "flex", flexDirection: "column", gap: "0.65rem" }}>
+                  <div>
+                    <div style={{ fontSize: "0.68rem", color: "#94a3b8", fontWeight: 600, marginBottom: "0.3rem" }}>Selected Level / Classification:</div>
+                    <span style={{ fontSize: "0.78rem", background: "#f8fafc", color: "#1e293b", border: "1px solid #cbd5e1", padding: "0.25rem 0.75rem", borderRadius: "20px", fontWeight: 700 }}>
+                      🎓 {selectedStudent.level || "Standard Level"}
+                    </span>
+                  </div>
+
+                  <div style={{ borderTop: "1px solid #f1f5f9", paddingTop: "0.6rem" }}>
+                    <div style={{ fontSize: "0.68rem", color: "#94a3b8", fontWeight: 600, marginBottom: "0.35rem" }}>Subjects:</div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "0.35rem" }}>
+                      {selectedStudent.subjects && selectedStudent.subjects.length > 0 ? (
+                        selectedStudent.subjects.map((sub: string) => (
+                          <span key={sub} style={{ fontSize: "0.75rem", background: "#f0fdf9", color: "#0d9488", border: "1px solid #99f6e4", padding: "0.2rem 0.6rem", borderRadius: "20px", fontWeight: 600 }}>
+                            ✓ {sub}
+                          </span>
+                        ))
+                      ) : (
+                        <span style={{ fontSize: "0.75rem", color: "#94a3b8" }}>No subjects specified</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Assigned Tutors */}
+              <div>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.5rem" }}>
+                  <h4 style={{ fontSize: "0.8rem", fontWeight: 700, color: "#374151", textTransform: "uppercase", letterSpacing: "0.04em", margin: 0 }}>
+                    Assigned Tutor(s)
+                  </h4>
+                  {selectedStudent.assigned_tutors && selectedStudent.assigned_tutors.length > 0 && (
+                    <span style={{ fontSize: "0.68rem", background: "#d1fae5", color: "#065f46", padding: "0.15rem 0.55rem", borderRadius: "20px", fontWeight: 700 }}>
+                      {selectedStudent.assigned_tutors.length} assigned
+                    </span>
+                  )}
+                </div>
+
+                {!selectedStudent.assigned_tutors || selectedStudent.assigned_tutors.length === 0 ? (
+                  <div style={{ background: "#fffbeb", border: "1px dashed #fcd34d", borderRadius: "10px", padding: "1rem", textAlign: "center" }}>
+                    <GraduationCap size={24} color="#d97706" style={{ marginBottom: "0.35rem", opacity: 0.6 }} />
+                    <div style={{ fontSize: "0.8rem", fontWeight: 700, color: "#b45309" }}>No tutor assigned yet</div>
+                    <div style={{ fontSize: "0.72rem", color: "#92400e", marginTop: "0.2rem" }}>Use the <strong>Assign Tutor(s)</strong> button below to match this student.</div>
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: "0.65rem" }}>
+                    {selectedStudent.assigned_tutors.map((tutor) => (
+                      <div key={tutor.id} style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: "10px", padding: "0.85rem 1rem", display: "flex", gap: "0.85rem", alignItems: "flex-start" }}>
+                        {/* Avatar */}
+                        <div style={{ width: "40px", height: "40px", borderRadius: "50%", background: "linear-gradient(135deg,#20b2a4,#0d9488)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: "1rem", flexShrink: 0, boxShadow: "0 2px 8px rgba(13,148,136,0.25)" }}>
+                          {tutor.name?.charAt(0) || "T"}
+                        </div>
+                        {/* Details */}
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap", marginBottom: "0.2rem" }}>
+                            <span style={{ fontWeight: 800, fontSize: "0.88rem", color: "#0f172a" }}>{tutor.name}</span>
+                            {tutor.subject && (
+                              <span style={{ fontSize: "0.66rem", background: "#f0fdf9", color: "#0d9488", border: "1px solid #99f6e4", padding: "0.1rem 0.45rem", borderRadius: "20px", fontWeight: 700 }}>
+                                {tutor.subject}
+                              </span>
+                            )}
+                          </div>
+                          {tutor.qualification && (
+                            <div style={{ fontSize: "0.74rem", color: "#64748b", marginBottom: "0.2rem" }}>
+                              🎓 {tutor.qualification}
+                            </div>
+                          )}
+                          <div style={{ display: "flex", gap: "0.85rem", flexWrap: "wrap" }}>
+                            {tutor.email && (
+                              <a href={`mailto:${tutor.email}`} style={{ fontSize: "0.72rem", color: "#0d9488", fontWeight: 600, textDecoration: "none", display: "inline-flex", alignItems: "center", gap: "0.2rem" }}>
+                                <Mail size={11} /> {tutor.email}
+                              </a>
+                            )}
+                            {tutor.phone && (
+                              <a href={`tel:${tutor.phone}`} style={{ fontSize: "0.72rem", color: "#475569", fontWeight: 600, textDecoration: "none", display: "inline-flex", alignItems: "center", gap: "0.2rem" }}>
+                                <Phone size={11} /> {tutor.phone}
+                              </a>
+                            )}
+                          </div>
+                          {tutor.pivot_notes && (
+                            <div style={{ marginTop: "0.45rem", fontSize: "0.74rem", color: "#334155", background: "#f8fafc", borderLeft: "2px solid #20b2a4", padding: "0.35rem 0.6rem", borderRadius: "4px", lineHeight: 1.5 }}>
+                              📝 {tutor.pivot_notes}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Notes / Special Requests */}
+              <div>
+                <h4 style={{ fontSize: "0.8rem", fontWeight: 700, color: "#374151", marginBottom: "0.5rem", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                  Notes &amp; Learning Preferences
+                </h4>
+                <div style={{ background: "#f8fafc", borderLeft: "3px solid #20b2a4", borderRadius: "8px", padding: "0.85rem 1rem", fontSize: "0.84rem", color: "#334155", lineHeight: 1.65 }}>
+                  {selectedStudent.notes || "No additional notes submitted with this registration."}
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div style={{ padding: "1rem 1.5rem", borderTop: "1px solid #e2e8f0", background: "#f8fafc", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.5rem", flexWrap: "wrap" }}>
+              <button
+                onClick={() => {
+                  updateStudentStatusApi(selectedStudent.id, "cancelled");
+                  setIsStudentDetailOpen(false);
+                }}
+                style={{ padding: "0.5rem 0.85rem", background: "#fee2e2", color: "#991b1b", border: "1px solid #fca5a5", borderRadius: "8px", fontWeight: 700, fontSize: "0.8rem", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "0.35rem" }}
+              >
+                <XCircle size={14} /> Cancel Enrollment
+              </button>
+
+              <div style={{ display: "flex", gap: "0.5rem" }}>
+                <button
+                  onClick={openMatchModal}
+                  style={{ padding: "0.5rem 1rem", background: "linear-gradient(135deg,#20b2a4,#0d9488)", color: "#fff", border: "none", borderRadius: "8px", fontWeight: 700, fontSize: "0.8rem", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "0.35rem", boxShadow: "0 2px 8px rgba(13,148,136,0.3)" }}
+                >
+                  <UserPlus size={14} /> Assign Tutor(s)
+                </button>
+                <button
+                  onClick={() => setIsStudentDetailOpen(false)}
+                  style={{ padding: "0.5rem 1.1rem", background: "#fff", border: "1.5px solid #cbd5e1", borderRadius: "8px", fontWeight: 600, fontSize: "0.8rem", color: "#475569", cursor: "pointer" }}
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Match Tutors Sub-Modal ── */}
+      {isMatchModalOpen && selectedStudent && (
+        <div
+          onClick={() => setIsMatchModalOpen(false)}
+          style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.7)", backdropFilter: "blur(4px)", zIndex: 1100, display: "flex", alignItems: "center", justifyContent: "center", padding: "1rem", animation: "fadeUp 0.2s ease" }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{ width: "100%", maxWidth: "520px", background: "#fff", borderRadius: "16px", boxShadow: "0 30px 80px rgba(0,0,0,0.3)", overflow: "hidden", maxHeight: "90vh", display: "flex", flexDirection: "column" }}
+          >
+            {/* Header */}
+            <div style={{ background: "linear-gradient(135deg,#20b2a4,#0d9488)", padding: "1.1rem 1.5rem", display: "flex", alignItems: "center", justifyContent: "space-between", color: "#fff" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.55rem" }}>
+                <UserPlus size={18} />
+                <div>
+                  <div style={{ fontWeight: 800, fontSize: "1rem" }}>Assign Tutor(s)</div>
+                  <div style={{ fontSize: "0.72rem", opacity: 0.85 }}>to {selectedStudent.student_name}</div>
+                </div>
+              </div>
+              <button onClick={() => setIsMatchModalOpen(false)} style={{ background: "rgba(255,255,255,0.15)", border: "none", color: "#fff", width: "28px", height: "28px", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
+                <X size={15} />
+              </button>
+            </div>
+
+            {/* Tutor List */}
+            <div style={{ flex: 1, overflowY: "auto", padding: "1.25rem 1.5rem", display: "flex", flexDirection: "column", gap: "0.65rem" }}>
+              <p style={{ fontSize: "0.78rem", color: "#64748b", margin: 0, lineHeight: 1.5 }}>
+                Select one or more <strong>approved tutors</strong> to assign. The student status will automatically be updated to <strong>Matched</strong>.
+              </p>
+
+              {approvedTutors.length === 0 ? (
+                <div style={{ textAlign: "center", padding: "2rem", color: "#94a3b8", fontSize: "0.85rem" }}>
+                  <GraduationCap size={32} style={{ marginBottom: "0.5rem", opacity: 0.4 }} />
+                  <div>No approved tutors found.</div>
+                  <div style={{ fontSize: "0.72rem", marginTop: "0.25rem" }}>Approve tutors from the Tutors tab first.</div>
+                </div>
+              ) : (
+                approvedTutors.map((tutor) => {
+                  const selected = selectedTutorIds.has(tutor.id);
+                  return (
+                    <div
+                      key={tutor.id}
+                      onClick={() => toggleTutorSelection(tutor.id)}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "0.85rem",
+                        padding: "0.8rem 1rem",
+                        borderRadius: "10px",
+                        border: `2px solid ${selected ? "#0d9488" : "#e2e8f0"}`,
+                        background: selected ? "#f0fdf9" : "#fff",
+                        cursor: "pointer",
+                        transition: "all 0.15s ease",
+                      }}
+                    >
+                      {/* Avatar */}
+                      <div style={{ width: "40px", height: "40px", borderRadius: "50%", background: selected ? "linear-gradient(135deg,#20b2a4,#0d9488)" : "#f1f5f9", color: selected ? "#fff" : "#64748b", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: "1rem", flexShrink: 0, transition: "all 0.15s ease" }}>
+                        {tutor.name.charAt(0)}
+                      </div>
+                      {/* Info */}
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 700, fontSize: "0.88rem", color: "#0f172a" }}>{tutor.name}</div>
+                        <div style={{ fontSize: "0.72rem", color: "#64748b", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                          {tutor.qualification || tutor.email}
+                        </div>
+                        {Array.isArray(tutor.subjects) && tutor.subjects.length > 0 && (
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: "0.25rem", marginTop: "0.3rem" }}>
+                            {tutor.subjects.map((s) => (
+                              <span key={s} style={{ fontSize: "0.65rem", background: "#e0f2fe", color: "#0369a1", padding: "0.1rem 0.45rem", borderRadius: "20px", fontWeight: 600 }}>{s}</span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      {/* Checkbox */}
+                      <div style={{ width: "20px", height: "20px", borderRadius: "50%", border: `2px solid ${selected ? "#0d9488" : "#cbd5e1"}`, background: selected ? "#0d9488" : "#fff", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, transition: "all 0.15s ease" }}>
+                        {selected && <CheckCircle2 size={12} color="#fff" />}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+
+              {/* Notes */}
+              <div style={{ marginTop: "0.5rem" }}>
+                <label style={{ fontSize: "0.78rem", fontWeight: 700, color: "#374151", display: "block", marginBottom: "0.35rem" }}>Notes (optional)</label>
+                <textarea
+                  value={matchNotes}
+                  onChange={(e) => setMatchNotes(e.target.value)}
+                  placeholder="e.g. Starting lessons next Tuesday. Jane for Maths, David for Physics."
+                  rows={3}
+                  style={{ width: "100%", padding: "0.6rem 0.75rem", border: "1.5px solid #d1d5db", borderRadius: "8px", fontSize: "0.83rem", outline: "none", resize: "vertical", boxSizing: "border-box", fontFamily: "inherit", color: "#1e293b" }}
+                />
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div style={{ padding: "1rem 1.5rem", borderTop: "1px solid #e2e8f0", background: "#f8fafc", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.5rem" }}>
+              <div style={{ fontSize: "0.78rem", color: "#64748b" }}>
+                {selectedTutorIds.size === 0 ? "No tutors selected" : `${selectedTutorIds.size} tutor${selectedTutorIds.size === 1 ? "" : "s"} selected`}
+              </div>
+              <div style={{ display: "flex", gap: "0.5rem" }}>
+                <button
+                  onClick={() => setIsMatchModalOpen(false)}
+                  style={{ padding: "0.5rem 1rem", background: "#f1f5f9", border: "none", borderRadius: "8px", fontWeight: 600, fontSize: "0.8rem", color: "#475569", cursor: "pointer" }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={submitMatchTutors}
+                  disabled={selectedTutorIds.size === 0 || isMatchingLoading}
+                  style={{ padding: "0.5rem 1.2rem", background: selectedTutorIds.size === 0 || isMatchingLoading ? "#94a3b8" : "linear-gradient(135deg,#20b2a4,#0d9488)", color: "#fff", border: "none", borderRadius: "8px", fontWeight: 700, fontSize: "0.8rem", cursor: selectedTutorIds.size === 0 || isMatchingLoading ? "not-allowed" : "pointer", display: "inline-flex", alignItems: "center", gap: "0.4rem", boxShadow: selectedTutorIds.size > 0 ? "0 2px 8px rgba(13,148,136,0.3)" : "none", transition: "all 0.15s ease" }}
+                >
+                  {isMatchingLoading ? (
+                    <><span style={{ display: "inline-block", width: "12px", height: "12px", border: "2px solid rgba(255,255,255,0.5)", borderTopColor: "#fff", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} /> Matching...</>
+                  ) : (
+                    <><CheckCircle2 size={14} /> Confirm Match</>
+                  )}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
