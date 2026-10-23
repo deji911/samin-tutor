@@ -29,6 +29,13 @@ import {
   Phone,
   RefreshCw,
   Users,
+  Clock,
+  Video,
+  ExternalLink,
+  Edit3,
+  Filter,
+  Check,
+  CalendarDays,
 } from "lucide-react";
 
 /* ─── Constants ───────────────────────────────────────────── */
@@ -161,7 +168,62 @@ type Booking = {
   assignedTutors?: AssignedTutor[];
 };
 
-type NavTab = "overview" | "applicants" | "tutors" | "bookings";
+type AuthUser = {
+  id: number;
+  name: string;
+  email: string;
+  email_verified_at?: string | null;
+  role: string;
+  phone?: string | null;
+  created_at?: string;
+  updated_at?: string;
+};
+
+type TimetableSlot = {
+  id: number;
+  student_id: number;
+  tutor_id: number;
+  subject: string;
+  day_of_week: string;
+  start_time: string;
+  end_time: string;
+  meeting_link?: string;
+  status?: string;
+  notes?: string;
+  tutor?: {
+    id: number;
+    name: string;
+    email?: string;
+    phone?: string;
+  };
+};
+
+type CalendarSession = {
+  id: number;
+  student_id: number;
+  tutor_id: number;
+  lesson_schedule_id?: number;
+  subject: string;
+  date: string;
+  start_time: string;
+  end_time: string;
+  meeting_link?: string;
+  status: "scheduled" | "completed" | "cancelled" | "rescheduled" | string;
+  notes?: string;
+  tutor?: {
+    id: number;
+    name: string;
+    email?: string;
+    phone?: string;
+  };
+  student?: {
+    id: number;
+    student_name?: string;
+    parent_name?: string;
+  };
+};
+
+type NavTab = "overview" | "applicants" | "tutors" | "bookings" | "sessions";
 
 const statusStyle: Record<string, { bg: string; color: string; label?: string }> = {
   "New Inquiry": { bg: "#fef3c7", color: "#b45309", label: "New Inquiry" },
@@ -172,6 +234,8 @@ const statusStyle: Record<string, { bg: string; color: string; label?: string }>
   "matched": { bg: "#d1fae5", color: "#065f46", label: "Matched" },
   "completed": { bg: "#e0f2fe", color: "#0369a1", label: "Completed" },
   "cancelled": { bg: "#fee2e2", color: "#991b1b", label: "Cancelled" },
+  "scheduled": { bg: "#e0f2fe", color: "#0369a1", label: "Scheduled" },
+  "rescheduled": { bg: "#fef3c7", color: "#b45309", label: "Rescheduled" },
 };
 
 /* ─── Component ───────────────────────────────────────────── */
@@ -208,7 +272,7 @@ export default function AdminDashboard() {
     img: "/images/tutor-1.jpg",
   });
 
-  const [currentUser, setCurrentUser] = useState<{ name?: string; email?: string; role?: string } | null>(null);
+  const [currentUser, setCurrentUser] = useState<AuthUser | { id?: number; name?: string; email?: string; role?: string; phone?: string | null } | null>(null);
   const [tutorStats, setTutorStats] = useState<TutorStats>({
     total: 0,
     pending: 0,
@@ -241,6 +305,46 @@ export default function AdminDashboard() {
   const [matchNotes, setMatchNotes] = useState("");
   const [isMatchingLoading, setIsMatchingLoading] = useState(false);
 
+  // Timetable & Calendar Sessions modal state
+  const [isTimetableModalOpen, setIsTimetableModalOpen] = useState(false);
+  const [timetableStudent, setTimetableStudent] = useState<any | null>(null);
+  const [timetableSlots, setTimetableSlots] = useState<TimetableSlot[]>([]);
+  const [calendarSessions, setCalendarSessions] = useState<CalendarSession[]>([]);
+  const [loadingTimetable, setLoadingTimetable] = useState(false);
+  const [generatingSessions, setGeneratingSessions] = useState(false);
+  const [timetableTab, setTimetableTab] = useState<"recurring" | "sessions" | "add_slot">("recurring");
+
+  // Timetable Slot Builder form state
+  const [slotTutorId, setSlotTutorId] = useState<string | number>("");
+  const [slotSubject, setSlotSubject] = useState("");
+  const [slotDayOfWeek, setSlotDayOfWeek] = useState("monday");
+  const [slotStartTime, setSlotStartTime] = useState("17:00");
+  const [slotEndTime, setSlotEndTime] = useState("18:00");
+  const [slotMeetingLink, setSlotMeetingLink] = useState("");
+  const [slotNotes, setSlotNotes] = useState("");
+  const [slotReplaceExisting, setSlotReplaceExisting] = useState(false);
+  const [slotGenerateWeeks, setSlotGenerateWeeks] = useState(4);
+  const [isSubmittingSlot, setIsSubmittingSlot] = useState(false);
+
+  // Session Filters
+  const [sessionFilterStatus, setSessionFilterStatus] = useState<string>("all");
+  const [sessionFromDate, setSessionFromDate] = useState<string>("");
+  const [sessionToDate, setSessionToDate] = useState<string>("");
+  const [sessionTutorFilter, setSessionTutorFilter] = useState<string>("all");
+
+  // Edit / Reschedule Single Session modal state
+  const [editingSession, setEditingSession] = useState<CalendarSession | null>(null);
+  const [editSessionDate, setEditSessionDate] = useState("");
+  const [editSessionStartTime, setEditSessionStartTime] = useState("17:00");
+  const [editSessionEndTime, setEditSessionEndTime] = useState("18:00");
+  const [editSessionStatus, setEditSessionStatus] = useState("scheduled");
+  const [editSessionMeetingLink, setEditSessionMeetingLink] = useState("");
+  const [editSessionNotes, setEditSessionNotes] = useState("");
+  const [isSavingSession, setIsSavingSession] = useState(false);
+
+  // Sessions top-level tab active student
+  const [selectedStudentForSessionsTab, setSelectedStudentForSessionsTab] = useState<string>("");
+
   const getBackendApiUrl = () => {
     if (process.env.NEXT_PUBLIC_API_URL) {
       return process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, "");
@@ -261,6 +365,343 @@ export default function AdminDashboard() {
       Accept: "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     };
+  };
+
+  const fetchCurrentUser = async () => {
+    const token = typeof window !== "undefined" ? localStorage.getItem("samin_auth_token") : null;
+    if (!token) return;
+
+    try {
+      const baseUrl = getBackendApiUrl();
+      const res = await fetch(`${baseUrl}/api/user`, {
+        headers: getAuthHeaders(),
+      });
+
+      if (res.ok) {
+        const user = await res.json();
+        setCurrentUser(user);
+        if (typeof window !== "undefined") {
+          localStorage.setItem("samin_user", JSON.stringify(user));
+        }
+      } else if (res.status === 401) {
+        console.warn("Session expired or token invalid from GET /api/user");
+      }
+    } catch (err) {
+      console.error("Error fetching current user (/api/user):", err);
+    }
+  };
+
+  const loadApprovedTutors = async (): Promise<ApprovedTutor[]> => {
+    if (approvedTutors.length > 0) return approvedTutors;
+    try {
+      const baseUrl = getBackendApiUrl();
+      const res = await fetch(`${baseUrl}/api/admin/tutors?per_page=all&status=approved`, {
+        headers: getAuthHeaders(),
+      });
+      if (!res.ok) return [];
+      const json = await res.json();
+      const list = json.tutors?.data || (Array.isArray(json.tutors) ? json.tutors : []);
+      const parsed: ApprovedTutor[] = list
+        .filter((t: any) => t.tutor_profile?.approval_status === "approved" || t.role === "tutor")
+        .map((t: any) => ({
+          id: t.id,
+          name: t.name,
+          email: t.email,
+          qualification: t.tutor_profile?.qualification || "",
+          subjects: Array.isArray(t.tutor_profile?.subjects) ? t.tutor_profile.subjects : [],
+        }));
+      setApprovedTutors(parsed);
+      return parsed;
+    } catch (err) {
+      console.error("Failed to load approved tutors:", err);
+      return [];
+    }
+  };
+
+  const fetchStudentTimetable = async (id: string | number) => {
+    const cleanId = String(id).replace(/^(SAM-|STU-)/, "");
+    const targetId = /^\d+$/.test(cleanId) ? cleanId : id;
+    const baseUrl = getBackendApiUrl();
+    setLoadingTimetable(true);
+
+    try {
+      const res = await fetch(`${baseUrl}/api/admin/students/${targetId}/timetable`, {
+        headers: getAuthHeaders(),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        const slots = data.weekly_timetable || [];
+        const upcoming = data.upcoming_sessions || [];
+        setTimetableSlots(Array.isArray(slots) ? slots : []);
+        if (Array.isArray(upcoming) && upcoming.length > 0) {
+          setCalendarSessions(upcoming);
+        }
+      }
+    } catch (err) {
+      console.error("Error fetching timetable:", err);
+    } finally {
+      setLoadingTimetable(false);
+    }
+  };
+
+  const fetchStudentSessions = async (id: string | number, customFilters?: { status?: string; from_date?: string; to_date?: string; tutor_id?: string }) => {
+    const cleanId = String(id).replace(/^(SAM-|STU-)/, "");
+    const targetId = /^\d+$/.test(cleanId) ? cleanId : id;
+    const baseUrl = getBackendApiUrl();
+
+    try {
+      const params = new URLSearchParams();
+      const st = customFilters?.status ?? sessionFilterStatus;
+      const fr = customFilters?.from_date ?? sessionFromDate;
+      const to = customFilters?.to_date ?? sessionToDate;
+      const tu = customFilters?.tutor_id ?? sessionTutorFilter;
+
+      if (st && st !== "all") params.append("status", st);
+      if (fr) params.append("from_date", fr);
+      if (to) params.append("to_date", to);
+      if (tu && tu !== "all") params.append("tutor_id", String(tu));
+
+      const qs = params.toString();
+      const res = await fetch(`${baseUrl}/api/admin/students/${targetId}/sessions${qs ? `?${qs}` : ""}`, {
+        headers: getAuthHeaders(),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        const list = data.sessions || data.data || (Array.isArray(data) ? data : []);
+        setCalendarSessions(Array.isArray(list) ? list : []);
+      }
+    } catch (err) {
+      console.error("Error fetching sessions:", err);
+    }
+  };
+
+  const openTimetableModal = async (student: any) => {
+    setTimetableStudent(student);
+    setIsTimetableModalOpen(true);
+    setTimetableTab("recurring");
+    const sub = Array.isArray(student.subjects) && student.subjects.length > 0
+      ? student.subjects[0]
+      : (student.subject || "Mathematics");
+    setSlotSubject(sub);
+
+    const tutorsList = await loadApprovedTutors();
+    const assigned = student.assigned_tutors || student.assignedTutors || [];
+    if (assigned.length > 0) {
+      setSlotTutorId(assigned[0].id);
+    } else if (tutorsList.length > 0) {
+      setSlotTutorId(tutorsList[0].id);
+    }
+
+    await Promise.all([
+      fetchStudentTimetable(student.id),
+      fetchStudentSessions(student.id),
+    ]);
+  };
+
+  const assignTimetableSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!timetableStudent) return;
+    if (!slotTutorId) {
+      showToast("⚠️ Please select an assigned tutor for the lesson slot.");
+      return;
+    }
+
+    const cleanId = String(timetableStudent.id).replace(/^(SAM-|STU-)/, "");
+    const targetId = /^\d+$/.test(cleanId) ? cleanId : timetableStudent.id;
+    const baseUrl = getBackendApiUrl();
+    setIsSubmittingSlot(true);
+
+    try {
+      const payload = {
+        replace_existing: slotReplaceExisting,
+        generate_weeks: Number(slotGenerateWeeks) || 4,
+        slots: [
+          {
+            tutor_id: Number(slotTutorId),
+            subject: slotSubject || "General Tutoring",
+            day_of_week: slotDayOfWeek.toLowerCase(),
+            start_time: slotStartTime,
+            end_time: slotEndTime,
+            meeting_link: slotMeetingLink ? slotMeetingLink.trim() : undefined,
+            notes: slotNotes ? slotNotes.trim() : undefined,
+          },
+        ],
+      };
+
+      const res = await fetch(`${baseUrl}/api/admin/students/${targetId}/timetable`, {
+        method: "POST",
+        headers: getAuthHeaders(),
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => null);
+        throw new Error(errData?.message || `Failed to assign timetable (HTTP ${res.status})`);
+      }
+
+      const json = await res.json();
+      showToast(json.message || `✅ Lesson timetable assigned with ${json.generated_sessions_count || "calendar"} session(s) generated.`);
+      
+      setSlotNotes("");
+      setSlotMeetingLink("");
+      await fetchStudentTimetable(timetableStudent.id);
+      await fetchStudentSessions(timetableStudent.id);
+      setTimetableTab("recurring");
+    } catch (err: any) {
+      console.error("Assign timetable error:", err);
+      showToast(`⚠️ ${err.message || "Failed to assign timetable."}`);
+    } finally {
+      setIsSubmittingSlot(false);
+    }
+  };
+
+  const deleteTimetableSlot = async (slotId: number) => {
+    if (!confirm("Are you sure you want to remove this weekly recurring slot? Its future pending sessions will be cancelled.")) {
+      return;
+    }
+
+    const baseUrl = getBackendApiUrl();
+    try {
+      const res = await fetch(`${baseUrl}/api/admin/timetable/${slotId}`, {
+        method: "DELETE",
+        headers: getAuthHeaders(),
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => null);
+        throw new Error(errData?.message || `Failed to remove slot (HTTP ${res.status})`);
+      }
+
+      const data = await res.json().catch(() => null);
+      showToast(data?.message || "Weekly recurring slot removed successfully.");
+      setTimetableSlots((prev) => prev.filter((s) => s.id !== slotId));
+      if (timetableStudent) {
+        fetchStudentSessions(timetableStudent.id);
+      }
+    } catch (err: any) {
+      console.error("Delete slot error:", err);
+      showToast(`⚠️ ${err.message || "Failed to delete slot."}`);
+    }
+  };
+
+  const generateFutureSessions = async (weeks: number) => {
+    if (!timetableStudent) return;
+    const cleanId = String(timetableStudent.id).replace(/^(SAM-|STU-)/, "");
+    const targetId = /^\d+$/.test(cleanId) ? cleanId : timetableStudent.id;
+    const baseUrl = getBackendApiUrl();
+    setGeneratingSessions(true);
+
+    try {
+      const res = await fetch(`${baseUrl}/api/admin/students/${targetId}/generate-sessions`, {
+        method: "POST",
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ weeks, generate_weeks: weeks }),
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => null);
+        throw new Error(errData?.message || `Failed to generate sessions (HTTP ${res.status})`);
+      }
+
+      const json = await res.json().catch(() => null);
+      showToast(json?.message || `✅ Successfully generated sessions for the next ${weeks} weeks!`);
+      await fetchStudentSessions(timetableStudent.id);
+    } catch (err: any) {
+      console.error("Generate sessions error:", err);
+      showToast(`⚠️ ${err.message || "Failed to generate sessions."}`);
+    } finally {
+      setGeneratingSessions(false);
+    }
+  };
+
+  const openEditSessionModal = (session: CalendarSession) => {
+    setEditingSession(session);
+    setEditSessionDate(session.date || "");
+    setEditSessionStartTime(session.start_time ? session.start_time.slice(0, 5) : "17:00");
+    setEditSessionEndTime(session.end_time ? session.end_time.slice(0, 5) : "18:00");
+    setEditSessionStatus(session.status || "scheduled");
+    setEditSessionMeetingLink(session.meeting_link || "");
+    setEditSessionNotes(session.notes || "");
+  };
+
+  const submitUpdateSession = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingSession) return;
+    const baseUrl = getBackendApiUrl();
+    setIsSavingSession(true);
+
+    try {
+      const payload: any = {
+        status: editSessionStatus,
+        date: editSessionDate,
+        start_time: editSessionStartTime,
+        end_time: editSessionEndTime,
+        meeting_link: editSessionMeetingLink ? editSessionMeetingLink.trim() : undefined,
+        notes: editSessionNotes ? editSessionNotes.trim() : undefined,
+      };
+
+      const res = await fetch(`${baseUrl}/api/admin/sessions/${editingSession.id}`, {
+        method: "PATCH",
+        headers: getAuthHeaders(),
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => null);
+        throw new Error(errData?.message || `Failed to update session (HTTP ${res.status})`);
+      }
+
+      const json = await res.json().catch(() => null);
+      showToast(json?.message || `✅ Session #${editingSession.id} updated successfully!`);
+
+      setCalendarSessions((prev) =>
+        prev.map((s) =>
+          s.id === editingSession.id
+            ? {
+                ...s,
+                status: editSessionStatus,
+                date: editSessionDate,
+                start_time: editSessionStartTime,
+                end_time: editSessionEndTime,
+                meeting_link: editSessionMeetingLink,
+                notes: editSessionNotes,
+              }
+            : s
+        )
+      );
+      setEditingSession(null);
+    } catch (err: any) {
+      console.error("Update session error:", err);
+      showToast(`⚠️ ${err.message || "Failed to update session."}`);
+    } finally {
+      setIsSavingSession(false);
+    }
+  };
+
+  const quickUpdateSessionStatus = async (sessionId: number, newStatus: string) => {
+    const baseUrl = getBackendApiUrl();
+    try {
+      const res = await fetch(`${baseUrl}/api/admin/sessions/${sessionId}`, {
+        method: "PATCH",
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ status: newStatus }),
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => null);
+        throw new Error(errData?.message || `Failed to update status (HTTP ${res.status})`);
+      }
+
+      showToast(`✅ Session #${sessionId} marked as ${newStatus}.`);
+      setCalendarSessions((prev) =>
+        prev.map((s) => (s.id === sessionId ? { ...s, status: newStatus } : s))
+      );
+    } catch (err: any) {
+      console.error("Quick status error:", err);
+      showToast(`⚠️ ${err.message || "Failed to update session status."}`);
+    }
   };
 
   const fetchTutorsFromApi = async () => {
@@ -668,9 +1109,11 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     const stored = typeof window !== "undefined" ? localStorage.getItem("samin_admin_logged_in") : null;
-    if (stored === "true") {
+    const token = typeof window !== "undefined" ? localStorage.getItem("samin_auth_token") : null;
+
+    if (stored === "true" || token) {
       setIsAuthed(true);
-      Promise.all([fetchTutorsFromApi(), fetchStudentsFromApi()]).finally(() => {
+      Promise.all([fetchCurrentUser(), fetchTutorsFromApi(), fetchStudentsFromApi()]).finally(() => {
         setInitialLoading(false);
       });
     } else {
@@ -738,7 +1181,7 @@ export default function AdminDashboard() {
       }
       setIsAuthed(true);
       setInitialLoading(true);
-      Promise.all([fetchTutorsFromApi(), fetchStudentsFromApi()]).finally(() => {
+      Promise.all([fetchCurrentUser(), fetchTutorsFromApi(), fetchStudentsFromApi()]).finally(() => {
         setInitialLoading(false);
       });
       showToast(data?.message || "Welcome back, Admin!");
@@ -1001,7 +1444,8 @@ export default function AdminDashboard() {
     { tab: "overview",    icon: <LayoutDashboard size={18} />, label: "Overview" },
     { tab: "applicants",  icon: <UserPlus size={18} />,        label: "Applicants",  badge: (tutorStats.pending || applicants.length) || undefined },
     { tab: "tutors",      icon: <GraduationCap size={18} />,   label: "Tutors",      badge: (tutorStats.approved || tutors.length) || undefined },
-    { tab: "bookings",    icon: <Calendar size={18} />,        label: "Students",    badge: (studentStats.pending_match || newInquiries) || undefined },
+    { tab: "bookings",    icon: <Users size={18} />,           label: "Students",    badge: (studentStats.pending_match || newInquiries) || undefined },
+    { tab: "sessions",    icon: <Calendar size={18} />,        label: "Timetables & Sessions" },
   ];
 
   return (
@@ -1081,7 +1525,24 @@ export default function AdminDashboard() {
         </nav>
 
         {/* Bottom */}
-        <div style={{ borderTop: "1px solid #f1f5f9", paddingTop: "0.85rem", display: "flex", flexDirection: "column", gap: "0.15rem" }}>
+        <div style={{ borderTop: "1px solid #f1f5f9", paddingTop: "0.85rem", display: "flex", flexDirection: "column", gap: "0.25rem" }}>
+          {currentUser && (
+            <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "8px", padding: "0.6rem 0.75rem", marginBottom: "0.35rem" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                <div style={{ width: "26px", height: "26px", borderRadius: "50%", background: "linear-gradient(135deg,#20b2a4,#0d9488)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: "0.75rem", flexShrink: 0 }}>
+                  {currentUser.name?.charAt(0) || "A"}
+                </div>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{ fontSize: "0.76rem", fontWeight: 700, color: "#0f172a", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {currentUser.name || "Admin"}
+                  </div>
+                  <div style={{ fontSize: "0.65rem", color: "#64748b", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {currentUser.email || "admin@samin.com"}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
           <Link href="/" style={{ display: "flex", alignItems: "center", gap: "0.6rem", padding: "0.65rem 1rem", borderRadius: "8px", color: "#4b5563", textDecoration: "none", fontSize: "0.84rem", fontWeight: 600 }}>
             <Globe size={16} /> Public Website
           </Link>
@@ -1107,6 +1568,7 @@ export default function AdminDashboard() {
                 {activeTab === "applicants" && "Tutor Applicants"}
                 {activeTab === "tutors" && "Enrolled Tutors"}
                 {activeTab === "bookings" && "Student Registrations"}
+                {activeTab === "sessions" && "Student Timetables & Sessions"}
               </h1>
               <p style={{ fontSize: "0.73rem", color: "#94a3b8", margin: 0 }}>
                 {new Date().toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
@@ -1116,8 +1578,13 @@ export default function AdminDashboard() {
           <div style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>
             <button
               onClick={() => {
+                fetchCurrentUser();
                 fetchTutorsFromApi();
                 fetchStudentsFromApi();
+                if (timetableStudent) {
+                  fetchStudentTimetable(timetableStudent.id);
+                  fetchStudentSessions(timetableStudent.id);
+                }
               }}
               disabled={isLoadingTutors || isLoadingStudents}
               title="Sync live tutor & student data from backend"
@@ -1138,7 +1605,18 @@ export default function AdminDashboard() {
               <RefreshCw size={13} style={{ animation: (isLoadingTutors || isLoadingStudents) ? "spin 0.8s linear infinite" : "none" }} />
               <span>Sync</span>
             </button>
-            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", background: "#f0fdf9", border: "1px solid #99f6e4", borderRadius: "8px", padding: "0.38rem 0.75rem" }}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "0.5rem",
+                background: "#f0fdf9",
+                border: "1px solid #99f6e4",
+                borderRadius: "8px",
+                padding: "0.38rem 0.75rem",
+              }}
+              title={currentUser?.email ? `${currentUser.name} (${currentUser.email})${currentUser.phone ? ` • ${currentUser.phone}` : ""}` : undefined}
+            >
               <ShieldCheck size={14} color="#0d9488" />
               <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "#0d9488" }}>
                 {currentUser?.name || "Admin"} ({currentUser?.role || "Active"})
@@ -1683,24 +2161,45 @@ export default function AdminDashboard() {
                               </td>
                               <td style={{ padding: "0.85rem 1rem", fontSize: "0.73rem", color: "#94a3b8", whiteSpace: "nowrap" }}>{b.date}</td>
                               <td style={{ padding: "0.85rem 1rem" }} onClick={(e) => e.stopPropagation()}>
-                                <button
-                                  onClick={() => openStudentDetail(b.id, b)}
-                                  style={{
-                                    background: "#f0fdf9",
-                                    border: "1px solid #99f6e4",
-                                    color: "#0d9488",
-                                    borderRadius: "6px",
-                                    padding: "0.3rem 0.65rem",
-                                    fontSize: "0.75rem",
-                                    fontWeight: 700,
-                                    cursor: "pointer",
-                                    display: "inline-flex",
-                                    alignItems: "center",
-                                    gap: "0.3rem",
-                                  }}
-                                >
-                                  <Eye size={12} /> View Profile
-                                </button>
+                                <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                                  <button
+                                    onClick={() => openStudentDetail(b.id, b)}
+                                    style={{
+                                      background: "#f0fdf9",
+                                      border: "1px solid #99f6e4",
+                                      color: "#0d9488",
+                                      borderRadius: "6px",
+                                      padding: "0.3rem 0.65rem",
+                                      fontSize: "0.75rem",
+                                      fontWeight: 700,
+                                      cursor: "pointer",
+                                      display: "inline-flex",
+                                      alignItems: "center",
+                                      gap: "0.3rem",
+                                    }}
+                                  >
+                                    <Eye size={12} /> View Profile
+                                  </button>
+                                  <button
+                                    onClick={() => openTimetableModal(b)}
+                                    title="Manage recurring timetable & generated calendar sessions"
+                                    style={{
+                                      background: "#f0f9ff",
+                                      border: "1px solid #bae6fd",
+                                      color: "#0284c7",
+                                      borderRadius: "6px",
+                                      padding: "0.3rem 0.65rem",
+                                      fontSize: "0.75rem",
+                                      fontWeight: 700,
+                                      cursor: "pointer",
+                                      display: "inline-flex",
+                                      alignItems: "center",
+                                      gap: "0.3rem",
+                                    }}
+                                  >
+                                    <Calendar size={12} /> Timetable
+                                  </button>
+                                </div>
                               </td>
                             </tr>
                           );
@@ -1708,6 +2207,166 @@ export default function AdminDashboard() {
                       </tbody>
                     </table>
                   </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {activeTab === "sessions" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }} className="page-enter">
+              {/* Header and Student Selector */}
+              <div className="dash-card" style={{ padding: "1.25rem 1.5rem" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "1rem" }}>
+                  <div>
+                    <h3 style={{ fontSize: "1.05rem", fontWeight: 800, color: "#0f172a", margin: "0 0 0.25rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                      <Calendar size={20} color="#0d9488" />
+                      Student Timetables &amp; Generated Sessions
+                    </h3>
+                    <p style={{ fontSize: "0.8rem", color: "#64748b", margin: 0 }}>
+                      Manage weekly recurring slots and schedule future lessons.
+                    </p>
+                  </div>
+
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.65rem", flexWrap: "wrap" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.45rem" }}>
+                      <span style={{ fontSize: "0.78rem", fontWeight: 700, color: "#475569" }}>Select Student:</span>
+                      <select
+                        value={selectedStudentForSessionsTab || (bookings.length > 0 ? bookings[0].id : "")}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setSelectedStudentForSessionsTab(val);
+                          const st = bookings.find((b) => String(b.id) === String(val));
+                          if (st) {
+                            openTimetableModal(st);
+                          }
+                        }}
+                        style={{
+                          padding: "0.45rem 0.85rem",
+                          borderRadius: "8px",
+                          border: "1.5px solid #cbd5e1",
+                          fontSize: "0.82rem",
+                          fontWeight: 600,
+                          color: "#0f172a",
+                          background: "#fff",
+                          outline: "none",
+                          cursor: "pointer",
+                        }}
+                      >
+                        {bookings.map((b) => (
+                          <option key={b.id} value={b.id}>
+                            #{b.id} - {b.student} ({b.parent})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {bookings.length > 0 && (
+                      <button
+                        onClick={() => {
+                          const targetId = selectedStudentForSessionsTab || bookings[0].id;
+                          const st = bookings.find((b) => String(b.id) === String(targetId));
+                          if (st) openTimetableModal(st);
+                        }}
+                        style={{
+                          padding: "0.45rem 0.95rem",
+                          background: "linear-gradient(135deg,#20b2a4,#0d9488)",
+                          color: "#fff",
+                          border: "none",
+                          borderRadius: "8px",
+                          fontSize: "0.8rem",
+                          fontWeight: 700,
+                          cursor: "pointer",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "0.35rem",
+                        }}
+                      >
+                        <Calendar size={14} /> Open Timetable Manager
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Quick Students Grid with direct Timetable buttons */}
+              {bookings.length === 0 ? (
+                <div className="dash-card" style={{ padding: "3rem 2rem", textAlign: "center" }}>
+                  <Calendar size={36} color="#94a3b8" style={{ marginBottom: "0.5rem" }} />
+                  <p style={{ fontWeight: 700, color: "#0f172a", margin: "0 0 0.25rem" }}>No Students Found</p>
+                  <p style={{ fontSize: "0.8rem", color: "#64748b", margin: 0 }}>Register students to assign lesson timetables and calendar sessions.</p>
+                </div>
+              ) : (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: "1rem" }}>
+                  {bookings.map((b) => (
+                    <div
+                      key={b.id}
+                      className="dash-card"
+                      style={{
+                        padding: "1.1rem 1.25rem",
+                        display: "flex",
+                        flexDirection: "column",
+                        justifyContent: "space-between",
+                        gap: "0.85rem",
+                        border: "1px solid #e2e8f0",
+                      }}
+                    >
+                      <div>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.4rem" }}>
+                          <span style={{ fontSize: "0.72rem", fontWeight: 700, color: "#64748b", fontFamily: "monospace" }}>#{b.id}</span>
+                          <span style={{ fontSize: "0.68rem", fontWeight: 700, padding: "0.15rem 0.5rem", borderRadius: "20px", ...(statusStyle[b.status] || { bg: "#f1f5f9", color: "#475569" }) }}>
+                            {b.status}
+                          </span>
+                        </div>
+                        <h4 style={{ margin: "0 0 0.15rem", fontSize: "0.95rem", fontWeight: 800, color: "#0f172a" }}>
+                          {b.student}
+                        </h4>
+                        <div style={{ fontSize: "0.76rem", color: "#64748b" }}>
+                          Parent: {b.parent} • {b.phone}
+                        </div>
+                        <div style={{ marginTop: "0.45rem", fontSize: "0.75rem", color: "#0d9488", fontWeight: 600 }}>
+                          🎓 {b.subject} ({b.level})
+                        </div>
+                      </div>
+
+                      <div style={{ display: "flex", gap: "0.5rem", borderTop: "1px solid #f1f5f9", paddingTop: "0.75rem" }}>
+                        <button
+                          onClick={() => openTimetableModal(b)}
+                          style={{
+                            flex: 1,
+                            padding: "0.45rem 0.75rem",
+                            background: "linear-gradient(135deg,#0284c7,#0369a1)",
+                            color: "#fff",
+                            border: "none",
+                            borderRadius: "8px",
+                            fontSize: "0.78rem",
+                            fontWeight: 700,
+                            cursor: "pointer",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            gap: "0.35rem",
+                          }}
+                        >
+                          <Calendar size={13} /> Timetable &amp; Sessions
+                        </button>
+                        <button
+                          onClick={() => openStudentDetail(b.id, b)}
+                          style={{
+                            padding: "0.45rem 0.75rem",
+                            background: "#fff",
+                            border: "1px solid #cbd5e1",
+                            color: "#475569",
+                            borderRadius: "8px",
+                            fontSize: "0.78rem",
+                            fontWeight: 600,
+                            cursor: "pointer",
+                          }}
+                        >
+                          Profile
+                        </button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
@@ -2452,7 +3111,29 @@ export default function AdminDashboard() {
                 <XCircle size={14} /> Cancel Enrollment
               </button>
 
-              <div style={{ display: "flex", gap: "0.5rem" }}>
+              <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+                <button
+                  onClick={() => {
+                    setIsStudentDetailOpen(false);
+                    openTimetableModal(selectedStudent);
+                  }}
+                  style={{
+                    padding: "0.5rem 1rem",
+                    background: "linear-gradient(135deg,#0284c7,#0369a1)",
+                    color: "#fff",
+                    border: "none",
+                    borderRadius: "8px",
+                    fontWeight: 700,
+                    fontSize: "0.8rem",
+                    cursor: "pointer",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "0.35rem",
+                    boxShadow: "0 2px 8px rgba(2,132,199,0.3)",
+                  }}
+                >
+                  <Calendar size={14} /> Timetable &amp; Sessions
+                </button>
                 <button
                   onClick={openMatchModal}
                   style={{ padding: "0.5rem 1rem", background: "linear-gradient(135deg,#20b2a4,#0d9488)", color: "#fff", border: "none", borderRadius: "8px", fontWeight: 700, fontSize: "0.8rem", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "0.35rem", boxShadow: "0 2px 8px rgba(13,148,136,0.3)" }}
@@ -2591,6 +3272,894 @@ export default function AdminDashboard() {
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Student Timetable & Calendar Sessions Modal ── */}
+      {isTimetableModalOpen && timetableStudent && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15,23,42,0.7)",
+            backdropFilter: "blur(4px)",
+            zIndex: 1050,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "1rem",
+            animation: "fadeUp 0.2s ease",
+          }}
+          onClick={() => setIsTimetableModalOpen(false)}
+        >
+          <div
+            style={{
+              background: "#fff",
+              borderRadius: "16px",
+              width: "100%",
+              maxWidth: "840px",
+              maxHeight: "92vh",
+              overflowY: "auto",
+              boxShadow: "0 25px 60px -15px rgba(0,0,0,0.3)",
+              border: "1px solid #e2e8f0",
+              display: "flex",
+              flexDirection: "column",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div style={{ background: "linear-gradient(135deg,#0f172a,#1e293b)", color: "#fff", padding: "1.25rem 1.5rem", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "0.75rem" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+                <div style={{ width: "42px", height: "42px", borderRadius: "10px", background: "linear-gradient(135deg,#0284c7,#0369a1)", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff" }}>
+                  <Calendar size={22} />
+                </div>
+                <div>
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                    <h3 style={{ margin: 0, fontSize: "1.1rem", fontWeight: 800, color: "#fff" }}>
+                      {timetableStudent.student_name || timetableStudent.student || "Student Timetable"}
+                    </h3>
+                    <span style={{ fontSize: "0.7rem", fontFamily: "monospace", color: "#38bdf8", background: "rgba(56,189,248,0.15)", padding: "0.1rem 0.45rem", borderRadius: "4px" }}>
+                      ID: #{timetableStudent.id}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: "0.74rem", color: "#94a3b8", marginTop: "0.15rem" }}>
+                    Parent: {timetableStudent.parent_name || timetableStudent.parent || "—"} • {timetableStudent.phone || "—"}
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "0.3rem", background: "rgba(255,255,255,0.1)", padding: "0.25rem 0.6rem", borderRadius: "8px" }}>
+                  <span style={{ fontSize: "0.7rem", color: "#94a3b8", fontWeight: 600 }}>Extend:</span>
+                  {[4, 8, 12].map((w) => (
+                    <button
+                      key={w}
+                      onClick={() => generateFutureSessions(w)}
+                      disabled={generatingSessions}
+                      style={{
+                        padding: "0.2rem 0.45rem",
+                        background: "rgba(255,255,255,0.15)",
+                        border: "none",
+                        borderRadius: "4px",
+                        color: "#fff",
+                        fontSize: "0.68rem",
+                        fontWeight: 700,
+                        cursor: generatingSessions ? "not-allowed" : "pointer",
+                      }}
+                      title={`Generate sessions for next ${w} weeks`}
+                    >
+                      +{w}w
+                    </button>
+                  ))}
+                </div>
+                <button
+                  onClick={() => setIsTimetableModalOpen(false)}
+                  style={{ background: "rgba(255,255,255,0.15)", border: "none", color: "#fff", width: "30px", height: "30px", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}
+                >
+                  <X size={16} />
+                </button>
+              </div>
+            </div>
+
+            {/* Sub-Header Navigation Tabs */}
+            <div style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0", padding: "0.5rem 1.5rem", display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
+              {[
+                { id: "recurring", label: `Weekly Timetable (${timetableSlots.length})`, icon: <Clock size={14} /> },
+                { id: "sessions", label: `Calendar Sessions (${calendarSessions.length})`, icon: <CalendarDays size={14} /> },
+                { id: "add_slot", label: "+ Assign / Add Slot", icon: <Plus size={14} /> },
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setTimetableTab(tab.id as any)}
+                  style={{
+                    padding: "0.45rem 0.95rem",
+                    borderRadius: "8px",
+                    border: "none",
+                    background: timetableTab === tab.id ? "#0284c7" : "transparent",
+                    color: timetableTab === tab.id ? "#fff" : "#475569",
+                    fontWeight: 700,
+                    fontSize: "0.78rem",
+                    cursor: "pointer",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "0.4rem",
+                    transition: "all 0.15s ease",
+                  }}
+                >
+                  {tab.icon}
+                  <span>{tab.label}</span>
+                </button>
+              ))}
+            </div>
+
+            {/* Modal Content */}
+            <div style={{ padding: "1.5rem", flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: "1.25rem" }}>
+              {/* ── TAB 1: Recurring Weekly Slots ── */}
+              {timetableTab === "recurring" && (
+                <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "0.5rem" }}>
+                    <div>
+                      <h4 style={{ margin: 0, fontSize: "0.92rem", fontWeight: 800, color: "#0f172a" }}>
+                        Recurring Weekly Lesson Slots
+                      </h4>
+                      <p style={{ margin: "0.15rem 0 0", fontSize: "0.74rem", color: "#64748b" }}>
+                        Active weekly time slots assigned to this student ({timetableSlots.length} slot{timetableSlots.length === 1 ? "" : "s"}).
+                      </p>
+                    </div>
+
+                    <button
+                      onClick={() => setTimetableTab("add_slot")}
+                      style={{
+                        padding: "0.4rem 0.85rem",
+                        background: "linear-gradient(135deg,#0284c7,#0369a1)",
+                        color: "#fff",
+                        border: "none",
+                        borderRadius: "8px",
+                        fontSize: "0.75rem",
+                        fontWeight: 700,
+                        cursor: "pointer",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "0.3rem",
+                      }}
+                    >
+                      <Plus size={13} /> Add New Slot
+                    </button>
+                  </div>
+
+                  {loadingTimetable ? (
+                    <div style={{ padding: "3rem", textAlign: "center", color: "#64748b" }}>
+                      <div style={{ width: "28px", height: "28px", border: "3px solid #0284c7", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.7s linear infinite", margin: "0 auto 0.6rem" }} />
+                      <span style={{ fontSize: "0.82rem" }}>Loading student timetable...</span>
+                    </div>
+                  ) : timetableSlots.length === 0 ? (
+                    <div style={{ background: "#f8fafc", border: "2px dashed #cbd5e1", borderRadius: "12px", padding: "2.5rem 1.5rem", textAlign: "center" }}>
+                      <Clock size={36} color="#94a3b8" style={{ marginBottom: "0.6rem" }} />
+                      <div style={{ fontWeight: 800, fontSize: "0.95rem", color: "#0f172a" }}>No Weekly Recurring Slots Assigned</div>
+                      <p style={{ fontSize: "0.8rem", color: "#64748b", maxWidth: "420px", margin: "0.35rem auto 1rem" }}>
+                        Assign weekly recurring timetable slots (e.g. Mondays 17:00 - 18:00) to automatically generate upcoming calendar sessions.
+                      </p>
+                      <button
+                        onClick={() => setTimetableTab("add_slot")}
+                        style={{
+                          padding: "0.5rem 1.1rem",
+                          background: "linear-gradient(135deg,#20b2a4,#0d9488)",
+                          color: "#fff",
+                          border: "none",
+                          borderRadius: "8px",
+                          fontSize: "0.8rem",
+                          fontWeight: 700,
+                          cursor: "pointer",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "0.35rem",
+                        }}
+                      >
+                        <Plus size={14} /> Assign Lesson Timetable
+                      </button>
+                    </div>
+                  ) : (
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: "0.85rem" }}>
+                      {timetableSlots.map((slot) => (
+                        <div
+                          key={slot.id}
+                          style={{
+                            background: "#fff",
+                            border: "1.5px solid #e2e8f0",
+                            borderRadius: "12px",
+                            padding: "1rem",
+                            display: "flex",
+                            flexDirection: "column",
+                            justifyContent: "space-between",
+                            gap: "0.75rem",
+                            boxShadow: "0 2px 6px rgba(0,0,0,0.03)",
+                          }}
+                        >
+                          <div>
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.45rem" }}>
+                              <span style={{ fontSize: "0.72rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.05em", color: "#0284c7", background: "#f0f9ff", border: "1px solid #bae6fd", padding: "0.15rem 0.55rem", borderRadius: "20px" }}>
+                                {slot.day_of_week}
+                              </span>
+                              <span style={{ fontSize: "0.74rem", fontWeight: 700, color: "#0f172a", display: "inline-flex", alignItems: "center", gap: "0.25rem" }}>
+                                <Clock size={12} color="#64748b" /> {slot.start_time?.slice(0, 5)} - {slot.end_time?.slice(0, 5)}
+                              </span>
+                            </div>
+
+                            <div style={{ fontWeight: 800, fontSize: "0.95rem", color: "#0f172a" }}>
+                              {slot.subject}
+                            </div>
+
+                            <div style={{ fontSize: "0.78rem", color: "#475569", marginTop: "0.35rem", display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                              <GraduationCap size={13} color="#0d9488" />
+                              <span>Tutor: <strong>{slot.tutor?.name || `ID #${slot.tutor_id}`}</strong></span>
+                            </div>
+
+                            {slot.notes && (
+                              <div style={{ fontSize: "0.72rem", color: "#64748b", background: "#f8fafc", padding: "0.35rem 0.55rem", borderRadius: "6px", marginTop: "0.45rem", fontStyle: "italic" }}>
+                                {slot.notes}
+                              </div>
+                            )}
+
+                            {slot.meeting_link ? (
+                              <div style={{ marginTop: "0.6rem" }}>
+                                <a
+                                  href={slot.meeting_link}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  style={{
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: "0.35rem",
+                                    fontSize: "0.72rem",
+                                    color: "#0369a1",
+                                    background: "#e0f2fe",
+                                    padding: "0.25rem 0.55rem",
+                                    borderRadius: "6px",
+                                    textDecoration: "none",
+                                    fontWeight: 700,
+                                  }}
+                                >
+                                  <Video size={12} /> Join Lesson Room <ExternalLink size={11} />
+                                </a>
+                              </div>
+                            ) : (
+                              <div style={{ fontSize: "0.7rem", color: "#94a3b8", marginTop: "0.5rem" }}>No meeting link attached</div>
+                            )}
+                          </div>
+
+                          <div style={{ borderTop: "1px solid #f1f5f9", paddingTop: "0.6rem", display: "flex", justifyContent: "flex-end" }}>
+                            <button
+                              onClick={() => deleteTimetableSlot(slot.id)}
+                              style={{
+                                padding: "0.3rem 0.65rem",
+                                background: "#fee2e2",
+                                color: "#991b1b",
+                                border: "1px solid #fca5a5",
+                                borderRadius: "6px",
+                                fontSize: "0.72rem",
+                                fontWeight: 700,
+                                cursor: "pointer",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "0.25rem",
+                              }}
+                            >
+                              <Trash2 size={12} /> Remove Slot
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ── TAB 2: Calendar Sessions (Filtered & Editable) ── */}
+              {timetableTab === "sessions" && (
+                <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+                  {/* Sessions Filter Bar */}
+                  <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "10px", padding: "0.85rem 1rem", display: "flex", flexWrap: "wrap", alignItems: "center", gap: "0.75rem", justifyContent: "space-between" }}>
+                    <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "0.65rem" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
+                        <span style={{ fontSize: "0.74rem", fontWeight: 700, color: "#475569" }}>Status:</span>
+                        <select
+                          value={sessionFilterStatus}
+                          onChange={(e) => {
+                            setSessionFilterStatus(e.target.value);
+                            fetchStudentSessions(timetableStudent.id, { status: e.target.value });
+                          }}
+                          style={{ padding: "0.35rem 0.6rem", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "0.75rem", fontWeight: 600, background: "#fff", outline: "none" }}
+                        >
+                          <option value="all">All Statuses</option>
+                          <option value="scheduled">Scheduled</option>
+                          <option value="completed">Completed</option>
+                          <option value="rescheduled">Rescheduled</option>
+                          <option value="cancelled">Cancelled</option>
+                        </select>
+                      </div>
+
+                      <div style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
+                        <span style={{ fontSize: "0.74rem", fontWeight: 700, color: "#475569" }}>From:</span>
+                        <input
+                          type="date"
+                          value={sessionFromDate}
+                          onChange={(e) => {
+                            setSessionFromDate(e.target.value);
+                            fetchStudentSessions(timetableStudent.id, { from_date: e.target.value });
+                          }}
+                          style={{ padding: "0.3rem 0.55rem", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "0.75rem", background: "#fff" }}
+                        />
+                      </div>
+
+                      <div style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
+                        <span style={{ fontSize: "0.74rem", fontWeight: 700, color: "#475569" }}>To:</span>
+                        <input
+                          type="date"
+                          value={sessionToDate}
+                          onChange={(e) => {
+                            setSessionToDate(e.target.value);
+                            fetchStudentSessions(timetableStudent.id, { to_date: e.target.value });
+                          }}
+                          style={{ padding: "0.3rem 0.55rem", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "0.75rem", background: "#fff" }}
+                        />
+                      </div>
+                    </div>
+
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.45rem" }}>
+                      <button
+                        onClick={() => {
+                          setSessionFilterStatus("all");
+                          setSessionFromDate("");
+                          setSessionToDate("");
+                          setSessionTutorFilter("all");
+                          fetchStudentSessions(timetableStudent.id, { status: "all", from_date: "", to_date: "", tutor_id: "all" });
+                        }}
+                        style={{ padding: "0.35rem 0.65rem", background: "#fff", border: "1px solid #cbd5e1", borderRadius: "6px", fontSize: "0.72rem", color: "#64748b", fontWeight: 600, cursor: "pointer" }}
+                      >
+                        Reset Filters
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Sessions List */}
+                  {calendarSessions.length === 0 ? (
+                    <div style={{ background: "#f8fafc", border: "1px dashed #cbd5e1", borderRadius: "12px", padding: "3rem 1.5rem", textAlign: "center" }}>
+                      <CalendarDays size={36} color="#94a3b8" style={{ marginBottom: "0.5rem" }} />
+                      <div style={{ fontWeight: 800, fontSize: "0.92rem", color: "#0f172a" }}>No Calendar Sessions Found</div>
+                      <p style={{ fontSize: "0.78rem", color: "#64748b", margin: "0.3rem auto 1rem", maxWidth: "380px" }}>
+                        Generate future calendar sessions from the student's recurring slots, or adjust your filter.
+                      </p>
+                      <button
+                        onClick={() => generateFutureSessions(4)}
+                        disabled={generatingSessions}
+                        style={{ padding: "0.5rem 1rem", background: "linear-gradient(135deg,#0284c7,#0369a1)", color: "#fff", border: "none", borderRadius: "8px", fontSize: "0.8rem", fontWeight: 700, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "0.35rem" }}
+                      >
+                        {generatingSessions ? "Generating..." : "Generate Next 4 Weeks"}
+                      </button>
+                    </div>
+                  ) : (
+                    <div style={{ display: "flex", flexDirection: "column", gap: "0.65rem" }}>
+                      {calendarSessions.map((session) => {
+                        const isScheduled = session.status === "scheduled";
+                        const isCompleted = session.status === "completed";
+                        const isCancelled = session.status === "cancelled";
+                        const isRescheduled = session.status === "rescheduled";
+
+                        const pillColor = isCompleted
+                          ? { bg: "#d1fae5", text: "#065f46" }
+                          : isCancelled
+                          ? { bg: "#fee2e2", text: "#991b1b" }
+                          : isRescheduled
+                          ? { bg: "#fef3c7", text: "#b45309" }
+                          : { bg: "#e0f2fe", text: "#0369a1" };
+
+                        return (
+                          <div
+                            key={session.id}
+                            style={{
+                              background: "#fff",
+                              border: "1px solid #e2e8f0",
+                              borderRadius: "10px",
+                              padding: "0.85rem 1rem",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "space-between",
+                              flexWrap: "wrap",
+                              gap: "0.75rem",
+                            }}
+                          >
+                            <div style={{ display: "flex", alignItems: "center", gap: "0.85rem" }}>
+                              <div style={{ textAlign: "center", padding: "0.4rem 0.65rem", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "8px", minWidth: "75px" }}>
+                                <div style={{ fontSize: "0.68rem", fontWeight: 800, color: "#64748b", textTransform: "uppercase" }}>
+                                  {session.date ? new Date(session.date).toLocaleDateString("en-GB", { weekday: "short" }) : "Session"}
+                                </div>
+                                <div style={{ fontSize: "0.92rem", fontWeight: 800, color: "#0f172a" }}>
+                                  {session.date ? new Date(session.date).toLocaleDateString("en-GB", { day: "numeric", month: "short" }) : `ID #${session.id}`}
+                                </div>
+                              </div>
+
+                              <div>
+                                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                                  <span style={{ fontWeight: 800, fontSize: "0.9rem", color: "#0f172a" }}>
+                                    {session.subject}
+                                  </span>
+                                  <span style={{ fontSize: "0.68rem", fontWeight: 700, padding: "0.15rem 0.5rem", borderRadius: "20px", background: pillColor.bg, color: pillColor.text, textTransform: "capitalize" }}>
+                                    {session.status}
+                                  </span>
+                                </div>
+
+                                <div style={{ fontSize: "0.75rem", color: "#64748b", marginTop: "0.2rem", display: "flex", alignItems: "center", gap: "0.6rem" }}>
+                                  <span><Clock size={11} style={{ display: "inline", verticalAlign: "middle" }} /> {session.start_time?.slice(0, 5)} - {session.end_time?.slice(0, 5)}</span>
+                                  <span>•</span>
+                                  <span>Tutor: <strong>{session.tutor?.name || `Tutor #${session.tutor_id}`}</strong></span>
+                                </div>
+
+                                {session.notes && (
+                                  <div style={{ fontSize: "0.72rem", color: "#475569", marginTop: "0.3rem", fontStyle: "italic" }}>
+                                    📝 {session.notes}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+
+                            <div style={{ display: "flex", alignItems: "center", gap: "0.45rem", flexWrap: "wrap" }}>
+                              {session.meeting_link && (
+                                <a
+                                  href={session.meeting_link}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  style={{
+                                    padding: "0.35rem 0.65rem",
+                                    background: "#f0f9ff",
+                                    border: "1px solid #bae6fd",
+                                    color: "#0284c7",
+                                    borderRadius: "6px",
+                                    fontSize: "0.72rem",
+                                    fontWeight: 700,
+                                    textDecoration: "none",
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: "0.3rem",
+                                  }}
+                                >
+                                  <Video size={12} /> Meeting Link
+                                </a>
+                              )}
+
+                              {isScheduled && (
+                                <button
+                                  onClick={() => quickUpdateSessionStatus(session.id, "completed")}
+                                  title="Mark session completed"
+                                  style={{
+                                    padding: "0.35rem 0.65rem",
+                                    background: "#f0fdf4",
+                                    border: "1px solid #bbf7d0",
+                                    color: "#16a34a",
+                                    borderRadius: "6px",
+                                    fontSize: "0.72rem",
+                                    fontWeight: 700,
+                                    cursor: "pointer",
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: "0.25rem",
+                                  }}
+                                >
+                                  <Check size={12} /> Completed
+                                </button>
+                              )}
+
+                              {isScheduled && (
+                                <button
+                                  onClick={() => quickUpdateSessionStatus(session.id, "cancelled")}
+                                  title="Cancel lesson"
+                                  style={{
+                                    padding: "0.35rem 0.65rem",
+                                    background: "#fef2f2",
+                                    border: "1px solid #fecaca",
+                                    color: "#dc2626",
+                                    borderRadius: "6px",
+                                    fontSize: "0.72rem",
+                                    fontWeight: 700,
+                                    cursor: "pointer",
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: "0.25rem",
+                                  }}
+                                >
+                                  <XCircle size={12} /> Cancel
+                                </button>
+                              )}
+
+                              <button
+                                onClick={() => openEditSessionModal(session)}
+                                title="Reschedule or update notes/link"
+                                style={{
+                                  padding: "0.35rem 0.75rem",
+                                  background: "#fff",
+                                  border: "1.5px solid #cbd5e1",
+                                  color: "#334155",
+                                  borderRadius: "6px",
+                                  fontSize: "0.72rem",
+                                  fontWeight: 700,
+                                  cursor: "pointer",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: "0.25rem",
+                                }}
+                              >
+                                <Edit3 size={12} /> Reschedule / Edit
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ── TAB 3: Assign / Add Timetable Slot Form ── */}
+              {timetableTab === "add_slot" && (
+                <form onSubmit={assignTimetableSubmit} style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+                  <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "10px", padding: "1rem" }}>
+                    <h4 style={{ margin: "0 0 0.35rem", fontSize: "0.92rem", fontWeight: 800, color: "#0f172a" }}>
+                      Assign Weekly Timetable Slot
+                    </h4>
+                    <p style={{ margin: 0, fontSize: "0.75rem", color: "#64748b" }}>
+                      This will assign a recurring weekly slot to {timetableStudent.student_name || timetableStudent.student} and generate calendar dates automatically.
+                    </p>
+                  </div>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "1rem" }}>
+                    {/* Tutor Picker */}
+                    <div>
+                      <label style={{ fontSize: "0.78rem", fontWeight: 700, color: "#374151", display: "block", marginBottom: "0.35rem" }}>
+                        Assigned Tutor *
+                      </label>
+                      <select
+                        required
+                        value={slotTutorId}
+                        onChange={(e) => setSlotTutorId(e.target.value)}
+                        style={{ width: "100%", padding: "0.55rem 0.75rem", borderRadius: "8px", border: "1.5px solid #cbd5e1", fontSize: "0.85rem", background: "#fff", outline: "none" }}
+                      >
+                        <option value="">-- Select Tutor --</option>
+                        {approvedTutors.map((t) => (
+                          <option key={t.id} value={t.id}>
+                            {t.name} ({t.qualification || t.email})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Subject */}
+                    <div>
+                      <label style={{ fontSize: "0.78rem", fontWeight: 700, color: "#374151", display: "block", marginBottom: "0.35rem" }}>
+                        Subject *
+                      </label>
+                      <input
+                        required
+                        value={slotSubject}
+                        onChange={(e) => setSlotSubject(e.target.value)}
+                        placeholder="e.g. Mathematics / Physics"
+                        style={{ width: "100%", padding: "0.55rem 0.75rem", borderRadius: "8px", border: "1.5px solid #cbd5e1", fontSize: "0.85rem", outline: "none", boxSizing: "border-box" }}
+                      />
+                    </div>
+
+                    {/* Day of week */}
+                    <div>
+                      <label style={{ fontSize: "0.78rem", fontWeight: 700, color: "#374151", display: "block", marginBottom: "0.35rem" }}>
+                        Day of Week *
+                      </label>
+                      <select
+                        value={slotDayOfWeek}
+                        onChange={(e) => setSlotDayOfWeek(e.target.value)}
+                        style={{ width: "100%", padding: "0.55rem 0.75rem", borderRadius: "8px", border: "1.5px solid #cbd5e1", fontSize: "0.85rem", background: "#fff", outline: "none" }}
+                      >
+                        <option value="monday">Monday</option>
+                        <option value="tuesday">Tuesday</option>
+                        <option value="wednesday">Wednesday</option>
+                        <option value="thursday">Thursday</option>
+                        <option value="friday">Friday</option>
+                        <option value="saturday">Saturday</option>
+                        <option value="sunday">Sunday</option>
+                      </select>
+                    </div>
+
+                    {/* Start Time & End Time */}
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem" }}>
+                      <div>
+                        <label style={{ fontSize: "0.78rem", fontWeight: 700, color: "#374151", display: "block", marginBottom: "0.35rem" }}>
+                          Start Time *
+                        </label>
+                        <input
+                          type="time"
+                          required
+                          value={slotStartTime}
+                          onChange={(e) => setSlotStartTime(e.target.value)}
+                          style={{ width: "100%", padding: "0.55rem 0.65rem", borderRadius: "8px", border: "1.5px solid #cbd5e1", fontSize: "0.85rem", outline: "none", boxSizing: "border-box" }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: "0.78rem", fontWeight: 700, color: "#374151", display: "block", marginBottom: "0.35rem" }}>
+                          End Time *
+                        </label>
+                        <input
+                          type="time"
+                          required
+                          value={slotEndTime}
+                          onChange={(e) => setSlotEndTime(e.target.value)}
+                          style={{ width: "100%", padding: "0.55rem 0.65rem", borderRadius: "8px", border: "1.5px solid #cbd5e1", fontSize: "0.85rem", outline: "none", boxSizing: "border-box" }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Meeting link */}
+                  <div>
+                    <label style={{ fontSize: "0.78rem", fontWeight: 700, color: "#374151", display: "block", marginBottom: "0.35rem" }}>
+                      Video Meeting Link (Google Meet / Zoom URL)
+                    </label>
+                    <input
+                      type="url"
+                      value={slotMeetingLink}
+                      onChange={(e) => setSlotMeetingLink(e.target.value)}
+                      placeholder="https://meet.google.com/abc-defg-hij"
+                      style={{ width: "100%", padding: "0.55rem 0.75rem", borderRadius: "8px", border: "1.5px solid #cbd5e1", fontSize: "0.85rem", outline: "none", boxSizing: "border-box" }}
+                    />
+                  </div>
+
+                  {/* Notes */}
+                  <div>
+                    <label style={{ fontSize: "0.78rem", fontWeight: 700, color: "#374151", display: "block", marginBottom: "0.35rem" }}>
+                      Lesson Schedule Notes
+                    </label>
+                    <textarea
+                      value={slotNotes}
+                      onChange={(e) => setSlotNotes(e.target.value)}
+                      placeholder="e.g. Weekly GCSE Maths focus. Target algebra and exam papers."
+                      rows={2}
+                      style={{ width: "100%", padding: "0.55rem 0.75rem", borderRadius: "8px", border: "1.5px solid #cbd5e1", fontSize: "0.85rem", outline: "none", boxSizing: "border-box", fontFamily: "inherit" }}
+                    />
+                  </div>
+
+                  {/* Schedule Options */}
+                  <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "10px", padding: "0.85rem 1rem", display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: "1rem" }}>
+                    <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", cursor: "pointer", fontSize: "0.78rem", fontWeight: 600, color: "#334155" }}>
+                      <input
+                        type="checkbox"
+                        checked={slotReplaceExisting}
+                        onChange={(e) => setSlotReplaceExisting(e.target.checked)}
+                      />
+                      <span>Replace existing weekly recurring slots</span>
+                    </label>
+
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.45rem" }}>
+                      <span style={{ fontSize: "0.78rem", fontWeight: 700, color: "#475569" }}>Generate Calendar Sessions:</span>
+                      <select
+                        value={slotGenerateWeeks}
+                        onChange={(e) => setSlotGenerateWeeks(Number(e.target.value))}
+                        style={{ padding: "0.35rem 0.65rem", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "0.78rem", fontWeight: 700, background: "#fff" }}
+                      >
+                        <option value={2}>Next 2 Weeks</option>
+                        <option value={4}>Next 4 Weeks (Standard)</option>
+                        <option value={8}>Next 8 Weeks</option>
+                        <option value={12}>Next 12 Weeks (Full Term)</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Actions */}
+                  <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem", marginTop: "0.5rem" }}>
+                    <button
+                      type="button"
+                      onClick={() => setTimetableTab("recurring")}
+                      style={{ padding: "0.55rem 1rem", background: "#f1f5f9", border: "none", borderRadius: "8px", fontSize: "0.82rem", fontWeight: 600, color: "#475569", cursor: "pointer" }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={isSubmittingSlot}
+                      style={{
+                        padding: "0.55rem 1.35rem",
+                        background: isSubmittingSlot ? "#94a3b8" : "linear-gradient(135deg,#0284c7,#0369a1)",
+                        color: "#fff",
+                        border: "none",
+                        borderRadius: "8px",
+                        fontSize: "0.82rem",
+                        fontWeight: 700,
+                        cursor: isSubmittingSlot ? "not-allowed" : "pointer",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "0.4rem",
+                        boxShadow: "0 2px 8px rgba(2,132,199,0.3)",
+                      }}
+                    >
+                      {isSubmittingSlot ? "Assigning Timetable..." : "Save Timetable & Generate Sessions"}
+                    </button>
+                  </div>
+                </form>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div style={{ padding: "0.85rem 1.5rem", borderTop: "1px solid #e2e8f0", background: "#f8fafc", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div style={{ fontSize: "0.75rem", color: "#64748b" }}>
+                Recurring Slots: <strong>{timetableSlots.length}</strong> • Generated Sessions: <strong>{calendarSessions.length}</strong>
+              </div>
+              <button
+                onClick={() => setIsTimetableModalOpen(false)}
+                style={{ padding: "0.45rem 1.1rem", background: "#fff", border: "1.5px solid #cbd5e1", borderRadius: "8px", fontWeight: 600, fontSize: "0.8rem", color: "#475569", cursor: "pointer" }}
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Edit / Reschedule Single Session Sub-Modal (PATCH /api/admin/sessions/{id}) ── */}
+      {editingSession && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15,23,42,0.75)",
+            backdropFilter: "blur(4px)",
+            zIndex: 1150,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "1rem",
+            animation: "fadeUp 0.2s ease",
+          }}
+          onClick={() => setEditingSession(null)}
+        >
+          <div
+            style={{
+              background: "#fff",
+              borderRadius: "16px",
+              width: "100%",
+              maxWidth: "520px",
+              boxShadow: "0 25px 60px -15px rgba(0,0,0,0.3)",
+              overflow: "hidden",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div style={{ background: "linear-gradient(135deg,#0284c7,#0369a1)", color: "#fff", padding: "1.1rem 1.5rem", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.55rem" }}>
+                <Edit3 size={18} />
+                <div>
+                  <h3 style={{ margin: 0, fontSize: "1rem", fontWeight: 800 }}>Reschedule / Edit Session #{editingSession.id}</h3>
+                  <div style={{ fontSize: "0.72rem", opacity: 0.85 }}>{editingSession.subject} • Tutor: {editingSession.tutor?.name || `#${editingSession.tutor_id}`}</div>
+                </div>
+              </div>
+              <button onClick={() => setEditingSession(null)} style={{ background: "rgba(255,255,255,0.15)", border: "none", color: "#fff", width: "28px", height: "28px", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
+                <X size={15} />
+              </button>
+            </div>
+
+            {/* Form */}
+            <form onSubmit={submitUpdateSession} style={{ padding: "1.25rem 1.5rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem" }}>
+                {/* Status */}
+                <div>
+                  <label style={{ fontSize: "0.78rem", fontWeight: 700, color: "#374151", display: "block", marginBottom: "0.35rem" }}>
+                    Session Status *
+                  </label>
+                  <select
+                    value={editSessionStatus}
+                    onChange={(e) => setEditSessionStatus(e.target.value)}
+                    style={{ width: "100%", padding: "0.5rem 0.65rem", borderRadius: "8px", border: "1.5px solid #cbd5e1", fontSize: "0.82rem", background: "#fff", outline: "none" }}
+                  >
+                    <option value="scheduled">Scheduled</option>
+                    <option value="completed">Completed</option>
+                    <option value="rescheduled">Rescheduled</option>
+                    <option value="cancelled">Cancelled</option>
+                  </select>
+                </div>
+
+                {/* Date */}
+                <div>
+                  <label style={{ fontSize: "0.78rem", fontWeight: 700, color: "#374151", display: "block", marginBottom: "0.35rem" }}>
+                    Lesson Date *
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={editSessionDate}
+                    onChange={(e) => setEditSessionDate(e.target.value)}
+                    style={{ width: "100%", padding: "0.45rem 0.65rem", borderRadius: "8px", border: "1.5px solid #cbd5e1", fontSize: "0.82rem", outline: "none", boxSizing: "border-box" }}
+                  />
+                </div>
+              </div>
+
+              {/* Start & End Time */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem" }}>
+                <div>
+                  <label style={{ fontSize: "0.78rem", fontWeight: 700, color: "#374151", display: "block", marginBottom: "0.35rem" }}>
+                    Start Time
+                  </label>
+                  <input
+                    type="time"
+                    value={editSessionStartTime}
+                    onChange={(e) => setEditSessionStartTime(e.target.value)}
+                    style={{ width: "100%", padding: "0.45rem 0.65rem", borderRadius: "8px", border: "1.5px solid #cbd5e1", fontSize: "0.82rem", outline: "none", boxSizing: "border-box" }}
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: "0.78rem", fontWeight: 700, color: "#374151", display: "block", marginBottom: "0.35rem" }}>
+                    End Time
+                  </label>
+                  <input
+                    type="time"
+                    value={editSessionEndTime}
+                    onChange={(e) => setEditSessionEndTime(e.target.value)}
+                    style={{ width: "100%", padding: "0.45rem 0.65rem", borderRadius: "8px", border: "1.5px solid #cbd5e1", fontSize: "0.82rem", outline: "none", boxSizing: "border-box" }}
+                  />
+                </div>
+              </div>
+
+              {/* Meeting link */}
+              <div>
+                <label style={{ fontSize: "0.78rem", fontWeight: 700, color: "#374151", display: "block", marginBottom: "0.35rem" }}>
+                  Meeting Link (Google Meet / Zoom)
+                </label>
+                <input
+                  type="url"
+                  value={editSessionMeetingLink}
+                  onChange={(e) => setEditSessionMeetingLink(e.target.value)}
+                  placeholder="https://meet.google.com/..."
+                  style={{ width: "100%", padding: "0.5rem 0.75rem", borderRadius: "8px", border: "1.5px solid #cbd5e1", fontSize: "0.82rem", outline: "none", boxSizing: "border-box" }}
+                />
+              </div>
+
+              {/* Notes */}
+              <div>
+                <label style={{ fontSize: "0.78rem", fontWeight: 700, color: "#374151", display: "block", marginBottom: "0.35rem" }}>
+                  Session Feedback / Reschedule Notes
+                </label>
+                <textarea
+                  value={editSessionNotes}
+                  onChange={(e) => setEditSessionNotes(e.target.value)}
+                  placeholder="e.g. Lesson conducted successfully. Covered quadratic equations."
+                  rows={3}
+                  style={{ width: "100%", padding: "0.5rem 0.75rem", borderRadius: "8px", border: "1.5px solid #cbd5e1", fontSize: "0.82rem", outline: "none", resize: "vertical", boxSizing: "border-box", fontFamily: "inherit" }}
+                />
+              </div>
+
+              {/* Footer */}
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem", borderTop: "1px solid #f1f5f9", paddingTop: "0.85rem" }}>
+                <button
+                  type="button"
+                  onClick={() => setEditingSession(null)}
+                  style={{ padding: "0.5rem 1rem", background: "#f1f5f9", border: "none", borderRadius: "8px", fontSize: "0.8rem", fontWeight: 600, color: "#475569", cursor: "pointer" }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingSession}
+                  style={{
+                    padding: "0.5rem 1.25rem",
+                    background: isSavingSession ? "#94a3b8" : "linear-gradient(135deg,#0284c7,#0369a1)",
+                    color: "#fff",
+                    border: "none",
+                    borderRadius: "8px",
+                    fontSize: "0.8rem",
+                    fontWeight: 700,
+                    cursor: isSavingSession ? "not-allowed" : "pointer",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "0.35rem",
+                  }}
+                >
+                  {isSavingSession ? "Saving..." : "Save Session Changes"}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
