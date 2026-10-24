@@ -324,6 +324,11 @@ export default function Home() {
   // Restore login session from localStorage
   useEffect(() => {
     if (typeof window !== "undefined") {
+      const mustChange = localStorage.getItem("samin_must_change_password");
+      if (mustChange === "true") {
+        window.location.href = "/change-password";
+        return;
+      }
       const saved = localStorage.getItem("samin_admin_logged_in");
       if (saved === "true") {
         setIsAdminLoggedIn(true);
@@ -377,6 +382,7 @@ export default function Home() {
           setIsAdminLoggedIn(true);
           if (typeof window !== "undefined") {
             localStorage.setItem("samin_admin_logged_in", "true");
+            localStorage.removeItem("samin_must_change_password");
             window.location.href = "/admin/dashboard";
           }
           return;
@@ -399,7 +405,16 @@ export default function Home() {
         if (data?.user) {
           localStorage.setItem("samin_user", JSON.stringify(data.user));
         }
-        window.location.href = "/admin/dashboard";
+
+        // Check if user is required to change their temporary password
+        if (data?.must_change_password === true || data?.user?.must_change_password === true) {
+          localStorage.setItem("samin_must_change_password", "true");
+          window.location.href = "/change-password";
+          return;
+        } else {
+          localStorage.removeItem("samin_must_change_password");
+          window.location.href = "/admin/dashboard";
+        }
       }
     } catch (err: any) {
       console.error("Login request error:", err);

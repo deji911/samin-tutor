@@ -263,14 +263,20 @@ export default function AdminDashboard() {
   const [expandedApplicant, setExpandedApplicant] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [isAddTutorOpen, setIsAddTutorOpen] = useState(false);
-  const [newTutor, setNewTutor] = useState({
+  const [enrollTutorForm, setEnrollTutorForm] = useState({
     name: "",
-    school: "University of Cambridge",
-    subject: "Mathematics",
-    rate: "£45/hr",
-    region: "UK 🇬🇧",
-    img: "/images/tutor-1.jpg",
+    email: "",
+    phone: "",
+    qualification: "",
+    subjects: ["Mathematics"] as string[],
+    levels: ["Year 1-6", "GCSE preparation"] as string[],
+    years_of_experience: "",
+    bio: "",
   });
+  const [enrollCustomSubject, setEnrollCustomSubject] = useState("");
+  const [isEnrollingTutor, setIsEnrollingTutor] = useState(false);
+  const [enrollTutorError, setEnrollTutorError] = useState<string | null>(null);
+  const [enrollTutorFieldErrors, setEnrollTutorFieldErrors] = useState<Record<string, string[]>>({});
 
   const [currentUser, setCurrentUser] = useState<AuthUser | { id?: number; name?: string; email?: string; role?: string; phone?: string | null } | null>(null);
   const [tutorStats, setTutorStats] = useState<TutorStats>({
@@ -382,6 +388,11 @@ export default function AdminDashboard() {
         setCurrentUser(user);
         if (typeof window !== "undefined") {
           localStorage.setItem("samin_user", JSON.stringify(user));
+          if (user.must_change_password) {
+            localStorage.setItem("samin_must_change_password", "true");
+            window.location.href = "/change-password";
+            return;
+          }
         }
       } else if (res.status === 401) {
         console.warn("Session expired or token invalid from GET /api/user");
@@ -1108,6 +1119,12 @@ export default function AdminDashboard() {
   };
 
   useEffect(() => {
+    const mustChange = typeof window !== "undefined" ? localStorage.getItem("samin_must_change_password") : null;
+    if (mustChange === "true") {
+      window.location.href = "/change-password";
+      return;
+    }
+
     const stored = typeof window !== "undefined" ? localStorage.getItem("samin_admin_logged_in") : null;
     const token = typeof window !== "undefined" ? localStorage.getItem("samin_auth_token") : null;
 
@@ -1161,6 +1178,7 @@ export default function AdminDashboard() {
         // Fallback for hardcoded credentials if backend is offline
         if ((cleanEmail.toLowerCase() === ADMIN_EMAIL.toLowerCase() || cleanEmail.toLowerCase() === "admin@samin.edu") && cleanPassword === ADMIN_PASSWORD) {
           localStorage.setItem("samin_admin_logged_in", "true");
+          localStorage.removeItem("samin_must_change_password");
           setIsAuthed(true);
           return;
         }
@@ -1179,12 +1197,22 @@ export default function AdminDashboard() {
         localStorage.setItem("samin_user", JSON.stringify(data.user));
         setCurrentUser(data.user);
       }
+
+      // Check if user must change password
+      if (data?.must_change_password === true || data?.user?.must_change_password === true) {
+        localStorage.setItem("samin_must_change_password", "true");
+        window.location.href = "/change-password";
+        return;
+      } else {
+        localStorage.removeItem("samin_must_change_password");
+      }
+
       setIsAuthed(true);
       setInitialLoading(true);
       Promise.all([fetchCurrentUser(), fetchTutorsFromApi(), fetchStudentsFromApi()]).finally(() => {
         setInitialLoading(false);
       });
-      showToast(data?.message || "Welcome back, Admin!");
+      showToast(data?.message || "Welcome back!");
     } catch (err: any) {
       console.error("Dashboard login error:", err);
       // Fallback for hardcoded credentials if backend is offline
@@ -1325,30 +1353,87 @@ export default function AdminDashboard() {
     }
   };
 
-  const handleAddTutorSubmit = (e: React.FormEvent) => {
+  const handleEnrollTutorSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newTutor.name.trim()) return;
-    const created: Tutor = {
-      id: `TUT-0${tutors.length + 1}`,
-      name: newTutor.name.trim(),
-      school: newTutor.school,
-      subject: newTutor.subject,
-      students: 0,
-      region: newTutor.region,
-      img: newTutor.img,
-      rate: newTutor.rate,
-    };
-    setTutors((prev) => [created, ...prev]);
-    setIsAddTutorOpen(false);
-    setNewTutor({
-      name: "",
-      school: "University of Cambridge",
-      subject: "Mathematics",
-      rate: "£45/hr",
-      region: "UK 🇬🇧",
-      img: "/images/tutor-1.jpg",
-    });
-    showToast(`✅ ${created.name} successfully registered to roster!`);
+    setEnrollTutorError(null);
+    setEnrollTutorFieldErrors({});
+
+    const trimmedName = enrollTutorForm.name.trim();
+    const trimmedEmail = enrollTutorForm.email.trim();
+    const trimmedQual = enrollTutorForm.qualification.trim();
+
+    if (!trimmedName) {
+      setEnrollTutorError("Tutor full name is required.");
+      return;
+    }
+    if (!trimmedEmail) {
+      setEnrollTutorError("A valid email address is required.");
+      return;
+    }
+    if (!trimmedQual) {
+      setEnrollTutorError("Highest qualification is required.");
+      return;
+    }
+    if (!enrollTutorForm.subjects || enrollTutorForm.subjects.length === 0) {
+      setEnrollTutorError("Please select or specify at least one subject.");
+      return;
+    }
+
+    setIsEnrollingTutor(true);
+
+    try {
+      const baseUrl = getBackendApiUrl();
+      const payload = {
+        name: trimmedName,
+        email: trimmedEmail,
+        phone: enrollTutorForm.phone.trim() || undefined,
+        qualification: trimmedQual,
+        subjects: enrollTutorForm.subjects,
+        levels: enrollTutorForm.levels.length > 0 ? enrollTutorForm.levels : [],
+        years_of_experience: enrollTutorForm.years_of_experience.trim() || undefined,
+        bio: enrollTutorForm.bio.trim() || undefined,
+      };
+
+      const res = await fetch(`${baseUrl}/api/admin/tutors`, {
+        method: "POST",
+        headers: getAuthHeaders(),
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        if (res.status === 422 && data?.errors) {
+          setEnrollTutorFieldErrors(data.errors);
+          setEnrollTutorError(data.message || "Please fix the validation errors below.");
+        } else if (res.status === 403) {
+          setEnrollTutorError("Unauthorized. Admin access required.");
+        } else {
+          setEnrollTutorError(data?.message || `Failed to enroll tutor (HTTP ${res.status}).`);
+        }
+        return;
+      }
+
+      // Success (201 Created)
+      showToast(data?.message || "Tutor enrolled successfully. Login details have been emailed.");
+      setIsAddTutorOpen(false);
+      setEnrollTutorForm({
+        name: "",
+        email: "",
+        phone: "",
+        qualification: "",
+        subjects: ["Mathematics"],
+        levels: ["Year 1-6", "GCSE preparation"],
+        years_of_experience: "",
+        bio: "",
+      });
+      await fetchTutorsFromApi();
+    } catch (err: any) {
+      console.error("Enroll tutor error:", err);
+      setEnrollTutorError(err?.message || "An unexpected error occurred while enrolling tutor.");
+    } finally {
+      setIsEnrollingTutor(false);
+    }
   };
 
   const updateBookingStatus = (id: string, newStatus: BookingStatus) => {
@@ -1909,8 +1994,8 @@ export default function AdminDashboard() {
                       boxShadow: "0 2px 6px rgba(32,178,164,0.25)",
                     }}
                   >
-                    <Plus size={15} />
-                    <span>Add New Tutor</span>
+                    <UserPlus size={15} />
+                    <span>Enroll Tutor</span>
                   </button>
                 </div>
               </div>
@@ -2377,87 +2462,520 @@ export default function AdminDashboard() {
         </main>
       </div>
 
-      {/* ── Add New Tutor Modal (Admin only) ── */}
+      {/* ── Enroll New Tutor Modal (Admin POST /api/admin/tutors) ── */}
       {isAddTutorOpen && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 999, display: "flex", alignItems: "center", justifyContent: "center", padding: "1rem" }}>
-          <div style={{ background: "#fff", borderRadius: "16px", width: "100%", maxWidth: "480px", overflow: "hidden", boxShadow: "0 20px 60px rgba(0,0,0,0.2)" }}>
-            <div style={{ background: "linear-gradient(135deg,#20b2a4,#0d9488)", padding: "1.25rem 1.5rem", display: "flex", alignItems: "center", justifyContent: "space-between", color: "#fff" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                <UserPlus size={20} />
-                <h3 style={{ margin: 0, fontSize: "1.1rem", fontWeight: 700 }}>Register New Tutor</h3>
+        <div
+          onClick={() => !isEnrollingTutor && setIsAddTutorOpen(false)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15,23,42,0.65)",
+            backdropFilter: "blur(4px)",
+            zIndex: 1000,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "1rem",
+            animation: "fadeUp 0.2s ease",
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: "#fff",
+              borderRadius: "16px",
+              width: "100%",
+              maxWidth: "600px",
+              maxHeight: "90vh",
+              overflow: "hidden",
+              boxShadow: "0 25px 60px rgba(0,0,0,0.3)",
+              display: "flex",
+              flexDirection: "column",
+            }}
+          >
+            {/* Header */}
+            <div
+              style={{
+                background: "linear-gradient(135deg,#20b2a4,#0d9488)",
+                padding: "1.2rem 1.5rem",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                color: "#fff",
+                flexShrink: 0,
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "0.65rem" }}>
+                <div
+                  style={{
+                    width: "36px",
+                    height: "36px",
+                    borderRadius: "10px",
+                    background: "rgba(255,255,255,0.2)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <UserPlus size={20} color="#fff" />
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: "1.1rem", fontWeight: 800 }}>Enroll New Tutor</h3>
+                  <p style={{ margin: 0, fontSize: "0.75rem", opacity: 0.9 }}>
+                    Onboard tutor &amp; auto-email temporary login credentials
+                  </p>
+                </div>
               </div>
-              <button onClick={() => setIsAddTutorOpen(false)} style={{ background: "none", border: "none", color: "#fff", cursor: "pointer" }}>
+              <button
+                type="button"
+                onClick={() => !isEnrollingTutor && setIsAddTutorOpen(false)}
+                disabled={isEnrollingTutor}
+                style={{
+                  background: "rgba(255,255,255,0.15)",
+                  border: "none",
+                  borderRadius: "8px",
+                  color: "#fff",
+                  cursor: "pointer",
+                  padding: "0.4rem",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
                 <X size={18} />
               </button>
             </div>
-            <form onSubmit={handleAddTutorSubmit} style={{ padding: "1.5rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
-              <div>
-                <label style={{ fontSize: "0.8rem", fontWeight: 700, color: "#374151", display: "block", marginBottom: "0.35rem" }}>Full Name & Qualifications</label>
-                <input
-                  required
-                  placeholder="e.g. Dr. Alexander Bell, PhD"
-                  value={newTutor.name}
-                  onChange={(e) => setNewTutor({ ...newTutor, name: e.target.value })}
-                  style={{ width: "100%", padding: "0.55rem 0.75rem", border: "1.5px solid #d1d5db", borderRadius: "8px", fontSize: "0.88rem", outline: "none", boxSizing: "border-box" }}
-                />
-              </div>
 
-              <div>
-                <label style={{ fontSize: "0.8rem", fontWeight: 700, color: "#374151", display: "block", marginBottom: "0.35rem" }}>University / Academic Institution</label>
-                <input
-                  required
-                  placeholder="e.g. Oxford University / Imperial College London"
-                  value={newTutor.school}
-                  onChange={(e) => setNewTutor({ ...newTutor, school: e.target.value })}
-                  style={{ width: "100%", padding: "0.55rem 0.75rem", border: "1.5px solid #d1d5db", borderRadius: "8px", fontSize: "0.88rem", outline: "none", boxSizing: "border-box" }}
-                />
-              </div>
+            {/* Scrollable Form Body */}
+            <form
+              onSubmit={handleEnrollTutorSubmit}
+              style={{
+                padding: "1.5rem",
+                overflowY: "auto",
+                display: "flex",
+                flexDirection: "column",
+                gap: "1.15rem",
+                boxSizing: "border-box",
+              }}
+            >
+              {/* Error Banner */}
+              {enrollTutorError && (
+                <div
+                  style={{
+                    background: "#fef2f2",
+                    border: "1px solid #fecaca",
+                    borderRadius: "8px",
+                    padding: "0.75rem 1rem",
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: "0.5rem",
+                    fontSize: "0.82rem",
+                    color: "#991b1b",
+                  }}
+                >
+                  <AlertCircle size={16} color="#ef4444" style={{ flexShrink: 0, marginTop: "2px" }} />
+                  <div>{enrollTutorError}</div>
+                </div>
+              )}
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem" }}>
+              {/* 2-column: Name & Email */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.85rem" }}>
                 <div>
-                  <label style={{ fontSize: "0.8rem", fontWeight: 700, color: "#374151", display: "block", marginBottom: "0.35rem" }}>Specialist Subjects</label>
+                  <label style={{ fontSize: "0.8rem", fontWeight: 700, color: "#374151", display: "block", marginBottom: "0.35rem" }}>
+                    Full Name <span style={{ color: "#ef4444" }}>*</span>
+                  </label>
                   <input
                     required
-                    placeholder="e.g. Mathematics, Further Maths"
-                    value={newTutor.subject}
-                    onChange={(e) => setNewTutor({ ...newTutor, subject: e.target.value })}
-                    style={{ width: "100%", padding: "0.55rem 0.75rem", border: "1.5px solid #d1d5db", borderRadius: "8px", fontSize: "0.88rem", outline: "none", boxSizing: "border-box" }}
+                    placeholder="e.g. John Smith"
+                    value={enrollTutorForm.name}
+                    onChange={(e) => setEnrollTutorForm({ ...enrollTutorForm, name: e.target.value })}
+                    style={{
+                      width: "100%",
+                      padding: "0.55rem 0.75rem",
+                      border: enrollTutorFieldErrors.name ? "1.5px solid #ef4444" : "1.5px solid #d1d5db",
+                      borderRadius: "8px",
+                      fontSize: "0.85rem",
+                      outline: "none",
+                      boxSizing: "border-box",
+                    }}
                   />
+                  {enrollTutorFieldErrors.name && (
+                    <div style={{ fontSize: "0.73rem", color: "#dc2626", marginTop: "0.2rem" }}>
+                      {enrollTutorFieldErrors.name[0]}
+                    </div>
+                  )}
                 </div>
+
                 <div>
-                  <label style={{ fontSize: "0.8rem", fontWeight: 700, color: "#374151", display: "block", marginBottom: "0.35rem" }}>Hourly Rate</label>
+                  <label style={{ fontSize: "0.8rem", fontWeight: 700, color: "#374151", display: "block", marginBottom: "0.35rem" }}>
+                    Email Address <span style={{ color: "#ef4444" }}>*</span>
+                  </label>
                   <input
+                    type="email"
                     required
-                    placeholder="e.g. £45/hr"
-                    value={newTutor.rate}
-                    onChange={(e) => setNewTutor({ ...newTutor, rate: e.target.value })}
-                    style={{ width: "100%", padding: "0.55rem 0.75rem", border: "1.5px solid #d1d5db", borderRadius: "8px", fontSize: "0.88rem", outline: "none", boxSizing: "border-box" }}
+                    placeholder="john.smith@example.com"
+                    value={enrollTutorForm.email}
+                    onChange={(e) => setEnrollTutorForm({ ...enrollTutorForm, email: e.target.value })}
+                    style={{
+                      width: "100%",
+                      padding: "0.55rem 0.75rem",
+                      border: enrollTutorFieldErrors.email ? "1.5px solid #ef4444" : "1.5px solid #d1d5db",
+                      borderRadius: "8px",
+                      fontSize: "0.85rem",
+                      outline: "none",
+                      boxSizing: "border-box",
+                    }}
                   />
+                  {enrollTutorFieldErrors.email && (
+                    <div style={{ fontSize: "0.73rem", color: "#dc2626", marginTop: "0.2rem" }}>
+                      {enrollTutorFieldErrors.email[0]}
+                    </div>
+                  )}
                 </div>
               </div>
 
+              {/* 2-column: Phone & Highest Qualification */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.85rem" }}>
+                <div>
+                  <label style={{ fontSize: "0.8rem", fontWeight: 700, color: "#374151", display: "block", marginBottom: "0.35rem" }}>
+                    Phone / WhatsApp <span style={{ fontSize: "0.72rem", color: "#64748b", fontWeight: 400 }}>(Optional)</span>
+                  </label>
+                  <input
+                    type="tel"
+                    placeholder="e.g. +447911123456"
+                    value={enrollTutorForm.phone}
+                    onChange={(e) => setEnrollTutorForm({ ...enrollTutorForm, phone: e.target.value })}
+                    style={{
+                      width: "100%",
+                      padding: "0.55rem 0.75rem",
+                      border: "1.5px solid #d1d5db",
+                      borderRadius: "8px",
+                      fontSize: "0.85rem",
+                      outline: "none",
+                      boxSizing: "border-box",
+                    }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ fontSize: "0.8rem", fontWeight: 700, color: "#374151", display: "block", marginBottom: "0.35rem" }}>
+                    Highest Qualification <span style={{ color: "#ef4444" }}>*</span>
+                  </label>
+                  <input
+                    required
+                    placeholder="e.g. BSc Mathematics, University of Leeds"
+                    value={enrollTutorForm.qualification}
+                    onChange={(e) => setEnrollTutorForm({ ...enrollTutorForm, qualification: e.target.value })}
+                    style={{
+                      width: "100%",
+                      padding: "0.55rem 0.75rem",
+                      border: enrollTutorFieldErrors.qualification ? "1.5px solid #ef4444" : "1.5px solid #d1d5db",
+                      borderRadius: "8px",
+                      fontSize: "0.85rem",
+                      outline: "none",
+                      boxSizing: "border-box",
+                    }}
+                  />
+                  {enrollTutorFieldErrors.qualification && (
+                    <div style={{ fontSize: "0.73rem", color: "#dc2626", marginTop: "0.2rem" }}>
+                      {enrollTutorFieldErrors.qualification[0]}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Teaching Subjects */}
               <div>
-                <label style={{ fontSize: "0.8rem", fontWeight: 700, color: "#374151", display: "block", marginBottom: "0.35rem" }}>Region / Timezone</label>
+                <label style={{ fontSize: "0.8rem", fontWeight: 700, color: "#374151", display: "block", marginBottom: "0.35rem" }}>
+                  Teaching Subjects <span style={{ color: "#ef4444" }}>*</span>
+                  <span style={{ fontSize: "0.73rem", color: "#64748b", fontWeight: 500, marginLeft: "0.4rem" }}>
+                    (Select all that apply)
+                  </span>
+                </label>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem", marginBottom: "0.5rem" }}>
+                  {[
+                    "Mathematics",
+                    "Science",
+                    "English",
+                    "Physics",
+                    "Chemistry",
+                    "Biology",
+                    "Economic",
+                    "Geography",
+                    "Computer science",
+                    "Further Maths",
+                  ].map((sub) => {
+                    const isSelected = enrollTutorForm.subjects.includes(sub);
+                    return (
+                      <button
+                        type="button"
+                        key={sub}
+                        onClick={() => {
+                          setEnrollTutorForm((prev) => {
+                            const next = isSelected
+                              ? prev.subjects.filter((s) => s !== sub)
+                              : [...prev.subjects, sub];
+                            return { ...prev, subjects: next };
+                          });
+                        }}
+                        style={{
+                          padding: "0.3rem 0.65rem",
+                          borderRadius: "20px",
+                          fontSize: "0.76rem",
+                          fontWeight: 700,
+                          border: isSelected ? "1.5px solid #0d9488" : "1px solid #d1d5db",
+                          background: isSelected ? "#f0fdf9" : "#fff",
+                          color: isSelected ? "#0d9488" : "#475569",
+                          cursor: "pointer",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "0.3rem",
+                          transition: "all 0.15s ease",
+                        }}
+                      >
+                        {isSelected && <Check size={12} color="#0d9488" />}
+                        <span>{sub}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Add custom subject */}
+                <div style={{ display: "flex", gap: "0.45rem" }}>
+                  <input
+                    type="text"
+                    placeholder="Add custom subject (e.g. Statistics)"
+                    value={enrollCustomSubject}
+                    onChange={(e) => setEnrollCustomSubject(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        const val = enrollCustomSubject.trim();
+                        if (val && !enrollTutorForm.subjects.includes(val)) {
+                          setEnrollTutorForm((prev) => ({ ...prev, subjects: [...prev.subjects, val] }));
+                          setEnrollCustomSubject("");
+                        }
+                      }
+                    }}
+                    style={{
+                      flex: 1,
+                      padding: "0.45rem 0.65rem",
+                      border: "1px solid #d1d5db",
+                      borderRadius: "6px",
+                      fontSize: "0.8rem",
+                      outline: "none",
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const val = enrollCustomSubject.trim();
+                      if (val && !enrollTutorForm.subjects.includes(val)) {
+                        setEnrollTutorForm((prev) => ({ ...prev, subjects: [...prev.subjects, val] }));
+                        setEnrollCustomSubject("");
+                      }
+                    }}
+                    style={{
+                      background: "#f1f5f9",
+                      border: "1px solid #cbd5e1",
+                      borderRadius: "6px",
+                      padding: "0.45rem 0.8rem",
+                      fontSize: "0.78rem",
+                      fontWeight: 700,
+                      color: "#475569",
+                      cursor: "pointer",
+                    }}
+                  >
+                    + Add
+                  </button>
+                </div>
+
+                {enrollTutorFieldErrors.subjects && (
+                  <div style={{ fontSize: "0.73rem", color: "#dc2626", marginTop: "0.3rem" }}>
+                    {enrollTutorFieldErrors.subjects[0]}
+                  </div>
+                )}
+              </div>
+
+              {/* Teaching Levels */}
+              <div>
+                <label style={{ fontSize: "0.8rem", fontWeight: 700, color: "#374151", display: "block", marginBottom: "0.35rem" }}>
+                  Teaching Levels <span style={{ fontSize: "0.72rem", color: "#64748b", fontWeight: 400 }}>(Optional)</span>
+                </label>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem" }}>
+                  {[
+                    "Year 1-6",
+                    "11 Plus preparation",
+                    "Sat preparation",
+                    "Year 7-11",
+                    "GCSE preparation",
+                    "A level preparation",
+                    "National 5 preparation",
+                  ].map((lvl) => {
+                    const isSelected = enrollTutorForm.levels.includes(lvl);
+                    return (
+                      <button
+                        type="button"
+                        key={lvl}
+                        onClick={() => {
+                          setEnrollTutorForm((prev) => {
+                            const next = isSelected
+                              ? prev.levels.filter((l) => l !== lvl)
+                              : [...prev.levels, lvl];
+                            return { ...prev, levels: next };
+                          });
+                        }}
+                        style={{
+                          padding: "0.3rem 0.65rem",
+                          borderRadius: "20px",
+                          fontSize: "0.75rem",
+                          fontWeight: 700,
+                          border: isSelected ? "1.5px solid #0284c7" : "1px solid #d1d5db",
+                          background: isSelected ? "#f0f9ff" : "#fff",
+                          color: isSelected ? "#0284c7" : "#475569",
+                          cursor: "pointer",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "0.3rem",
+                        }}
+                      >
+                        {isSelected && <Check size={12} color="#0284c7" />}
+                        <span>{lvl}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Years of Experience */}
+              <div>
+                <label style={{ fontSize: "0.8rem", fontWeight: 700, color: "#374151", display: "block", marginBottom: "0.35rem" }}>
+                  Years of Experience <span style={{ fontSize: "0.72rem", color: "#64748b", fontWeight: 400 }}>(Optional)</span>
+                </label>
                 <input
-                  required
-                  placeholder="e.g. UK 🇬🇧 & USA 🇺🇸"
-                  value={newTutor.region}
-                  onChange={(e) => setNewTutor({ ...newTutor, region: e.target.value })}
-                  style={{ width: "100%", padding: "0.55rem 0.75rem", border: "1.5px solid #d1d5db", borderRadius: "8px", fontSize: "0.88rem", outline: "none", boxSizing: "border-box" }}
+                  placeholder="e.g. 3 years private tutoring & secondary school teaching"
+                  value={enrollTutorForm.years_of_experience}
+                  onChange={(e) => setEnrollTutorForm({ ...enrollTutorForm, years_of_experience: e.target.value })}
+                  style={{
+                    width: "100%",
+                    padding: "0.55rem 0.75rem",
+                    border: "1.5px solid #d1d5db",
+                    borderRadius: "8px",
+                    fontSize: "0.85rem",
+                    outline: "none",
+                    boxSizing: "border-box",
+                  }}
                 />
               </div>
 
-              <div style={{ display: "flex", gap: "0.75rem", marginTop: "0.5rem" }}>
+              {/* Bio (max 2000 chars) */}
+              <div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.35rem" }}>
+                  <label style={{ fontSize: "0.8rem", fontWeight: 700, color: "#374151" }}>
+                    Short Bio <span style={{ fontSize: "0.72rem", color: "#64748b", fontWeight: 400 }}>(Optional, max 2000 characters)</span>
+                  </label>
+                  <span style={{ fontSize: "0.7rem", color: enrollTutorForm.bio.length > 1900 ? "#ef4444" : "#94a3b8" }}>
+                    {enrollTutorForm.bio.length}/2000
+                  </span>
+                </div>
+                <textarea
+                  maxLength={2000}
+                  rows={3}
+                  placeholder="Passionate STEM tutor with experience preparing students for GCSE exams."
+                  value={enrollTutorForm.bio}
+                  onChange={(e) => setEnrollTutorForm({ ...enrollTutorForm, bio: e.target.value })}
+                  style={{
+                    width: "100%",
+                    padding: "0.55rem 0.75rem",
+                    border: "1.5px solid #d1d5db",
+                    borderRadius: "8px",
+                    fontSize: "0.85rem",
+                    outline: "none",
+                    boxSizing: "border-box",
+                    fontFamily: "inherit",
+                    resize: "vertical",
+                  }}
+                />
+              </div>
+
+              {/* Informative Security Notice */}
+              <div
+                style={{
+                  background: "#eff6ff",
+                  border: "1px solid #bfdbfe",
+                  borderRadius: "8px",
+                  padding: "0.75rem 0.9rem",
+                  fontSize: "0.78rem",
+                  color: "#1e40af",
+                  lineHeight: 1.45,
+                  display: "flex",
+                  gap: "0.5rem",
+                }}
+              >
+                <Mail size={16} color="#3b82f6" style={{ flexShrink: 0, marginTop: "2px" }} />
+                <div>
+                  <strong>Automatic Welcome Email:</strong> When enrolled, the tutor will automatically receive an email with their login credentials and a temporary password. Upon their first login, they will be prompted to set their permanent secure password.
+                </div>
+              </div>
+
+              {/* Footer Actions */}
+              <div style={{ display: "flex", gap: "0.75rem", marginTop: "0.5rem", flexShrink: 0 }}>
                 <button
                   type="submit"
-                  style={{ flex: 1, padding: "0.7rem", background: "linear-gradient(135deg,#20b2a4,#0d9488)", color: "#fff", border: "none", borderRadius: "8px", fontWeight: 700, fontSize: "0.9rem", cursor: "pointer" }}
+                  disabled={isEnrollingTutor}
+                  style={{
+                    flex: 1,
+                    padding: "0.75rem",
+                    background: "linear-gradient(135deg,#20b2a4,#0d9488)",
+                    color: "#fff",
+                    border: "none",
+                    borderRadius: "8px",
+                    fontWeight: 800,
+                    fontSize: "0.9rem",
+                    cursor: isEnrollingTutor ? "not-allowed" : "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "0.45rem",
+                    boxShadow: "0 4px 12px rgba(32,178,164,0.3)",
+                    opacity: isEnrollingTutor ? 0.75 : 1,
+                  }}
                 >
-                  Save &amp; Enroll Tutor
+                  {isEnrollingTutor ? (
+                    <>
+                      <div
+                        style={{
+                          width: "16px",
+                          height: "16px",
+                          border: "2px solid #fff",
+                          borderTopColor: "transparent",
+                          borderRadius: "50%",
+                          animation: "spin 0.7s linear infinite",
+                        }}
+                      />
+                      <span>Enrolling Tutor…</span>
+                    </>
+                  ) : (
+                    <>
+                      <UserPlus size={16} />
+                      <span>Enroll Tutor &amp; Send Credentials</span>
+                    </>
+                  )}
                 </button>
                 <button
                   type="button"
+                  disabled={isEnrollingTutor}
                   onClick={() => setIsAddTutorOpen(false)}
-                  style={{ padding: "0.7rem 1.2rem", background: "#f1f5f9", color: "#475569", border: "none", borderRadius: "8px", fontWeight: 600, fontSize: "0.9rem", cursor: "pointer" }}
+                  style={{
+                    padding: "0.75rem 1.25rem",
+                    background: "#f1f5f9",
+                    color: "#475569",
+                    border: "1px solid #e2e8f0",
+                    borderRadius: "8px",
+                    fontWeight: 700,
+                    fontSize: "0.88rem",
+                    cursor: isEnrollingTutor ? "not-allowed" : "pointer",
+                  }}
                 >
                   Cancel
                 </button>
