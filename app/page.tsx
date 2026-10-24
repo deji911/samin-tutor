@@ -33,6 +33,7 @@ import {
   AlertCircle,
   Plus,
 } from "lucide-react";
+import { QUALIFICATIONS_LIST } from "./constants/qualifications";
 
 // ─── Data ──────────────────────────────────────────────────────────────────
 
@@ -293,8 +294,9 @@ export default function Home() {
     notes: "",
   });
 
-  // Admin authentication state & dialogues
+  // Admin & Tutor authentication state & dialogues
   const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false);
+  const [userRole, setUserRole] = useState<string>("admin");
   const [isAdminLoginOpen, setIsAdminLoginOpen] = useState(false);
   const [adminEmail, setAdminEmail] = useState("");
   const [adminPassword, setAdminPassword] = useState("");
@@ -312,7 +314,7 @@ export default function Home() {
     email: "",
     phone: "",
     subjects: ["Mathematics"] as string[],
-    degree: "MSc Mathematics • Cambridge University",
+    degree: "B.Sc.",
     curriculum: "UK GCSE & A-Level 🇬🇧",
     levels: ["GCSE preparation", "A level preparation"] as string[],
     rate: "£45 / hour",
@@ -332,6 +334,10 @@ export default function Home() {
       const saved = localStorage.getItem("samin_admin_logged_in");
       if (saved === "true") {
         setIsAdminLoggedIn(true);
+        try {
+          const u = JSON.parse(localStorage.getItem("samin_user") || "{}");
+          if (u.role) setUserRole(u.role);
+        } catch {}
       }
     }
   }, []);
@@ -413,7 +419,11 @@ export default function Home() {
           return;
         } else {
           localStorage.removeItem("samin_must_change_password");
-          window.location.href = "/admin/dashboard";
+          if (data?.user?.role === "tutor") {
+            window.location.href = "/tutor/dashboard";
+          } else {
+            window.location.href = "/admin/dashboard";
+          }
         }
       }
     } catch (err: any) {
@@ -462,7 +472,7 @@ export default function Home() {
       email: "",
       phone: "",
       subjects: ["Mathematics"],
-      degree: "MSc Mathematics • Cambridge University",
+      degree: "B.Sc.",
       curriculum: "UK GCSE & A-Level 🇬🇧",
       levels: ["GCSE preparation", "A level preparation"],
       rate: "£45 / hour",
@@ -513,6 +523,11 @@ export default function Home() {
 
     if (!applyForm.subjects.length) {
       setApplyError("Please select at least one subject you can teach.");
+      return;
+    }
+
+    if (applyForm.experience.trim() && !/^\d+$/.test(applyForm.experience.trim())) {
+      setApplyError("Years of experience must be a valid number (e.g. 3).");
       return;
     }
 
@@ -741,12 +756,12 @@ export default function Home() {
             {isAdminLoggedIn ? (
               <div style={{ display: "flex", alignItems: "center", gap: "0.6rem", flexWrap: "wrap" }}>
                 <a
-                  href="/admin/dashboard"
+                  href={userRole === "tutor" ? "/tutor/dashboard" : "/admin/dashboard"}
                   style={{ background: "#ffd56b", color: "#070f2b", border: "none", borderRadius: "4px", padding: "0.22rem 0.65rem", fontSize: "0.78rem", fontWeight: 700, textDecoration: "none", display: "inline-flex", alignItems: "center", gap: "0.3rem" }}
-                  title="Open Admin Dashboard"
+                  title={userRole === "tutor" ? "Open Tutor Portal" : "Open Admin Dashboard"}
                 >
                   <ShieldCheck size={13} />
-                  <span>Admin Dashboard</span>
+                  <span>{userRole === "tutor" ? "Tutor Portal" : "Admin Dashboard"}</span>
                 </a>
                 <button
                   onClick={handleAdminLogout}
@@ -914,10 +929,10 @@ export default function Home() {
               <div style={{ marginBottom: "1.25rem", padding: "0.85rem", background: "linear-gradient(135deg, #0a1435 0%, #152554 100%)", borderRadius: "8px", border: "1.5px solid #d4a017" }}>
                 <div style={{ fontSize: "0.72rem", color: "#ffd56b", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "0.5rem", display: "flex", alignItems: "center", gap: "0.35rem" }}>
                   <ShieldCheck size={14} />
-                  <span>Admin Session Active</span>
+                  <span>{userRole === "tutor" ? "Tutor Session Active" : "Admin Session Active"}</span>
                 </div>
                 <a
-                  href="/admin/dashboard"
+                  href={userRole === "tutor" ? "/tutor/dashboard" : "/admin/dashboard"}
                   style={{
                     display: "flex",
                     alignItems: "center",
@@ -934,7 +949,7 @@ export default function Home() {
                   }}
                 >
                   <ShieldCheck size={16} />
-                  <span>Admin Dashboard</span>
+                  <span>{userRole === "tutor" ? "Tutor Portal" : "Admin Dashboard"}</span>
                 </a>
                 <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", fontSize: "0.75rem" }}>
                   <button
@@ -1339,7 +1354,9 @@ export default function Home() {
                 ))}
                 <li>
                   {isAdminLoggedIn ? (
-                    <a href="/admin/dashboard">› Admin Portal</a>
+                    <a href={userRole === "tutor" ? "/tutor/dashboard" : "/admin/dashboard"}>
+                      › {userRole === "tutor" ? "Tutor Portal" : "Admin Portal"}
+                    </a>
                   ) : (
                     <button
                       type="button"
@@ -1852,15 +1869,21 @@ export default function Home() {
                       </select>
                     </div>
                     <div className="form-group">
-                      <label htmlFor="tutorDegree">University Degree &amp; Alma Mater *</label>
-                      <input
+                      <label htmlFor="tutorDegree">Highest Qualification *</label>
+                      <select
                         id="tutorDegree"
                         className="form-control"
                         required
-                        placeholder="e.g. MSc Pure Mathematics • University of Cambridge"
                         value={tutorForm.degree}
                         onChange={(e) => setTutorForm({ ...tutorForm, degree: e.target.value })}
-                      />
+                      >
+                        <option value="">— Select highest qualification —</option>
+                        {QUALIFICATIONS_LIST.map((q) => (
+                          <option key={q.code} value={q.code}>
+                            {q.code} — {q.name}
+                          </option>
+                        ))}
+                      </select>
                     </div>
                   </div>
 
@@ -2031,14 +2054,20 @@ export default function Home() {
                     </div>
                     <div className="form-group">
                       <label htmlFor="applyDegree">Highest Qualification *</label>
-                      <input
+                      <select
                         id="applyDegree"
                         className="form-control"
                         required
-                        placeholder="e.g. BSc Mathematics, University of Leeds"
                         value={applyForm.degree}
                         onChange={(e) => setApplyForm({ ...applyForm, degree: e.target.value })}
-                      />
+                      >
+                        <option value="">— Select your highest qualification —</option>
+                        {QUALIFICATIONS_LIST.map((q) => (
+                          <option key={q.code} value={q.code}>
+                            {q.code} — {q.name}
+                          </option>
+                        ))}
+                      </select>
                     </div>
                   </div>
 
@@ -2098,13 +2127,20 @@ export default function Home() {
 
                   {/* Row 5: Experience */}
                   <div className="form-group">
-                    <label htmlFor="applyExp">Years of Teaching Experience</label>
+                    <label htmlFor="applyExp">Years of Teaching Experience (numbers only)</label>
                     <input
                       id="applyExp"
+                      type="number"
+                      min="0"
+                      max="60"
+                      step="1"
                       className="form-control"
-                      placeholder="e.g. 3 years private tutoring"
+                      placeholder="e.g. 3"
                       value={applyForm.experience}
-                      onChange={(e) => setApplyForm({ ...applyForm, experience: e.target.value })}
+                      onChange={(e) => {
+                        const val = e.target.value.replace(/\D/g, "");
+                        setApplyForm({ ...applyForm, experience: val });
+                      }}
                     />
                   </div>
 

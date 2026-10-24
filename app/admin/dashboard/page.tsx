@@ -37,6 +37,7 @@ import {
   Check,
   CalendarDays,
 } from "lucide-react";
+import { QUALIFICATIONS_LIST } from "../../constants/qualifications";
 
 /* ─── Constants ───────────────────────────────────────────── */
 const ADMIN_EMAIL = "saminhometutors@gmail.com";
@@ -388,6 +389,10 @@ export default function AdminDashboard() {
         setCurrentUser(user);
         if (typeof window !== "undefined") {
           localStorage.setItem("samin_user", JSON.stringify(user));
+          if (user.role === "tutor") {
+            window.location.href = "/tutor/dashboard";
+            return;
+          }
           if (user.must_change_password) {
             localStorage.setItem("samin_must_change_password", "true");
             window.location.href = "/change-password";
@@ -1125,6 +1130,18 @@ export default function AdminDashboard() {
       return;
     }
 
+    const u = typeof window !== "undefined" ? localStorage.getItem("samin_user") : null;
+    if (u) {
+      try {
+        const parsed = JSON.parse(u);
+        setCurrentUser(parsed);
+        if (parsed.role === "tutor") {
+          window.location.href = "/tutor/dashboard";
+          return;
+        }
+      } catch {}
+    }
+
     const stored = typeof window !== "undefined" ? localStorage.getItem("samin_admin_logged_in") : null;
     const token = typeof window !== "undefined" ? localStorage.getItem("samin_auth_token") : null;
 
@@ -1135,12 +1152,6 @@ export default function AdminDashboard() {
       });
     } else {
       setInitialLoading(false);
-    }
-    const u = typeof window !== "undefined" ? localStorage.getItem("samin_user") : null;
-    if (u) {
-      try {
-        setCurrentUser(JSON.parse(u));
-      } catch {}
     }
     setChecking(false);
   }, []);
@@ -1205,6 +1216,12 @@ export default function AdminDashboard() {
         return;
       } else {
         localStorage.removeItem("samin_must_change_password");
+      }
+
+      // If tutor logged in, redirect directly to Tutor Dashboard
+      if (data?.user?.role === "tutor") {
+        window.location.href = "/tutor/dashboard";
+        return;
       }
 
       setIsAuthed(true);
@@ -1376,6 +1393,10 @@ export default function AdminDashboard() {
     }
     if (!enrollTutorForm.subjects || enrollTutorForm.subjects.length === 0) {
       setEnrollTutorError("Please select or specify at least one subject.");
+      return;
+    }
+    if (enrollTutorForm.years_of_experience.trim() && !/^\d+$/.test(enrollTutorForm.years_of_experience.trim())) {
+      setEnrollTutorError("Years of experience must be a valid number (e.g. 5).");
       return;
     }
 
@@ -2661,9 +2682,8 @@ export default function AdminDashboard() {
                   <label style={{ fontSize: "0.8rem", fontWeight: 700, color: "#374151", display: "block", marginBottom: "0.35rem" }}>
                     Highest Qualification <span style={{ color: "#ef4444" }}>*</span>
                   </label>
-                  <input
+                  <select
                     required
-                    placeholder="e.g. BSc Mathematics, University of Leeds"
                     value={enrollTutorForm.qualification}
                     onChange={(e) => setEnrollTutorForm({ ...enrollTutorForm, qualification: e.target.value })}
                     style={{
@@ -2674,8 +2694,17 @@ export default function AdminDashboard() {
                       fontSize: "0.85rem",
                       outline: "none",
                       boxSizing: "border-box",
+                      backgroundColor: "#fff",
+                      color: "#1e293b",
                     }}
-                  />
+                  >
+                    <option value="">— Select qualification —</option>
+                    {QUALIFICATIONS_LIST.map((q) => (
+                      <option key={q.code} value={q.code}>
+                        {q.code} — {q.name}
+                      </option>
+                    ))}
+                  </select>
                   {enrollTutorFieldErrors.qualification && (
                     <div style={{ fontSize: "0.73rem", color: "#dc2626", marginTop: "0.2rem" }}>
                       {enrollTutorFieldErrors.qualification[0]}
@@ -2850,12 +2879,19 @@ export default function AdminDashboard() {
               {/* Years of Experience */}
               <div>
                 <label style={{ fontSize: "0.8rem", fontWeight: 700, color: "#374151", display: "block", marginBottom: "0.35rem" }}>
-                  Years of Experience <span style={{ fontSize: "0.72rem", color: "#64748b", fontWeight: 400 }}>(Optional)</span>
+                  Years of Experience <span style={{ fontSize: "0.72rem", color: "#64748b", fontWeight: 400 }}>(Optional, numbers only)</span>
                 </label>
                 <input
-                  placeholder="e.g. 3 years private tutoring & secondary school teaching"
+                  type="number"
+                  min="0"
+                  max="60"
+                  step="1"
+                  placeholder="e.g. 5"
                   value={enrollTutorForm.years_of_experience}
-                  onChange={(e) => setEnrollTutorForm({ ...enrollTutorForm, years_of_experience: e.target.value })}
+                  onChange={(e) => {
+                    const val = e.target.value.replace(/\D/g, "");
+                    setEnrollTutorForm({ ...enrollTutorForm, years_of_experience: val });
+                  }}
                   style={{
                     width: "100%",
                     padding: "0.55rem 0.75rem",

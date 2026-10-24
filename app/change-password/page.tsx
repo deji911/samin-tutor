@@ -152,7 +152,16 @@ export default function ChangePasswordPage() {
 
       // Automatically redirect after brief celebration
       setTimeout(() => {
-        router.push("/admin/dashboard");
+        let dest = "/admin/dashboard";
+        if (typeof window !== "undefined") {
+          try {
+            const u = JSON.parse(localStorage.getItem("samin_user") || "{}");
+            if (u?.role === "tutor") {
+              dest = "/tutor/dashboard";
+            }
+          } catch {}
+        }
+        router.push(dest);
       }, 1600);
     } catch (err: any) {
       console.error("Change password request error:", err);
