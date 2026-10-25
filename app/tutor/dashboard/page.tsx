@@ -31,6 +31,10 @@ import {
   Sparkles,
   AlertCircle,
   ArrowRight,
+  FileText,
+  Star,
+  Send,
+  MessageSquare,
 } from "lucide-react";
 
 /* ─── Types based on API responses ────────────────────────── */
@@ -117,7 +121,35 @@ type SessionsPagination = {
   links?: { url: string | null; label: string; page: number | null; active: boolean }[];
 };
 
-type NavTab = "overview" | "schedule" | "students" | "sessions" | "profile";
+type LessonReport = {
+  id: number;
+  lesson_session_id?: number;
+  student_id: number;
+  tutor_id: number;
+  subject: string;
+  date: string;
+  attendance_status: "present" | "absent" | "late" | string;
+  topics_covered: string;
+  student_engagement: number;
+  homework_assigned?: string;
+  strengths?: string;
+  areas_for_improvement?: string;
+  notes_for_parents?: string;
+  status: "submitted" | "draft" | string;
+  created_at?: string;
+  updated_at?: string;
+  student?: StudentMini;
+  session?: {
+    id: number;
+    date: string;
+    start_time: string;
+    end_time: string;
+    status: string;
+    subject?: string;
+  };
+};
+
+type NavTab = "overview" | "schedule" | "students" | "sessions" | "reports" | "profile";
 
 const statusStyle: Record<string, { bg: string; color: string; border: string; label: string }> = {
   scheduled: { bg: "#eff6ff", color: "#1d4ed8", border: "#bfdbfe", label: "Scheduled" },
@@ -174,6 +206,36 @@ export default function TutorDashboard() {
   const [editNotes, setEditNotes] = useState<string>("");
   const [isUpdatingSession, setIsUpdatingSession] = useState(false);
 
+  // Lesson Report Modal State (POST/GET /api/tutor/sessions/{sessionId}/report)
+  const [reportModalSession, setReportModalSession] = useState<UpcomingSession | null>(null);
+  const [reportForm, setReportForm] = useState({
+    attendance_status: "present",
+    topics_covered: "",
+    student_engagement: 5,
+    homework_assigned: "",
+    strengths: "",
+    areas_for_improvement: "",
+    notes_for_parents: "",
+    status: "submitted",
+  });
+  const [isSubmittingReport, setIsSubmittingReport] = useState(false);
+  const [reportError, setReportError] = useState<string | null>(null);
+
+  // Student Past Reports Modal (GET /api/tutor/students/{studentId}/reports)
+  const [viewingStudentReports, setViewingStudentReports] = useState<{
+    student: AssignedStudent | StudentMini;
+    reports: LessonReport[];
+    loading: boolean;
+  } | null>(null);
+
+  // View Single Report Modal
+  const [selectedReportView, setSelectedReportView] = useState<LessonReport | null>(null);
+
+  // Tutor Reports Tab List
+  const [tutorReports, setTutorReports] = useState<LessonReport[]>([]);
+  const [loadingTutorReports, setLoadingTutorReports] = useState(false);
+  const [reportSearchQuery, setReportSearchQuery] = useState("");
+
   const getBackendApiUrl = () => {
     if (process.env.NEXT_PUBLIC_API_URL) {
       return process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, "");
@@ -199,6 +261,160 @@ export default function TutorDashboard() {
   const showToast = (msg: string) => {
     setToast(msg);
     setTimeout(() => setToast(null), 3500);
+  };
+
+  /* ── Open Report Modal for a Session (GET existing report if any) ── */
+  const openReportModal = async (session: UpcomingSession) => {
+    setReportModalSession(session);
+    setReportError(null);
+    setReportForm({
+      attendance_status: "present",
+      topics_covered: session.notes || "",
+      student_engagement: 5,
+      homework_assigned: "",
+      strengths: "",
+      areas_for_improvement: "",
+      notes_for_parents: "",
+      status: "submitted",
+    });
+
+    try {
+      const baseUrl = getBackendApiUrl();
+      const res = await fetch(`${baseUrl}/api/tutor/sessions/${session.id}/report`, {
+        headers: getAuthHeaders(),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data?.report) {
+          setReportForm({
+            attendance_status: data.report.attendance_status || "present",
+            topics_covered: data.report.topics_covered || "",
+            student_engagement: Number(data.report.student_engagement) || 5,
+            homework_assigned: data.report.homework_assigned || "",
+            strengths: data.report.strengths || "",
+            areas_for_improvement: data.report.areas_for_improvement || "",
+            notes_for_parents: data.report.notes_for_parents || "",
+            status: data.report.status || "submitted",
+          });
+        }
+      }
+    } catch {
+      // New report
+    }
+  };
+
+  /* ── Submit Report: POST /api/tutor/sessions/{sessionId}/report ── */
+  const handleSubmitReport = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!reportModalSession) return;
+
+    if (!reportForm.topics_covered.trim()) {
+      setReportError("Please enter the topics covered during the lesson.");
+      return;
+    }
+
+    setIsSubmittingReport(true);
+    setReportError(null);
+
+    try {
+      const baseUrl = getBackendApiUrl();
+      const payload = {
+        topics_covered: reportForm.topics_covered.trim(),
+        attendance_status: reportForm.attendance_status,
+        student_engagement: Number(reportForm.student_engagement) || 5,
+        homework_assigned: reportForm.homework_assigned.trim() || undefined,
+        strengths: reportForm.strengths.trim() || undefined,
+        areas_for_improvement: reportForm.areas_for_improvement.trim() || undefined,
+        notes_for_parents: reportForm.notes_for_parents.trim() || undefined,
+        status: reportForm.status || "submitted",
+      };
+
+      const res = await fetch(`${baseUrl}/api/tutor/sessions/${reportModalSession.id}/report`, {
+        method: "POST",
+        headers: getAuthHeaders(),
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        setReportError(data?.message || `Failed to submit report (HTTP ${res.status}).`);
+        return;
+      }
+
+      showToast("Lesson report saved successfully!");
+      setReportModalSession(null);
+
+      // Refresh data
+      fetchDashboardData();
+      fetchSessions(sessionPage);
+      if (activeTab === "reports") {
+        fetchTutorReports();
+      }
+    } catch (err: any) {
+      console.error("Submit report error:", err);
+      setReportError(err?.message || "An unexpected error occurred while saving report.");
+    } finally {
+      setIsSubmittingReport(false);
+    }
+  };
+
+  /* ── Open Student Reports Modal: GET /api/tutor/students/{studentId}/reports ── */
+  const openStudentReportsModal = async (student: AssignedStudent | StudentMini) => {
+    setViewingStudentReports({
+      student,
+      reports: [],
+      loading: true,
+    });
+
+    try {
+      const baseUrl = getBackendApiUrl();
+      const res = await fetch(`${baseUrl}/api/tutor/students/${student.id}/reports`, {
+        headers: getAuthHeaders(),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setViewingStudentReports({
+          student,
+          reports: Array.isArray(data.reports) ? data.reports : [],
+          loading: false,
+        });
+      } else {
+        setViewingStudentReports((prev) => (prev ? { ...prev, loading: false } : null));
+      }
+    } catch (err) {
+      console.error("Failed to fetch student reports:", err);
+      setViewingStudentReports((prev) => (prev ? { ...prev, loading: false } : null));
+    }
+  };
+
+  /* ── Fetch Tutor's Reports for Reports Tab ── */
+  const fetchTutorReports = async () => {
+    setLoadingTutorReports(true);
+    try {
+      const baseUrl = getBackendApiUrl();
+      const reportPromises = students.map((st) =>
+        fetch(`${baseUrl}/api/tutor/students/${st.id}/reports`, {
+          headers: getAuthHeaders(),
+        })
+          .then((r) => (r.ok ? r.json() : { reports: [] }))
+          .then((d) => (Array.isArray(d.reports) ? d.reports : []))
+          .catch(() => [])
+      );
+
+      const studentReportArrays = await Promise.all(reportPromises);
+      const allReports = studentReportArrays.flat();
+
+      const uniqueMap = new Map<number, LessonReport>();
+      allReports.forEach((rep: LessonReport) => {
+        if (rep?.id) uniqueMap.set(rep.id, rep);
+      });
+      setTutorReports(Array.from(uniqueMap.values()).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+    } catch (err) {
+      console.error("Error gathering tutor reports:", err);
+    } finally {
+      setLoadingTutorReports(false);
+    }
   };
 
   /* ── 1. Fetch Dashboard: GET /api/tutor/dashboard ── */
@@ -615,6 +831,7 @@ export default function TutorDashboard() {
     { tab: "schedule", icon: <Calendar size={18} />, label: "My Schedule", badge: stats.upcoming_sessions_count || undefined },
     { tab: "students", icon: <Users size={18} />, label: "My Students", badge: stats.total_students || undefined },
     { tab: "sessions", icon: <CalendarDays size={18} />, label: "All Sessions" },
+    { tab: "reports", icon: <FileText size={18} />, label: "Lesson Reports" },
     { tab: "profile", icon: <Award size={18} />, label: "My Profile" },
   ];
 
@@ -753,6 +970,7 @@ export default function TutorDashboard() {
                 {activeTab === "schedule" && "Weekly Timetable & Schedule"}
                 {activeTab === "students" && "My Assigned Students"}
                 {activeTab === "sessions" && "Lesson Sessions"}
+                {activeTab === "reports" && "Lesson Reports & Feedback"}
                 {activeTab === "profile" && "Tutor Profile"}
               </h1>
               <p style={{ fontSize: "0.72rem", color: "#94a3b8", margin: 0 }}>
@@ -1018,6 +1236,21 @@ export default function TutorDashboard() {
                                   <Check size={13} /> Complete
                                 </button>
                               )}
+
+                              <button
+                                onClick={() => openReportModal(session)}
+                                className="action-btn"
+                                style={{
+                                  background: session.status === "completed" ? "#f0fdf9" : "#eff6ff",
+                                  color: session.status === "completed" ? "#0d9488" : "#1d4ed8",
+                                  border: session.status === "completed" ? "1px solid #99f6e4" : "1px solid #bfdbfe",
+                                  padding: "0.35rem 0.7rem",
+                                  fontSize: "0.76rem",
+                                }}
+                                title="Submit post-lesson report for this session"
+                              >
+                                <FileText size={13} /> Report
+                              </button>
                             </div>
                           </div>
                         ))}
@@ -1256,6 +1489,18 @@ export default function TutorDashboard() {
                                   <Check size={13} /> Complete
                                 </button>
                               )}
+
+                              <button
+                                onClick={() => openReportModal(session)}
+                                className="action-btn"
+                                style={{
+                                  background: session.status === "completed" ? "#f0fdf9" : "#eff6ff",
+                                  color: session.status === "completed" ? "#0d9488" : "#1d4ed8",
+                                  border: session.status === "completed" ? "1px solid #99f6e4" : "1px solid #bfdbfe",
+                                }}
+                              >
+                                <FileText size={13} /> Report
+                              </button>
                             </div>
                           </div>
                         ))}
@@ -1364,7 +1609,7 @@ export default function TutorDashboard() {
                             </div>
                           )}
 
-                          <div style={{ display: "flex", gap: "0.5rem", marginTop: "auto" }}>
+                          <div style={{ display: "flex", gap: "0.5rem", marginTop: "auto", flexWrap: "wrap" }}>
                             <button
                               onClick={() => {
                                 setSessionStudentId(String(st.id));
@@ -1372,9 +1617,16 @@ export default function TutorDashboard() {
                                 fetchSessions(1);
                               }}
                               className="action-btn"
-                              style={{ flex: 1, justifyContent: "center", background: "#f0fdf9", color: "#0d9488", border: "1.5px solid #99f6e4" }}
+                              style={{ flex: 1, minWidth: "130px", justifyContent: "center", background: "#f0fdf9", color: "#0d9488", border: "1.5px solid #99f6e4" }}
                             >
-                              <CalendarDays size={14} /> View Student's Sessions
+                              <CalendarDays size={14} /> Sessions
+                            </button>
+                            <button
+                              onClick={() => openStudentReportsModal(st)}
+                              className="action-btn"
+                              style={{ flex: 1, minWidth: "130px", justifyContent: "center", background: "#f8fafc", color: "#0284c7", border: "1.5px solid #bae6fd" }}
+                            >
+                              <FileText size={14} /> Reports
                             </button>
                           </div>
                         </div>
@@ -1597,6 +1849,20 @@ export default function TutorDashboard() {
                                         <Check size={13} /> Complete
                                       </button>
                                     )}
+                                    <button
+                                      onClick={() => openReportModal(sess)}
+                                      className="action-btn"
+                                      style={{
+                                        background: sess.status === "completed" ? "#f0fdf9" : "#eff6ff",
+                                        color: sess.status === "completed" ? "#0d9488" : "#1d4ed8",
+                                        border: sess.status === "completed" ? "1px solid #99f6e4" : "1px solid #bfdbfe",
+                                        padding: "0.3rem 0.65rem",
+                                        fontSize: "0.75rem",
+                                      }}
+                                      title="Submit or edit post-lesson report"
+                                    >
+                                      <FileText size={13} /> Report
+                                    </button>
                                   </div>
                                 </td>
                               </tr>
@@ -1649,6 +1915,124 @@ export default function TutorDashboard() {
                       </div>
                     )}
                   </div>
+                </div>
+              )}
+
+              {/* ══════════════ LESSON REPORTS TAB (Tutor Portal) ══════════════ */}
+              {activeTab === "reports" && (
+                <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }} className="page-enter">
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "0.8rem" }}>
+                    <div>
+                      <h2 style={{ fontSize: "1.15rem", fontWeight: 800, color: "#0f172a", margin: 0 }}>
+                        Lesson Reports &amp; Feedback
+                      </h2>
+                      <p style={{ fontSize: "0.78rem", color: "#64748b", margin: "0.15rem 0 0" }}>
+                        Post-lesson academic reports, student engagement metrics, and feedback for parents
+                      </p>
+                    </div>
+
+                    <button
+                      onClick={fetchTutorReports}
+                      style={{ padding: "0.45rem 0.85rem", borderRadius: "8px", background: "#fff", border: "1px solid #cbd5e1", fontSize: "0.8rem", fontWeight: 600, color: "#475569", cursor: "pointer", display: "flex", alignItems: "center", gap: "0.35rem" }}
+                    >
+                      <RefreshCw size={13} className={loadingTutorReports ? "spin" : ""} /> Refresh Reports
+                    </button>
+                  </div>
+
+                  {/* Search and Guidance Card */}
+                  <div className="dash-card" style={{ padding: "1.1rem 1.25rem", background: "linear-gradient(135deg,#f0fdf9,#e0f2fe)", border: "1.5px solid #ccfbf1", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "1rem", flexWrap: "wrap" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+                      <div style={{ width: "40px", height: "40px", borderRadius: "10px", background: "#20b2a4", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                        <FileText size={20} />
+                      </div>
+                      <div>
+                        <div style={{ fontWeight: 700, fontSize: "0.9rem", color: "#0f172a" }}>Why Lesson Reports Matter</div>
+                        <div style={{ fontSize: "0.76rem", color: "#475569" }}>
+                          Submitting a post-lesson report marks the session as <strong>completed</strong> and keeps parents informed on topics covered, engagement, and homework.
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="search-box" style={{ width: "100%", maxWidth: "280px", background: "#fff" }}>
+                      <Search size={15} color="#94a3b8" />
+                      <input
+                        placeholder="Search reports…"
+                        value={reportSearchQuery}
+                        onChange={(e) => setReportSearchQuery(e.target.value)}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Reports List */}
+                  {loadingTutorReports ? (
+                    <div style={{ padding: "3rem", textAlign: "center", color: "#64748b" }}>
+                      <div style={{ width: "28px", height: "28px", border: "2.5px solid #20b2a4", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.7s linear infinite", margin: "0 auto 0.6rem" }} />
+                      <span style={{ fontSize: "0.82rem" }}>Loading lesson reports…</span>
+                    </div>
+                  ) : tutorReports.length === 0 ? (
+                    <div className="dash-card" style={{ padding: "3rem 1.5rem", textAlign: "center", color: "#94a3b8" }}>
+                      <FileText size={38} color="#cbd5e1" style={{ margin: "0 auto 0.8rem" }} />
+                      <div style={{ fontSize: "0.95rem", fontWeight: 700, color: "#475569" }}>No Lesson Reports Submitted Yet</div>
+                      <div style={{ fontSize: "0.78rem", color: "#94a3b8", marginTop: "0.25rem", maxWidth: "450px", margin: "0.25rem auto 1rem" }}>
+                        Click the <strong>Report</strong> button next to any completed or scheduled session in your Timetable or Sessions tab to submit your first report.
+                      </div>
+                      <button
+                        onClick={() => setActiveTab("sessions")}
+                        className="action-btn"
+                        style={{ background: "#20b2a4", color: "#fff", padding: "0.5rem 1.25rem", margin: "0 auto" }}
+                      >
+                        Go to Lesson Sessions
+                      </button>
+                    </div>
+                  ) : (
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: "1rem" }}>
+                      {tutorReports
+                        .filter((rep) => {
+                          if (!reportSearchQuery) return true;
+                          const q = reportSearchQuery.toLowerCase();
+                          return (
+                            rep.subject?.toLowerCase().includes(q) ||
+                            rep.topics_covered?.toLowerCase().includes(q) ||
+                            rep.student?.student_name?.toLowerCase().includes(q)
+                          );
+                        })
+                        .map((rep) => (
+                          <div key={rep.id} className="dash-card" style={{ padding: "1.2rem", display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                              <div>
+                                <span style={{ fontWeight: 800, color: "#0f172a", fontSize: "0.95rem" }}>{rep.subject}</span>
+                                <div style={{ fontSize: "0.74rem", color: "#64748b" }}>
+                                  📅 {rep.date} • {rep.student?.student_name || "Student"}
+                                </div>
+                              </div>
+                              <span style={{ fontSize: "0.8rem", color: "#f59e0b", fontWeight: 700 }}>
+                                {"★".repeat(Math.min(5, Math.max(1, Number(rep.student_engagement) || 5)))}
+                              </span>
+                            </div>
+
+                            <div style={{ background: "#f8fafc", padding: "0.65rem 0.8rem", borderRadius: "8px", fontSize: "0.8rem", color: "#334155", lineHeight: 1.5 }}>
+                              <strong>Topics:</strong> {rep.topics_covered}
+                            </div>
+
+                            {rep.notes_for_parents && (
+                              <div style={{ fontSize: "0.75rem", color: "#0369a1", background: "#f0f9ff", padding: "0.4rem 0.65rem", borderRadius: "6px" }}>
+                                💬 {rep.notes_for_parents}
+                              </div>
+                            )}
+
+                            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "auto" }}>
+                              <button
+                                onClick={() => setSelectedReportView(rep)}
+                                className="action-btn"
+                                style={{ background: "#f0fdf9", color: "#0d9488", border: "1px solid #99f6e4", fontSize: "0.75rem" }}
+                              >
+                                View Details
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -1842,6 +2226,441 @@ export default function TutorDashboard() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── Submit / Edit Lesson Report Modal (POST /api/tutor/sessions/{sessionId}/report) ── */}
+      {reportModalSession && (
+        <div
+          onClick={() => !isSubmittingReport && setReportModalSession(null)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15,23,42,0.65)",
+            backdropFilter: "blur(4px)",
+            zIndex: 1000,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "1rem",
+            animation: "fadeUp 0.2s ease",
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: "#fff",
+              borderRadius: "16px",
+              width: "100%",
+              maxWidth: "600px",
+              maxHeight: "92vh",
+              overflow: "hidden",
+              boxShadow: "0 25px 60px rgba(0,0,0,0.3)",
+              display: "flex",
+              flexDirection: "column",
+            }}
+          >
+            {/* Header */}
+            <div style={{ background: "linear-gradient(135deg,#20b2a4,#0d9488)", padding: "1.2rem 1.5rem", color: "#fff", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div>
+                <div style={{ fontSize: "0.72rem", textTransform: "uppercase", letterSpacing: "0.05em", color: "#ccfbf1", fontWeight: 700 }}>
+                  Post-Lesson Session Report
+                </div>
+                <h3 style={{ margin: "0.2rem 0 0", fontSize: "1.1rem", fontWeight: 800 }}>
+                  {reportModalSession.subject} with {reportModalSession.student?.student_name || "Student"}
+                </h3>
+                <div style={{ fontSize: "0.74rem", color: "#e0f2fe", marginTop: "0.15rem" }}>
+                  📅 {reportModalSession.date} • {reportModalSession.start_time?.slice(0, 5)} - {reportModalSession.end_time?.slice(0, 5)}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => !isSubmittingReport && setReportModalSession(null)}
+                style={{ background: "rgba(255,255,255,0.2)", border: "none", color: "#fff", width: "30px", height: "30px", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Form */}
+            <form onSubmit={handleSubmitReport} style={{ display: "flex", flexDirection: "column", flex: 1, overflow: "hidden" }}>
+              <div style={{ padding: "1.25rem 1.5rem", overflowY: "auto", display: "flex", flexDirection: "column", gap: "1rem", flex: 1 }}>
+                {reportError && (
+                  <div style={{ background: "#fee2e2", border: "1px solid #fecaca", color: "#dc2626", borderRadius: "8px", padding: "0.75rem", fontSize: "0.82rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                    <AlertCircle size={16} /> {reportError}
+                  </div>
+                )}
+
+                {/* 2-column: Attendance & Engagement Rating */}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.85rem" }}>
+                  <div>
+                    <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 700, color: "#374151", marginBottom: "0.35rem" }}>
+                      Attendance Status <span style={{ color: "#ef4444" }}>*</span>
+                    </label>
+                    <select
+                      value={reportForm.attendance_status}
+                      onChange={(e) => setReportForm({ ...reportForm, attendance_status: e.target.value })}
+                      style={{ width: "100%", padding: "0.55rem 0.75rem", borderRadius: "8px", border: "1.5px solid #cbd5e1", fontSize: "0.85rem", outline: "none", background: "#fff" }}
+                    >
+                      <option value="present">Present (Attended)</option>
+                      <option value="late">Late (Joined delayed)</option>
+                      <option value="absent">Absent (No-show)</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 700, color: "#374151", marginBottom: "0.35rem" }}>
+                      Student Engagement (1–5) <span style={{ color: "#ef4444" }}>*</span>
+                    </label>
+                    <div style={{ display: "flex", gap: "0.35rem" }}>
+                      {[1, 2, 3, 4, 5].map((star) => (
+                        <button
+                          key={star}
+                          type="button"
+                          onClick={() => setReportForm({ ...reportForm, student_engagement: star })}
+                          style={{
+                            flex: 1,
+                            padding: "0.5rem 0",
+                            borderRadius: "6px",
+                            border: reportForm.student_engagement >= star ? "1.5px solid #f59e0b" : "1.5px solid #cbd5e1",
+                            background: reportForm.student_engagement >= star ? "#fef3c7" : "#fff",
+                            color: reportForm.student_engagement >= star ? "#b45309" : "#94a3b8",
+                            fontWeight: 800,
+                            fontSize: "0.85rem",
+                            cursor: "pointer",
+                          }}
+                        >
+                          ★ {star}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Topics Covered */}
+                <div>
+                  <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 700, color: "#374151", marginBottom: "0.35rem" }}>
+                    Topics Covered &amp; Material Studied <span style={{ color: "#ef4444" }}>*</span>
+                  </label>
+                  <textarea
+                    required
+                    rows={2}
+                    value={reportForm.topics_covered}
+                    onChange={(e) => setReportForm({ ...reportForm, topics_covered: e.target.value })}
+                    placeholder="e.g. Quadratic equations and graph factorization. Completed worksheet 4B."
+                    style={{ width: "100%", padding: "0.55rem 0.75rem", borderRadius: "8px", border: "1.5px solid #cbd5e1", fontSize: "0.85rem", outline: "none", resize: "vertical", boxSizing: "border-box", fontFamily: "inherit" }}
+                  />
+                </div>
+
+                {/* Strengths & Improvement */}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.85rem" }}>
+                  <div>
+                    <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 700, color: "#065f46", marginBottom: "0.35rem" }}>
+                      Student Strengths (Optional)
+                    </label>
+                    <textarea
+                      rows={2}
+                      value={reportForm.strengths}
+                      onChange={(e) => setReportForm({ ...reportForm, strengths: e.target.value })}
+                      placeholder="e.g. Quick grasp of factorization and completing the square."
+                      style={{ width: "100%", padding: "0.5rem 0.7rem", borderRadius: "8px", border: "1.5px solid #cbd5e1", fontSize: "0.82rem", outline: "none", resize: "vertical", boxSizing: "border-box", fontFamily: "inherit" }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 700, color: "#9a3412", marginBottom: "0.35rem" }}>
+                      Areas for Improvement (Optional)
+                    </label>
+                    <textarea
+                      rows={2}
+                      value={reportForm.areas_for_improvement}
+                      onChange={(e) => setReportForm({ ...reportForm, areas_for_improvement: e.target.value })}
+                      placeholder="e.g. Needs more practice with negative coefficients."
+                      style={{ width: "100%", padding: "0.5rem 0.7rem", borderRadius: "8px", border: "1.5px solid #cbd5e1", fontSize: "0.82rem", outline: "none", resize: "vertical", boxSizing: "border-box", fontFamily: "inherit" }}
+                    />
+                  </div>
+                </div>
+
+                {/* Homework Assigned */}
+                <div>
+                  <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 700, color: "#0369a1", marginBottom: "0.35rem" }}>
+                    Homework Assigned (Optional)
+                  </label>
+                  <input
+                    value={reportForm.homework_assigned}
+                    onChange={(e) => setReportForm({ ...reportForm, homework_assigned: e.target.value })}
+                    placeholder="e.g. Exercise 4B, questions 1-8"
+                    style={{ width: "100%", padding: "0.55rem 0.75rem", borderRadius: "8px", border: "1.5px solid #cbd5e1", fontSize: "0.85rem", outline: "none", boxSizing: "border-box" }}
+                  />
+                </div>
+
+                {/* Notes for Parents */}
+                <div>
+                  <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 700, color: "#374151", marginBottom: "0.35rem" }}>
+                    Notes for Parents / Feedback
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={reportForm.notes_for_parents}
+                    onChange={(e) => setReportForm({ ...reportForm, notes_for_parents: e.target.value })}
+                    placeholder="e.g. Liam was very engaged and attentive throughout the lesson."
+                    style={{ width: "100%", padding: "0.55rem 0.75rem", borderRadius: "8px", border: "1.5px solid #cbd5e1", fontSize: "0.85rem", outline: "none", resize: "vertical", boxSizing: "border-box", fontFamily: "inherit" }}
+                  />
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div style={{ padding: "1rem 1.5rem", borderTop: "1px solid #e2e8f0", background: "#f8fafc", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <button
+                  type="button"
+                  onClick={() => setReportModalSession(null)}
+                  style={{ padding: "0.55rem 1rem", borderRadius: "8px", background: "#f1f5f9", border: "none", color: "#475569", fontWeight: 600, fontSize: "0.82rem", cursor: "pointer" }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingReport}
+                  style={{
+                    padding: "0.55rem 1.35rem",
+                    borderRadius: "8px",
+                    background: isSubmittingReport ? "#94a3b8" : "linear-gradient(135deg,#20b2a4,#0d9488)",
+                    border: "none",
+                    color: "#fff",
+                    fontWeight: 700,
+                    fontSize: "0.84rem",
+                    cursor: isSubmittingReport ? "not-allowed" : "pointer",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "0.35rem",
+                  }}
+                >
+                  <Send size={14} /> {isSubmittingReport ? "Saving Report…" : "Submit Lesson Report"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── Viewing Student Reports Modal (GET /api/tutor/students/{studentId}/reports) ── */}
+      {viewingStudentReports && (
+        <div
+          onClick={() => setViewingStudentReports(null)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15,23,42,0.65)",
+            backdropFilter: "blur(4px)",
+            zIndex: 1000,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "1rem",
+            animation: "fadeUp 0.2s ease",
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: "#fff",
+              borderRadius: "16px",
+              width: "100%",
+              maxWidth: "600px",
+              maxHeight: "88vh",
+              overflow: "hidden",
+              boxShadow: "0 25px 60px rgba(0,0,0,0.3)",
+              display: "flex",
+              flexDirection: "column",
+            }}
+          >
+            {/* Header */}
+            <div style={{ background: "linear-gradient(135deg,#0284c7,#0369a1)", padding: "1.2rem 1.5rem", color: "#fff", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div>
+                <div style={{ fontSize: "0.72rem", textTransform: "uppercase", letterSpacing: "0.05em", color: "#e0f2fe", fontWeight: 700 }}>
+                  Student Progress History
+                </div>
+                <h3 style={{ margin: "0.2rem 0 0", fontSize: "1.1rem", fontWeight: 800 }}>
+                  Reports for {viewingStudentReports.student.student_name}
+                </h3>
+              </div>
+              <button
+                onClick={() => setViewingStudentReports(null)}
+                style={{ background: "rgba(255,255,255,0.2)", border: "none", color: "#fff", width: "30px", height: "30px", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* List */}
+            <div style={{ padding: "1.25rem 1.5rem", overflowY: "auto", display: "flex", flexDirection: "column", gap: "0.85rem", flex: 1 }}>
+              {viewingStudentReports.loading ? (
+                <div style={{ padding: "2.5rem", textAlign: "center", color: "#64748b" }}>
+                  <div style={{ width: "24px", height: "24px", border: "2.5px solid #0284c7", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.7s linear infinite", margin: "0 auto 0.5rem" }} />
+                  <span style={{ fontSize: "0.82rem" }}>Loading student reports…</span>
+                </div>
+              ) : viewingStudentReports.reports.length === 0 ? (
+                <div style={{ padding: "2.5rem 1rem", textAlign: "center", color: "#94a3b8" }}>
+                  <FileText size={32} color="#cbd5e1" style={{ margin: "0 auto 0.5rem" }} />
+                  <div style={{ fontSize: "0.9rem", fontWeight: 700, color: "#475569" }}>No reports found for this student</div>
+                </div>
+              ) : (
+                viewingStudentReports.reports.map((rep) => (
+                  <div key={rep.id} style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "10px", padding: "0.9rem", display: "flex", flexDirection: "column", gap: "0.45rem" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                      <div>
+                        <span style={{ fontWeight: 800, color: "#0f172a", fontSize: "0.88rem" }}>{rep.subject}</span>
+                        <span style={{ fontSize: "0.74rem", color: "#64748b", marginLeft: "0.5rem" }}>📅 {rep.date}</span>
+                      </div>
+                      <span style={{ fontSize: "0.8rem", color: "#f59e0b", fontWeight: 700 }}>
+                        {"★".repeat(Math.min(5, Math.max(1, Number(rep.student_engagement) || 5)))}
+                      </span>
+                    </div>
+
+                    <div style={{ fontSize: "0.8rem", color: "#334155" }}>
+                      <strong>Topics:</strong> {rep.topics_covered}
+                    </div>
+
+                    {rep.strengths && (
+                      <div style={{ fontSize: "0.75rem", color: "#065f46" }}>
+                        ✓ <strong>Strengths:</strong> {rep.strengths}
+                      </div>
+                    )}
+
+                    {rep.homework_assigned && (
+                      <div style={{ fontSize: "0.75rem", color: "#0369a1" }}>
+                        📚 <strong>Homework:</strong> {rep.homework_assigned}
+                      </div>
+                    )}
+
+                    {rep.notes_for_parents && (
+                      <div style={{ fontSize: "0.74rem", color: "#475569", background: "#fff", padding: "0.4rem 0.6rem", borderRadius: "6px", border: "1px solid #f1f5f9" }}>
+                        💬 {rep.notes_for_parents}
+                      </div>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Footer */}
+            <div style={{ padding: "0.85rem 1.5rem", borderTop: "1px solid #e2e8f0", background: "#f8fafc", display: "flex", justifyContent: "flex-end" }}>
+              <button
+                onClick={() => setViewingStudentReports(null)}
+                style={{ padding: "0.5rem 1.25rem", borderRadius: "8px", background: "#0f172a", border: "none", color: "#fff", fontWeight: 700, fontSize: "0.82rem", cursor: "pointer" }}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Single Report View Modal ── */}
+      {selectedReportView && (
+        <div
+          onClick={() => setSelectedReportView(null)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15,23,42,0.65)",
+            backdropFilter: "blur(4px)",
+            zIndex: 1000,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "1rem",
+            animation: "fadeUp 0.2s ease",
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: "#fff",
+              borderRadius: "16px",
+              width: "100%",
+              maxWidth: "540px",
+              maxHeight: "88vh",
+              overflow: "hidden",
+              boxShadow: "0 25px 60px rgba(0,0,0,0.3)",
+              display: "flex",
+              flexDirection: "column",
+            }}
+          >
+            <div style={{ background: "linear-gradient(135deg,#20b2a4,#0d9488)", padding: "1.2rem 1.5rem", color: "#fff", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div>
+                <div style={{ fontSize: "0.72rem", textTransform: "uppercase", letterSpacing: "0.05em", color: "#ccfbf1", fontWeight: 700 }}>
+                  Lesson Report #{selectedReportView.id}
+                </div>
+                <h3 style={{ margin: "0.2rem 0 0", fontSize: "1.05rem", fontWeight: 800 }}>
+                  {selectedReportView.subject} • {selectedReportView.date}
+                </h3>
+              </div>
+              <button
+                onClick={() => setSelectedReportView(null)}
+                style={{ background: "rgba(255,255,255,0.2)", border: "none", color: "#fff", width: "28px", height: "28px", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}
+              >
+                <X size={15} />
+              </button>
+            </div>
+
+            <div style={{ padding: "1.25rem 1.5rem", overflowY: "auto", display: "flex", flexDirection: "column", gap: "0.85rem", flex: 1, fontSize: "0.85rem" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", background: "#f8fafc", padding: "0.75rem", borderRadius: "8px" }}>
+                <div>
+                  <div style={{ fontSize: "0.7rem", color: "#64748b", fontWeight: 700 }}>STUDENT</div>
+                  <div style={{ fontWeight: 700, color: "#0f172a" }}>{selectedReportView.student?.student_name || "Student"}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: "0.7rem", color: "#64748b", fontWeight: 700 }}>ENGAGEMENT</div>
+                  <div style={{ color: "#f59e0b", fontWeight: 700 }}>
+                    {"★".repeat(Math.min(5, Math.max(1, Number(selectedReportView.student_engagement) || 5)))} ({selectedReportView.student_engagement}/5)
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <div style={{ fontSize: "0.72rem", color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>Topics Covered</div>
+                <div style={{ background: "#f8fafc", padding: "0.7rem", borderRadius: "8px", marginTop: "0.2rem", color: "#0f172a" }}>
+                  {selectedReportView.topics_covered}
+                </div>
+              </div>
+
+              {selectedReportView.strengths && (
+                <div>
+                  <div style={{ fontSize: "0.72rem", color: "#065f46", fontWeight: 700, textTransform: "uppercase" }}>Strengths</div>
+                  <div style={{ background: "#ecfdf5", padding: "0.6rem 0.75rem", borderRadius: "8px", marginTop: "0.2rem", color: "#065f46" }}>
+                    {selectedReportView.strengths}
+                  </div>
+                </div>
+              )}
+
+              {selectedReportView.homework_assigned && (
+                <div>
+                  <div style={{ fontSize: "0.72rem", color: "#0369a1", fontWeight: 700, textTransform: "uppercase" }}>Homework</div>
+                  <div style={{ background: "#f0f9ff", padding: "0.6rem 0.75rem", borderRadius: "8px", marginTop: "0.2rem", color: "#0369a1" }}>
+                    📚 {selectedReportView.homework_assigned}
+                  </div>
+                </div>
+              )}
+
+              {selectedReportView.notes_for_parents && (
+                <div>
+                  <div style={{ fontSize: "0.72rem", color: "#475569", fontWeight: 700, textTransform: "uppercase" }}>Notes for Parents</div>
+                  <div style={{ background: "#fdf4ff", padding: "0.6rem 0.75rem", borderRadius: "8px", marginTop: "0.2rem", color: "#86198f" }}>
+                    💬 {selectedReportView.notes_for_parents}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div style={{ padding: "0.85rem 1.5rem", borderTop: "1px solid #e2e8f0", background: "#f8fafc", display: "flex", justifyContent: "flex-end" }}>
+              <button
+                onClick={() => setSelectedReportView(null)}
+                style={{ padding: "0.5rem 1.25rem", borderRadius: "8px", background: "#0f172a", border: "none", color: "#fff", fontWeight: 700, fontSize: "0.82rem", cursor: "pointer" }}
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}

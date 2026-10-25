@@ -36,6 +36,11 @@ import {
   Filter,
   Check,
   CalendarDays,
+  FileText,
+  Key,
+  Copy,
+  Award,
+  BookOpen,
 } from "lucide-react";
 import { QUALIFICATIONS_LIST } from "../../constants/qualifications";
 
@@ -224,7 +229,47 @@ type CalendarSession = {
   };
 };
 
-type NavTab = "overview" | "applicants" | "tutors" | "bookings" | "sessions";
+type LessonReport = {
+  id: number;
+  lesson_session_id?: number;
+  student_id: number;
+  tutor_id: number;
+  subject: string;
+  date: string;
+  attendance_status: "present" | "absent" | "late" | string;
+  topics_covered: string;
+  student_engagement: number;
+  homework_assigned?: string;
+  strengths?: string;
+  areas_for_improvement?: string;
+  notes_for_parents?: string;
+  status: "submitted" | "draft" | string;
+  created_at?: string;
+  updated_at?: string;
+  student?: {
+    id: number;
+    student_name: string;
+    parent_name?: string;
+    email?: string;
+    level?: string;
+  };
+  tutor?: {
+    id: number;
+    name: string;
+    email?: string;
+    phone?: string;
+  };
+  session?: {
+    id: number;
+    date: string;
+    start_time: string;
+    end_time: string;
+    subject?: string;
+    status: string;
+  };
+};
+
+type NavTab = "overview" | "applicants" | "tutors" | "bookings" | "sessions" | "reports";
 
 const statusStyle: Record<string, { bg: string; color: string; label?: string }> = {
   "New Inquiry": { bg: "#fef3c7", color: "#b45309", label: "New Inquiry" },
@@ -351,6 +396,25 @@ export default function AdminDashboard() {
 
   // Sessions top-level tab active student
   const [selectedStudentForSessionsTab, setSelectedStudentForSessionsTab] = useState<string>("");
+
+  // Lesson Reports State
+  const [reports, setReports] = useState<LessonReport[]>([]);
+  const [reportsLoading, setReportsLoading] = useState(false);
+  const [reportsPage, setReportsPage] = useState(1);
+  const [reportsTotal, setReportsTotal] = useState(0);
+  const [reportsPerPage, setReportsPerPage] = useState(20);
+  const [searchReports, setSearchReports] = useState("");
+  const [reportAttendanceFilter, setReportAttendanceFilter] = useState("all");
+  const [selectedReportDetail, setSelectedReportDetail] = useState<LessonReport | null>(null);
+  const [studentReports, setStudentReports] = useState<LessonReport[]>([]);
+  const [studentReportsLoading, setStudentReportsLoading] = useState(false);
+
+  // Temporary credentials modal from enroll response
+  const [temporaryCredentialsModal, setTemporaryCredentialsModal] = useState<{
+    name: string;
+    email: string;
+    temporary_password?: string;
+  } | null>(null);
 
   const getBackendApiUrl = () => {
     if (process.env.NEXT_PUBLIC_API_URL) {
@@ -991,6 +1055,24 @@ export default function AdminDashboard() {
       } catch (err) {
         console.error("Error fetching single student profile:", err);
       }
+
+      // Fetch lesson reports for this student
+      try {
+        setStudentReportsLoading(true);
+        const repRes = await fetch(`${baseUrl}/api/admin/students/${targetId}/reports`, {
+          headers: getAuthHeaders(),
+        });
+        if (repRes.ok) {
+          const repData = await repRes.json();
+          setStudentReports(repData.reports || []);
+        } else {
+          setStudentReports([]);
+        }
+      } catch (e) {
+        setStudentReports([]);
+      } finally {
+        setStudentReportsLoading(false);
+      }
     }
 
     setLoadingStudentDetail(false);
@@ -1147,7 +1229,7 @@ export default function AdminDashboard() {
 
     if (stored === "true" || token) {
       setIsAuthed(true);
-      Promise.all([fetchCurrentUser(), fetchTutorsFromApi(), fetchStudentsFromApi()]).finally(() => {
+      Promise.all([fetchCurrentUser(), fetchTutorsFromApi(), fetchStudentsFromApi(), fetchAdminReports(1)]).finally(() => {
         setInitialLoading(false);
       });
     } else {
@@ -1155,6 +1237,38 @@ export default function AdminDashboard() {
     }
     setChecking(false);
   }, []);
+
+  const fetchAdminReports = async (page = 1) => {
+    setReportsLoading(true);
+    try {
+      const baseUrl = getBackendApiUrl();
+      const res = await fetch(`${baseUrl}/api/admin/reports?page=${page}`, {
+        headers: getAuthHeaders(),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data?.reports?.data) {
+          setReports(data.reports.data);
+          setReportsTotal(data.reports.total || data.reports.data.length);
+          setReportsPage(data.reports.current_page || page);
+          setReportsPerPage(data.reports.per_page || 20);
+        } else if (Array.isArray(data?.reports)) {
+          setReports(data.reports);
+          setReportsTotal(data.reports.length);
+        }
+      }
+    } catch (err) {
+      console.error("Failed to fetch admin reports:", err);
+    } finally {
+      setReportsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isAuthed && activeTab === "reports") {
+      fetchAdminReports(reportsPage);
+    }
+  }, [activeTab, isAuthed]);
 
   const showToast = (msg: string) => {
     setToast(msg);
@@ -1415,11 +1529,20 @@ export default function AdminDashboard() {
         bio: enrollTutorForm.bio.trim() || undefined,
       };
 
-      const res = await fetch(`${baseUrl}/api/admin/tutors`, {
+      // Try standard enrollment endpoint first, fallback to legacy
+      let res = await fetch(`${baseUrl}/api/admin/tutors/enroll`, {
         method: "POST",
         headers: getAuthHeaders(),
         body: JSON.stringify(payload),
       });
+
+      if (res.status === 404) {
+        res = await fetch(`${baseUrl}/api/admin/tutors`, {
+          method: "POST",
+          headers: getAuthHeaders(),
+          body: JSON.stringify(payload),
+        });
+      }
 
       const data = await res.json().catch(() => null);
 
@@ -1436,7 +1559,6 @@ export default function AdminDashboard() {
       }
 
       // Success (201 Created)
-      showToast(data?.message || "Tutor enrolled successfully. Login details have been emailed.");
       setIsAddTutorOpen(false);
       setEnrollTutorForm({
         name: "",
@@ -1448,6 +1570,16 @@ export default function AdminDashboard() {
         years_of_experience: "",
         bio: "",
       });
+
+      if (data?.temporary_credentials) {
+        setTemporaryCredentialsModal({
+          name: trimmedName,
+          email: data.temporary_credentials.email || trimmedEmail,
+          temporary_password: data.temporary_credentials.temporary_password,
+        });
+      } else {
+        showToast(data?.message || "Tutor enrolled successfully. Login details have been emailed.");
+      }
       await fetchTutorsFromApi();
     } catch (err: any) {
       console.error("Enroll tutor error:", err);
@@ -1552,6 +1684,7 @@ export default function AdminDashboard() {
     { tab: "tutors",      icon: <GraduationCap size={18} />,   label: "Tutors",      badge: (tutorStats.approved || tutors.length) || undefined },
     { tab: "bookings",    icon: <Users size={18} />,           label: "Students",    badge: (studentStats.pending_match || newInquiries) || undefined },
     { tab: "sessions",    icon: <Calendar size={18} />,        label: "Timetables & Sessions" },
+    { tab: "reports",     icon: <FileText size={18} />,        label: "Lesson Reports", badge: reportsTotal || undefined },
   ];
 
   return (
@@ -1675,6 +1808,7 @@ export default function AdminDashboard() {
                 {activeTab === "tutors" && "Enrolled Tutors"}
                 {activeTab === "bookings" && "Student Registrations"}
                 {activeTab === "sessions" && "Student Timetables & Sessions"}
+                {activeTab === "reports" && "Lesson & Progress Reports"}
               </h1>
               <p style={{ fontSize: "0.73rem", color: "#94a3b8", margin: 0 }}>
                 {new Date().toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
@@ -1687,6 +1821,7 @@ export default function AdminDashboard() {
                 fetchCurrentUser();
                 fetchTutorsFromApi();
                 fetchStudentsFromApi();
+                fetchAdminReports(reportsPage);
                 if (timetableStudent) {
                   fetchStudentTimetable(timetableStudent.id);
                   fetchStudentSessions(timetableStudent.id);
@@ -2478,6 +2613,229 @@ export default function AdminDashboard() {
             </div>
           )}
             </>
+          )}
+
+          {/* ── Lesson Reports Tab (GET /api/admin/reports) ── */}
+          {activeTab === "reports" && (
+            <div className="page-enter" style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
+              {/* Stat Cards */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "1rem" }}>
+                <div className="dash-card" style={{ padding: "1.1rem 1.25rem", borderLeft: "4px solid #20b2a4" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <div>
+                      <div style={{ fontSize: "0.72rem", fontWeight: 700, color: "#64748b", textTransform: "uppercase" }}>Total Reports</div>
+                      <div style={{ fontSize: "1.7rem", fontWeight: 800, color: "#0f172a", marginTop: "0.2rem" }}>{reportsTotal || reports.length}</div>
+                    </div>
+                    <div style={{ width: "42px", height: "42px", borderRadius: "10px", background: "rgba(32,178,164,0.12)", color: "#0d9488", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      <FileText size={22} />
+                    </div>
+                  </div>
+                  <div style={{ fontSize: "0.73rem", color: "#64748b", marginTop: "0.4rem" }}>Submitted across all tutors &amp; sessions</div>
+                </div>
+
+                <div className="dash-card" style={{ padding: "1.1rem 1.25rem", borderLeft: "4px solid #f59e0b" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <div>
+                      <div style={{ fontSize: "0.72rem", fontWeight: 700, color: "#64748b", textTransform: "uppercase" }}>Avg Engagement</div>
+                      <div style={{ fontSize: "1.7rem", fontWeight: 800, color: "#0f172a", marginTop: "0.2rem" }}>
+                        {reports.length > 0
+                          ? (reports.reduce((acc, r) => acc + (Number(r.student_engagement) || 0), 0) / reports.length).toFixed(1)
+                          : "5.0"} <span style={{ fontSize: "1rem", color: "#f59e0b" }}>★</span>
+                      </div>
+                    </div>
+                    <div style={{ width: "42px", height: "42px", borderRadius: "10px", background: "#fef3c7", color: "#b45309", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      <Star size={22} />
+                    </div>
+                  </div>
+                  <div style={{ fontSize: "0.73rem", color: "#64748b", marginTop: "0.4rem" }}>Rated by tutors on 1–5 scale</div>
+                </div>
+
+                <div className="dash-card" style={{ padding: "1.1rem 1.25rem", borderLeft: "4px solid #0284c7" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <div>
+                      <div style={{ fontSize: "0.72rem", fontWeight: 700, color: "#64748b", textTransform: "uppercase" }}>Attendance Rate</div>
+                      <div style={{ fontSize: "1.7rem", fontWeight: 800, color: "#0f172a", marginTop: "0.2rem" }}>
+                        {reports.length > 0
+                          ? Math.round((reports.filter(r => r.attendance_status === "present").length / reports.length) * 100)
+                          : 100}%
+                      </div>
+                    </div>
+                    <div style={{ width: "42px", height: "42px", borderRadius: "10px", background: "#e0f2fe", color: "#0369a1", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      <CheckCircle2 size={22} />
+                    </div>
+                  </div>
+                  <div style={{ fontSize: "0.73rem", color: "#64748b", marginTop: "0.4rem" }}>Students present for lessons</div>
+                </div>
+              </div>
+
+              {/* Controls */}
+              <div className="dash-card" style={{ padding: "1rem 1.25rem", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.75rem", flexWrap: "wrap" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", flex: 1, minWidth: "260px" }}>
+                  <div className="search-box" style={{ flex: 1 }}>
+                    <Search size={16} color="#94a3b8" />
+                    <input
+                      type="text"
+                      placeholder="Search reports by student, tutor, subject, topic..."
+                      value={searchReports}
+                      onChange={(e) => setSearchReports(e.target.value)}
+                    />
+                  </div>
+
+                  <select
+                    value={reportAttendanceFilter}
+                    onChange={(e) => setReportAttendanceFilter(e.target.value)}
+                    style={{
+                      padding: "0.5rem 0.85rem",
+                      borderRadius: "8px",
+                      border: "1.5px solid #e2e8f0",
+                      fontSize: "0.82rem",
+                      fontWeight: 600,
+                      color: "#334155",
+                      background: "#fff",
+                      outline: "none",
+                    }}
+                  >
+                    <option value="all">All Attendance</option>
+                    <option value="present">Present Only</option>
+                    <option value="late">Late Only</option>
+                    <option value="absent">Absent Only</option>
+                  </select>
+                </div>
+
+                <button
+                  onClick={() => fetchAdminReports(reportsPage)}
+                  disabled={reportsLoading}
+                  style={{
+                    padding: "0.5rem 0.95rem",
+                    borderRadius: "8px",
+                    border: "1px solid #cbd5e1",
+                    background: "#fff",
+                    color: "#334155",
+                    fontSize: "0.8rem",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "0.35rem",
+                  }}
+                >
+                  <RefreshCw size={14} className={reportsLoading ? "spin" : ""} /> Refresh Reports
+                </button>
+              </div>
+
+              {/* Reports Table */}
+              <div className="dash-card" style={{ overflow: "hidden" }}>
+                {reportsLoading && reports.length === 0 ? (
+                  <div style={{ padding: "3rem", textAlign: "center", color: "#64748b" }}>
+                    <RefreshCw size={24} className="spin" style={{ marginBottom: "0.5rem" }} />
+                    <p style={{ fontWeight: 600, fontSize: "0.88rem" }}>Loading lesson reports from backend...</p>
+                  </div>
+                ) : reports.length === 0 ? (
+                  <div style={{ padding: "3.5rem 2rem", textAlign: "center" }}>
+                    <FileText size={38} color="#94a3b8" style={{ marginBottom: "0.5rem" }} />
+                    <p style={{ fontWeight: 700, color: "#0f172a", margin: "0 0 0.25rem" }}>No Lesson Reports Found</p>
+                    <p style={{ fontSize: "0.82rem", color: "#64748b", margin: 0 }}>
+                      When tutors conduct sessions and submit post-lesson feedback, their reports will appear here.
+                    </p>
+                  </div>
+                ) : (
+                  <div style={{ overflowX: "auto" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.83rem" }}>
+                      <thead>
+                        <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0", textAlign: "left", color: "#64748b", fontSize: "0.74rem", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                          <th style={{ padding: "0.85rem 1rem" }}>Date &amp; Subject</th>
+                          <th style={{ padding: "0.85rem 1rem" }}>Student</th>
+                          <th style={{ padding: "0.85rem 1rem" }}>Tutor</th>
+                          <th style={{ padding: "0.85rem 1rem" }}>Attendance</th>
+                          <th style={{ padding: "0.85rem 1rem" }}>Engagement</th>
+                          <th style={{ padding: "0.85rem 1rem" }}>Topics Covered</th>
+                          <th style={{ padding: "0.85rem 1rem", textAlign: "right" }}>Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {reports
+                          .filter((r) => {
+                            if (reportAttendanceFilter !== "all" && r.attendance_status !== reportAttendanceFilter) return false;
+                            if (!searchReports) return true;
+                            const query = searchReports.toLowerCase();
+                            return (
+                              r.subject?.toLowerCase().includes(query) ||
+                              r.topics_covered?.toLowerCase().includes(query) ||
+                              r.student?.student_name?.toLowerCase().includes(query) ||
+                              r.tutor?.name?.toLowerCase().includes(query) ||
+                              r.notes_for_parents?.toLowerCase().includes(query)
+                            );
+                          })
+                          .map((r) => {
+                            const att = r.attendance_status?.toLowerCase() || "present";
+                            const attBg = att === "present" ? "#d1fae5" : att === "late" ? "#fef3c7" : "#fee2e2";
+                            const attColor = att === "present" ? "#065f46" : att === "late" ? "#b45309" : "#991b1b";
+
+                            return (
+                              <tr key={r.id} className="table-row" style={{ borderBottom: "1px solid #f1f5f9" }}>
+                                <td style={{ padding: "0.85rem 1rem" }}>
+                                  <div style={{ fontWeight: 700, color: "#0f172a" }}>{r.subject}</div>
+                                  <div style={{ fontSize: "0.74rem", color: "#64748b" }}>
+                                    📅 {r.date} {r.session?.start_time ? `• ${r.session.start_time.slice(0, 5)}` : ""}
+                                  </div>
+                                </td>
+                                <td style={{ padding: "0.85rem 1rem" }}>
+                                  <div style={{ fontWeight: 600, color: "#0f172a" }}>{r.student?.student_name || `Student #${r.student_id}`}</div>
+                                  <div style={{ fontSize: "0.72rem", color: "#64748b" }}>{r.student?.parent_name ? `Parent: ${r.student.parent_name}` : r.student?.level || ""}</div>
+                                </td>
+                                <td style={{ padding: "0.85rem 1rem" }}>
+                                  <div style={{ fontWeight: 600, color: "#0f172a" }}>{r.tutor?.name || `Tutor #${r.tutor_id}`}</div>
+                                  <div style={{ fontSize: "0.72rem", color: "#64748b" }}>{r.tutor?.email || ""}</div>
+                                </td>
+                                <td style={{ padding: "0.85rem 1rem" }}>
+                                  <span style={{ background: attBg, color: attColor, padding: "0.2rem 0.55rem", borderRadius: "6px", fontSize: "0.72rem", fontWeight: 700, textTransform: "capitalize" }}>
+                                    {att}
+                                  </span>
+                                </td>
+                                <td style={{ padding: "0.85rem 1rem" }}>
+                                  <div style={{ display: "flex", alignItems: "center", gap: "0.2rem", color: "#f59e0b", fontSize: "0.85rem" }}>
+                                    {"★".repeat(Math.min(5, Math.max(1, Number(r.student_engagement) || 5)))}
+                                    <span style={{ fontSize: "0.74rem", fontWeight: 700, color: "#475569", marginLeft: "0.25rem" }}>
+                                      {r.student_engagement}/5
+                                    </span>
+                                  </div>
+                                </td>
+                                <td style={{ padding: "0.85rem 1rem", maxWidth: "240px" }}>
+                                  <div style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: "#334155" }}>
+                                    {r.topics_covered || "—"}
+                                  </div>
+                                  {r.homework_assigned && (
+                                    <div style={{ fontSize: "0.71rem", color: "#0284c7", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                                      📚 HW: {r.homework_assigned}
+                                    </div>
+                                  )}
+                                </td>
+                                <td style={{ padding: "0.85rem 1rem", textAlign: "right" }}>
+                                  <button
+                                    onClick={() => setSelectedReportDetail(r)}
+                                    style={{
+                                      padding: "0.38rem 0.75rem",
+                                      background: "#f0fdf9",
+                                      border: "1px solid #99f6e4",
+                                      color: "#0d9488",
+                                      borderRadius: "6px",
+                                      fontSize: "0.76rem",
+                                      fontWeight: 700,
+                                      cursor: "pointer",
+                                    }}
+                                  >
+                                    View Report
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
           )}
 
         </main>
@@ -3642,6 +4000,79 @@ export default function AdminDashboard() {
                 )}
               </div>
 
+              {/* Lesson & Progress Reports for Student */}
+              <div>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.5rem" }}>
+                  <h4 style={{ fontSize: "0.8rem", fontWeight: 700, color: "#374151", margin: 0, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                    Lesson &amp; Progress Reports ({studentReports.length})
+                  </h4>
+                  {studentReportsLoading && <span style={{ fontSize: "0.72rem", color: "#64748b" }}>Loading reports...</span>}
+                </div>
+
+                {studentReportsLoading ? (
+                  <div style={{ background: "#f8fafc", padding: "1.5rem", borderRadius: "8px", textAlign: "center", color: "#64748b", fontSize: "0.8rem" }}>
+                    Loading student reports...
+                  </div>
+                ) : studentReports.length === 0 ? (
+                  <div style={{ background: "#f8fafc", border: "1px dashed #cbd5e1", borderRadius: "8px", padding: "1rem", textAlign: "center", color: "#64748b", fontSize: "0.8rem" }}>
+                    No lesson reports submitted for this student yet.
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
+                    {studentReports.map((sr) => (
+                      <div
+                        key={sr.id}
+                        style={{
+                          background: "#fff",
+                          border: "1px solid #e2e8f0",
+                          borderRadius: "8px",
+                          padding: "0.75rem 0.9rem",
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: "0.4rem",
+                        }}
+                      >
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "0.5rem" }}>
+                          <div>
+                            <span style={{ fontWeight: 700, color: "#0f172a", fontSize: "0.82rem" }}>{sr.subject}</span>
+                            <span style={{ fontSize: "0.74rem", color: "#64748b", marginLeft: "0.5rem" }}>📅 {sr.date}</span>
+                            {sr.tutor?.name && <span style={{ fontSize: "0.74rem", color: "#0d9488", marginLeft: "0.5rem" }}>• Tutor: {sr.tutor.name}</span>}
+                          </div>
+                          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                            <span style={{ fontSize: "0.75rem", color: "#f59e0b", fontWeight: 700 }}>
+                              {"★".repeat(Math.min(5, Math.max(1, Number(sr.student_engagement) || 5)))} {sr.student_engagement}/5
+                            </span>
+                            <button
+                              onClick={() => setSelectedReportDetail(sr)}
+                              style={{
+                                padding: "0.25rem 0.55rem",
+                                background: "#f0fdf9",
+                                border: "1px solid #99f6e4",
+                                color: "#0d9488",
+                                borderRadius: "4px",
+                                fontSize: "0.72rem",
+                                fontWeight: 700,
+                                cursor: "pointer",
+                              }}
+                            >
+                              Full Report
+                            </button>
+                          </div>
+                        </div>
+                        <div style={{ fontSize: "0.78rem", color: "#334155" }}>
+                          <span style={{ fontWeight: 600, color: "#475569" }}>Topics:</span> {sr.topics_covered}
+                        </div>
+                        {sr.notes_for_parents && (
+                          <div style={{ fontSize: "0.74rem", color: "#0369a1", background: "#f0f9ff", padding: "0.35rem 0.6rem", borderRadius: "4px" }}>
+                            💬 {sr.notes_for_parents}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               {/* Notes / Special Requests */}
               <div>
                 <h4 style={{ fontSize: "0.8rem", fontWeight: 700, color: "#374151", marginBottom: "0.5rem", textTransform: "uppercase", letterSpacing: "0.04em" }}>
@@ -4714,6 +5145,249 @@ export default function AdminDashboard() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── Temporary Credentials Modal (Admin POST /api/admin/tutors/enroll) ── */}
+      {temporaryCredentialsModal && (
+        <div
+          onClick={() => setTemporaryCredentialsModal(null)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15,23,42,0.75)",
+            backdropFilter: "blur(5px)",
+            zIndex: 1100,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "1rem",
+            animation: "fadeUp 0.2s ease",
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: "#fff",
+              borderRadius: "16px",
+              width: "100%",
+              maxWidth: "520px",
+              boxShadow: "0 25px 60px rgba(0,0,0,0.3)",
+              overflow: "hidden",
+            }}
+          >
+            <div style={{ background: "linear-gradient(135deg,#0284c7,#0369a1)", padding: "1.25rem 1.5rem", color: "#fff" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                <Key size={22} />
+                <h3 style={{ margin: 0, fontSize: "1.1rem", fontWeight: 800 }}>Tutor Enrolled — Temporary Credentials</h3>
+              </div>
+              <p style={{ margin: "0.3rem 0 0", fontSize: "0.8rem", color: "#e0f2fe" }}>
+                Auto-generated credentials for {temporaryCredentialsModal.name}
+              </p>
+            </div>
+
+            <div style={{ padding: "1.5rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
+              <div style={{ background: "#fffbeb", border: "1px solid #fef3c7", padding: "0.85rem", borderRadius: "8px", fontSize: "0.8rem", color: "#92400e" }}>
+                ⚠️ Automated welcome email was queued or needs direct handoff. Please copy and provide these temporary credentials to the tutor:
+              </div>
+
+              <div style={{ background: "#f8fafc", border: "1.5px solid #e2e8f0", borderRadius: "10px", padding: "1rem", display: "flex", flexDirection: "column", gap: "0.6rem" }}>
+                <div>
+                  <div style={{ fontSize: "0.72rem", color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>Tutor Email / Username</div>
+                  <div style={{ fontSize: "0.95rem", fontWeight: 700, color: "#0f172a" }}>{temporaryCredentialsModal.email}</div>
+                </div>
+
+                {temporaryCredentialsModal.temporary_password && (
+                  <div>
+                    <div style={{ fontSize: "0.72rem", color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>Temporary Password</div>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: "0.2rem" }}>
+                      <code style={{ fontSize: "1rem", fontWeight: 800, color: "#0284c7", background: "#e0f2fe", padding: "0.3rem 0.65rem", borderRadius: "6px", letterSpacing: "0.05em" }}>
+                        {temporaryCredentialsModal.temporary_password}
+                      </code>
+                      <button
+                        onClick={() => {
+                          if (temporaryCredentialsModal.temporary_password) {
+                            navigator.clipboard.writeText(temporaryCredentialsModal.temporary_password);
+                            showToast("Temporary password copied to clipboard!");
+                          }
+                        }}
+                        style={{
+                          padding: "0.4rem 0.8rem",
+                          background: "#0284c7",
+                          color: "#fff",
+                          border: "none",
+                          borderRadius: "6px",
+                          fontSize: "0.75rem",
+                          fontWeight: 700,
+                          cursor: "pointer",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "0.3rem",
+                        }}
+                      >
+                        <Copy size={13} /> Copy Password
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <p style={{ fontSize: "0.75rem", color: "#64748b", margin: 0 }}>
+                • The tutor will be automatically prompted to set a new password upon first login (`must_change_password`).
+              </p>
+            </div>
+
+            <div style={{ padding: "1rem 1.5rem", borderTop: "1px solid #e2e8f0", background: "#f8fafc", display: "flex", justifyContent: "flex-end" }}>
+              <button
+                onClick={() => setTemporaryCredentialsModal(null)}
+                style={{
+                  padding: "0.55rem 1.35rem",
+                  background: "#0f172a",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: "8px",
+                  fontSize: "0.82rem",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                Close &amp; Continue
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Lesson Report Detail Modal ── */}
+      {selectedReportDetail && (
+        <div
+          onClick={() => setSelectedReportDetail(null)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15,23,42,0.65)",
+            backdropFilter: "blur(4px)",
+            zIndex: 1050,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "1rem",
+            animation: "fadeUp 0.2s ease",
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: "#fff",
+              borderRadius: "16px",
+              width: "100%",
+              maxWidth: "600px",
+              maxHeight: "90vh",
+              overflow: "hidden",
+              boxShadow: "0 25px 60px rgba(0,0,0,0.3)",
+              display: "flex",
+              flexDirection: "column",
+            }}
+          >
+            {/* Header */}
+            <div style={{ background: "linear-gradient(135deg,#0d9488,#0f766e)", padding: "1.25rem 1.5rem", color: "#fff", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div>
+                <div style={{ fontSize: "0.72rem", textTransform: "uppercase", letterSpacing: "0.05em", color: "#99f6e4", fontWeight: 700 }}>
+                  Lesson Session Report #{selectedReportDetail.id}
+                </div>
+                <h3 style={{ margin: "0.2rem 0 0", fontSize: "1.1rem", fontWeight: 800 }}>
+                  {selectedReportDetail.subject} — {selectedReportDetail.student?.student_name || `Student #${selectedReportDetail.student_id}`}
+                </h3>
+              </div>
+              <button
+                onClick={() => setSelectedReportDetail(null)}
+                style={{ background: "rgba(255,255,255,0.2)", border: "none", color: "#fff", width: "30px", height: "30px", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div style={{ padding: "1.25rem 1.5rem", overflowY: "auto", display: "flex", flexDirection: "column", gap: "1rem", flex: 1 }}>
+              {/* Quick Info Grid */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: "0.75rem", background: "#f8fafc", padding: "0.85rem", borderRadius: "10px", border: "1px solid #e2e8f0" }}>
+                <div>
+                  <div style={{ fontSize: "0.68rem", color: "#64748b", fontWeight: 700 }}>SESSION DATE</div>
+                  <div style={{ fontSize: "0.82rem", fontWeight: 700, color: "#0f172a" }}>{selectedReportDetail.date}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: "0.68rem", color: "#64748b", fontWeight: 700 }}>ATTENDANCE</div>
+                  <div style={{ fontSize: "0.82rem", fontWeight: 700, color: selectedReportDetail.attendance_status === "present" ? "#065f46" : "#b45309", textTransform: "capitalize" }}>
+                    {selectedReportDetail.attendance_status}
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: "0.68rem", color: "#64748b", fontWeight: 700 }}>ENGAGEMENT</div>
+                  <div style={{ fontSize: "0.82rem", fontWeight: 700, color: "#f59e0b" }}>
+                    {"★".repeat(Math.min(5, Math.max(1, Number(selectedReportDetail.student_engagement) || 5)))} ({selectedReportDetail.student_engagement}/5)
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: "0.68rem", color: "#64748b", fontWeight: 700 }}>TUTOR</div>
+                  <div style={{ fontSize: "0.82rem", fontWeight: 700, color: "#0f172a" }}>{selectedReportDetail.tutor?.name || `ID #${selectedReportDetail.tutor_id}`}</div>
+                </div>
+              </div>
+
+              {/* Topics Covered */}
+              <div>
+                <div style={{ fontSize: "0.75rem", fontWeight: 700, color: "#475569", textTransform: "uppercase", marginBottom: "0.3rem" }}>Topics Covered</div>
+                <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", padding: "0.75rem 0.9rem", borderRadius: "8px", fontSize: "0.85rem", color: "#0f172a", lineHeight: 1.5 }}>
+                  {selectedReportDetail.topics_covered || "No topics entered."}
+                </div>
+              </div>
+
+              {/* Strengths & Areas for Improvement */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem" }}>
+                <div>
+                  <div style={{ fontSize: "0.75rem", fontWeight: 700, color: "#065f46", textTransform: "uppercase", marginBottom: "0.3rem" }}>Strengths</div>
+                  <div style={{ background: "#ecfdf5", border: "1px solid #a7f3d0", padding: "0.65rem 0.8rem", borderRadius: "8px", fontSize: "0.82rem", color: "#065f46", lineHeight: 1.5 }}>
+                    {selectedReportDetail.strengths || "None noted."}
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: "0.75rem", fontWeight: 700, color: "#9a3412", textTransform: "uppercase", marginBottom: "0.3rem" }}>Areas for Improvement</div>
+                  <div style={{ background: "#fff7ed", border: "1px solid #fed7aa", padding: "0.65rem 0.8rem", borderRadius: "8px", fontSize: "0.82rem", color: "#9a3412", lineHeight: 1.5 }}>
+                    {selectedReportDetail.areas_for_improvement || "None noted."}
+                  </div>
+                </div>
+              </div>
+
+              {/* Homework Assigned */}
+              {selectedReportDetail.homework_assigned && (
+                <div>
+                  <div style={{ fontSize: "0.75rem", fontWeight: 700, color: "#0369a1", textTransform: "uppercase", marginBottom: "0.3rem" }}>Homework Assigned</div>
+                  <div style={{ background: "#f0f9ff", border: "1px solid #bae6fd", padding: "0.75rem 0.9rem", borderRadius: "8px", fontSize: "0.82rem", color: "#0369a1", lineHeight: 1.5 }}>
+                    📚 {selectedReportDetail.homework_assigned}
+                  </div>
+                </div>
+              )}
+
+              {/* Notes for Parents */}
+              {selectedReportDetail.notes_for_parents && (
+                <div>
+                  <div style={{ fontSize: "0.75rem", fontWeight: 700, color: "#475569", textTransform: "uppercase", marginBottom: "0.3rem" }}>Notes for Parents</div>
+                  <div style={{ background: "#fdf4ff", border: "1px solid #f0abfc", padding: "0.75rem 0.9rem", borderRadius: "8px", fontSize: "0.82rem", color: "#86198f", lineHeight: 1.5 }}>
+                    💬 {selectedReportDetail.notes_for_parents}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div style={{ padding: "0.85rem 1.5rem", borderTop: "1px solid #e2e8f0", background: "#f8fafc", display: "flex", justifyContent: "flex-end" }}>
+              <button
+                onClick={() => setSelectedReportDetail(null)}
+                style={{ padding: "0.5rem 1.25rem", background: "#0f172a", color: "#fff", border: "none", borderRadius: "8px", fontSize: "0.8rem", fontWeight: 700, cursor: "pointer" }}
+              >
+                Done
+              </button>
+            </div>
           </div>
         </div>
       )}
