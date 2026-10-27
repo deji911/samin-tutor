@@ -70,6 +70,8 @@ type TutorStats = {
 
 type AttachedStudent = {
   id: string | number;
+  student_id?: string | number;
+  user_id?: number;
   name: string;
   parent?: string;
   subject?: string;
@@ -110,9 +112,9 @@ type Tutor = {
   school: string;
   subject: string;
   students: number;
-  region: string;
+  region?: string;
   img: string;
-  rate: string;
+  rate?: string;
 };
 
 type BookingStatus = "New Inquiry" | "Diagnostic Scheduled" | "Tutor Matched" | "Active Student" | "pending_match" | "matched" | "completed" | "cancelled" | string;
@@ -136,6 +138,8 @@ type AssignedTutor = {
 
 type StudentDetail = {
   id: number | string;
+  student_id?: number | string;
+  user_id?: number;
   parent_name?: string;
   student_name: string;
   email: string;
@@ -158,6 +162,8 @@ type ApprovedTutor = {
 
 type Booking = {
   id: string;
+  student_id?: string | number;
+  user_id?: number;
   parent: string;
   student: string;
   subject: string;
@@ -332,6 +338,7 @@ export default function AdminDashboard() {
     rejected: 0,
   });
   const [isLoadingTutors, setIsLoadingTutors] = useState(false);
+  const [processingApplicantIds, setProcessingApplicantIds] = useState<Set<string>>(new Set());
 
   // Single tutor detail modal state (GET /api/admin/tutors/{id})
   const [isDetailOpen, setIsDetailOpen] = useState(false);
@@ -498,9 +505,27 @@ export default function AdminDashboard() {
     }
   };
 
+  const resolveStudentId = (id: string | number | undefined | null): string | number => {
+    if (id === undefined || id === null || id === "") return "";
+    const cleanId = String(id).replace(/^(SAM-|STU-)/, "").trim();
+
+    // 1. If cleanId matches a booking's user_id, map it to the students table primary key
+    const matchedByUserId = bookings.find((b: any) => String(b.user_id) === cleanId || String(b.userId) === cleanId);
+    if (matchedByUserId) {
+      return matchedByUserId.id;
+    }
+
+    // 2. If cleanId matches a booking's student record ID directly
+    const matchedById = bookings.find((b: any) => String(b.id) === cleanId);
+    if (matchedById) {
+      return matchedById.id;
+    }
+
+    return /^\d+$/.test(cleanId) ? cleanId : id;
+  };
+
   const fetchStudentTimetable = async (id: string | number) => {
-    const cleanId = String(id).replace(/^(SAM-|STU-)/, "");
-    const targetId = /^\d+$/.test(cleanId) ? cleanId : id;
+    const targetId = resolveStudentId(id);
     const baseUrl = getBackendApiUrl();
     setLoadingTimetable(true);
 
@@ -526,8 +551,7 @@ export default function AdminDashboard() {
   };
 
   const fetchStudentSessions = async (id: string | number, customFilters?: { status?: string; from_date?: string; to_date?: string; tutor_id?: string }) => {
-    const cleanId = String(id).replace(/^(SAM-|STU-)/, "");
-    const targetId = /^\d+$/.test(cleanId) ? cleanId : id;
+    const targetId = resolveStudentId(id);
     const baseUrl = getBackendApiUrl();
 
     try {
@@ -558,7 +582,13 @@ export default function AdminDashboard() {
   };
 
   const openTimetableModal = async (student: any) => {
-    setTimetableStudent(student);
+    const realStudentId = resolveStudentId(student.id || student.student_id);
+    const resolvedStudent = {
+      ...student,
+      id: realStudentId,
+      student_id: realStudentId,
+    };
+    setTimetableStudent(resolvedStudent);
     setIsTimetableModalOpen(true);
     setTimetableTab("recurring");
     const sub = Array.isArray(student.subjects) && student.subjects.length > 0
@@ -575,8 +605,8 @@ export default function AdminDashboard() {
     }
 
     await Promise.all([
-      fetchStudentTimetable(student.id),
-      fetchStudentSessions(student.id),
+      fetchStudentTimetable(realStudentId),
+      fetchStudentSessions(realStudentId),
     ]);
   };
 
@@ -588,8 +618,7 @@ export default function AdminDashboard() {
       return;
     }
 
-    const cleanId = String(timetableStudent.id).replace(/^(SAM-|STU-)/, "");
-    const targetId = /^\d+$/.test(cleanId) ? cleanId : timetableStudent.id;
+    const targetId = resolveStudentId(timetableStudent.id);
     const baseUrl = getBackendApiUrl();
     setIsSubmittingSlot(true);
 
@@ -626,8 +655,8 @@ export default function AdminDashboard() {
       
       setSlotNotes("");
       setSlotMeetingLink("");
-      await fetchStudentTimetable(timetableStudent.id);
-      await fetchStudentSessions(timetableStudent.id);
+      await fetchStudentTimetable(targetId);
+      await fetchStudentSessions(targetId);
       setTimetableTab("recurring");
     } catch (err: any) {
       console.error("Assign timetable error:", err);
@@ -668,8 +697,7 @@ export default function AdminDashboard() {
 
   const generateFutureSessions = async (weeks: number) => {
     if (!timetableStudent) return;
-    const cleanId = String(timetableStudent.id).replace(/^(SAM-|STU-)/, "");
-    const targetId = /^\d+$/.test(cleanId) ? cleanId : timetableStudent.id;
+    const targetId = resolveStudentId(timetableStudent.id);
     const baseUrl = getBackendApiUrl();
     setGeneratingSessions(true);
 
@@ -687,7 +715,7 @@ export default function AdminDashboard() {
 
       const json = await res.json().catch(() => null);
       showToast(json?.message || `✅ Successfully generated sessions for the next ${weeks} weeks!`);
-      await fetchStudentSessions(timetableStudent.id);
+      await fetchStudentSessions(targetId);
     } catch (err: any) {
       console.error("Generate sessions error:", err);
       showToast(`⚠️ ${err.message || "Failed to generate sessions."}`);
@@ -784,6 +812,42 @@ export default function AdminDashboard() {
     }
   };
 
+  const fetchTutorStats = async () => {
+    const token = typeof window !== "undefined" ? localStorage.getItem("samin_auth_token") : null;
+    if (!token) return;
+
+    try {
+      const baseUrl = getBackendApiUrl();
+      const res = await fetch(`${baseUrl}/api/admin/tutors/stats`, {
+        headers: getAuthHeaders(),
+      });
+      if (res.ok) {
+        const stats = await res.json();
+        setTutorStats(stats);
+      }
+    } catch (err) {
+      console.error("Error fetching tutor stats (/api/admin/tutors/stats):", err);
+    }
+  };
+
+  const fetchStudentStats = async () => {
+    const token = typeof window !== "undefined" ? localStorage.getItem("samin_auth_token") : null;
+    if (!token) return;
+
+    try {
+      const baseUrl = getBackendApiUrl();
+      const res = await fetch(`${baseUrl}/api/admin/students/stats`, {
+        headers: getAuthHeaders(),
+      });
+      if (res.ok) {
+        const stats = await res.json();
+        setStudentStats(stats);
+      }
+    } catch (err) {
+      console.error("Error fetching student stats (/api/admin/students/stats):", err);
+    }
+  };
+
   const fetchTutorsFromApi = async () => {
     const token = typeof window !== "undefined" ? localStorage.getItem("samin_auth_token") : null;
     if (!token) return;
@@ -805,40 +869,49 @@ export default function AdminDashboard() {
       const json = await res.json();
       if (json.stats) {
         setTutorStats(json.stats);
+      } else {
+        fetchTutorStats();
       }
 
       const list = json.tutors?.data || (Array.isArray(json.tutors) ? json.tutors : []);
       if (Array.isArray(list)) {
         const liveApplicants: Applicant[] = [];
         const liveTutors: Tutor[] = [];
+        const seenApplicantIds = new Set<string>();
+        const seenTutorIds = new Set<string>();
 
         list.forEach((item: any) => {
           const profile = item.tutor_profile || {};
           const status = profile.approval_status || "pending";
+          const itemId = String(item.id);
 
           if (status === "pending") {
-            liveApplicants.push({
-              id: String(item.id),
-              name: item.name,
-              email: item.email,
-              phone: item.phone || "—",
-              degree: profile.qualification || "Registered Tutor",
-              subjects: Array.isArray(profile.subjects) ? profile.subjects : ["General"],
-              levels: Array.isArray(profile.levels) ? profile.levels : ["All Levels"],
-              notes: profile.bio || (profile.years_of_experience ? `Experience: ${profile.years_of_experience}` : "No additional bio."),
-              appliedAt: item.created_at ? new Date(item.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "Recent",
-            });
+            if (!seenApplicantIds.has(itemId)) {
+              seenApplicantIds.add(itemId);
+              liveApplicants.push({
+                id: itemId,
+                name: item.name,
+                email: item.email,
+                phone: item.phone || "—",
+                degree: profile.qualification || "Registered Tutor",
+                subjects: Array.isArray(profile.subjects) ? profile.subjects : ["General"],
+                levels: Array.isArray(profile.levels) ? profile.levels : ["All Levels"],
+                notes: profile.bio || (profile.years_of_experience ? `Experience: ${profile.years_of_experience}` : "No additional bio."),
+                appliedAt: item.created_at ? new Date(item.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "Recent",
+              });
+            }
           } else if (status === "approved") {
-            liveTutors.push({
-              id: String(item.id),
-              name: item.name,
-              school: profile.qualification || "Verified Faculty",
-              subject: Array.isArray(profile.subjects) ? profile.subjects.join(", ") : "Specialist",
-              students: 0,
-              region: "UK & International 🌍",
-              img: "/images/tutor-1.jpg",
-              rate: "£45/hr",
-            });
+            if (!seenTutorIds.has(itemId)) {
+              seenTutorIds.add(itemId);
+              liveTutors.push({
+                id: itemId,
+                name: item.name,
+                school: profile.qualification || "Verified Faculty",
+                subject: Array.isArray(profile.subjects) ? profile.subjects.join(", ") : "Specialist",
+                students: 0,
+                img: "/images/tutor-1.jpg",
+              });
+            }
           }
         });
 
@@ -866,18 +939,33 @@ export default function AdminDashboard() {
 
     if (Array.isArray(apiStudents)) {
       apiStudents.forEach((s: any) => {
-        const sid = String(s.id || s.student_id || "");
-        if (sid) seenIds.add(sid);
-        list.push({
-          id: s.id || sid,
-          name: s.student_name || s.name || "Student",
-          parent: s.parent_name || s.parent,
-          subject: Array.isArray(s.subjects) ? s.subjects.join(", ") : (s.subject || s.subjects),
-          level: s.level,
-          status: s.status,
-          phone: s.phone,
-          email: s.email,
-        });
+        // Resolve students table PK (e.g. 134), NOT user_id (377)
+        const matchedBooking = bookings.find((b: any) =>
+          (s.user_id && String(b.user_id) === String(s.user_id)) ||
+          (s.id && String(b.user_id) === String(s.id)) ||
+          (b.email && s.email && b.email.toLowerCase() === s.email.toLowerCase()) ||
+          (b.student && (s.student_name || s.name) && b.student.toLowerCase() === (s.student_name || s.name).toLowerCase())
+        );
+
+        const realId = matchedBooking
+          ? matchedBooking.id
+          : String(s.student_id || s.student?.id || s.pivot?.student_id || (s.user_id && s.id !== s.user_id ? s.id : s.id) || "");
+
+        if (realId && !seenIds.has(String(realId))) {
+          seenIds.add(String(realId));
+          list.push({
+            id: realId,
+            student_id: realId,
+            user_id: s.user_id || (s.id !== realId ? Number(s.id) : undefined),
+            name: s.student_name || s.name || matchedBooking?.student || "Student",
+            parent: s.parent_name || s.parent || matchedBooking?.parent,
+            subject: Array.isArray(s.subjects) ? s.subjects.join(", ") : (s.subject || s.subjects || matchedBooking?.subject),
+            level: s.level || matchedBooking?.level,
+            status: s.status || matchedBooking?.rawStatus || matchedBooking?.status,
+            phone: s.phone || matchedBooking?.phone,
+            email: s.email || matchedBooking?.email,
+          });
+        }
       });
     }
 
@@ -980,14 +1068,22 @@ export default function AdminDashboard() {
       const json = await res.json();
       if (json.stats) {
         setStudentStats(json.stats);
+      } else {
+        fetchStudentStats();
       }
 
-      const list = json.students?.data || (Array.isArray(json.students) ? json.students : []);
+      const list =
+        json.students?.data ||
+        (Array.isArray(json.students) ? json.students : null) ||
+        json.data ||
+        (Array.isArray(json) ? json : []);
       if (Array.isArray(list)) {
         const liveBookings: Booking[] = list.map((item: any) => ({
           id: String(item.id),
-          parent: item.parent_name || "Parent / Guardian",
-          student: item.student_name,
+          student_id: item.id,
+          user_id: item.user_id ? Number(item.user_id) : undefined,
+          parent: item.parent_name || item.parent || "Parent / Guardian",
+          student: item.student_name || item.student || item.name || "Student",
           subject: Array.isArray(item.subjects) ? item.subjects.join(", ") : (item.subjects || "General"),
           level: item.level || "Standard Level",
           country: item.phone?.startsWith("+44") ? "🇬🇧 UK" : item.phone?.startsWith("+1") ? "🇺🇸/🇨🇦 North America" : "🌍 International",
@@ -1016,9 +1112,13 @@ export default function AdminDashboard() {
     setIsStudentDetailOpen(true);
     setLoadingStudentDetail(true);
 
+    const targetId = resolveStudentId(id);
+
     if (fallbackData) {
       setSelectedStudent({
-        id: fallbackData.id,
+        id: targetId || fallbackData.id,
+        student_id: targetId || fallbackData.id,
+        user_id: fallbackData.user_id,
         parent_name: fallbackData.parent_name || fallbackData.parent || "Parent / Guardian",
         student_name: fallbackData.student_name || fallbackData.student || fallbackData.name || "Student",
         email: fallbackData.email || "",
@@ -1038,8 +1138,6 @@ export default function AdminDashboard() {
 
     const token = typeof window !== "undefined" ? localStorage.getItem("samin_auth_token") : null;
     const baseUrl = getBackendApiUrl();
-    const cleanId = String(id).replace(/^(SAM-|STU-)/, "");
-    const targetId = /^\d+$/.test(cleanId) ? cleanId : id;
 
     if (token) {
       try {
@@ -1049,7 +1147,16 @@ export default function AdminDashboard() {
         if (res.ok) {
           const data = await res.json();
           if (data?.student) {
-            setSelectedStudent(data.student);
+            const rawId = data.student.id;
+            const rawUserId = data.student.user_id;
+            const rawStudentId = data.student.student_id;
+            const resolvedId = rawStudentId || (rawUserId && rawId === rawUserId ? targetId : (rawId || targetId));
+            setSelectedStudent({
+              ...data.student,
+              id: resolvedId,
+              student_id: resolvedId,
+              user_id: rawUserId,
+            });
           }
         }
       } catch (err) {
@@ -1079,8 +1186,7 @@ export default function AdminDashboard() {
   };
 
   const updateStudentStatusApi = async (id: string | number, newStatus: string) => {
-    const cleanId = String(id).replace(/^(SAM-|STU-)/, "");
-    const targetId = /^\d+$/.test(cleanId) ? cleanId : id;
+    const targetId = resolveStudentId(id);
 
     try {
       const baseUrl = getBackendApiUrl();
@@ -1159,8 +1265,7 @@ export default function AdminDashboard() {
     if (!selectedStudent || selectedTutorIds.size === 0) return;
     setIsMatchingLoading(true);
 
-    const cleanId = String(selectedStudent.id).replace(/^(SAM-|STU-)/, "");
-    const targetId = /^\d+$/.test(cleanId) ? cleanId : selectedStudent.id;
+    const targetId = resolveStudentId(selectedStudent.id);
 
     try {
       const baseUrl = getBackendApiUrl();
@@ -1229,7 +1334,7 @@ export default function AdminDashboard() {
 
     if (stored === "true" || token) {
       setIsAuthed(true);
-      Promise.all([fetchCurrentUser(), fetchTutorsFromApi(), fetchStudentsFromApi(), fetchAdminReports(1)]).finally(() => {
+      Promise.all([fetchCurrentUser(), fetchTutorsFromApi(), fetchStudentsFromApi(), fetchTutorStats(), fetchStudentStats(), fetchAdminReports(1)]).finally(() => {
         setInitialLoading(false);
       });
     } else {
@@ -1367,7 +1472,21 @@ export default function AdminDashboard() {
     }
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    const token = typeof window !== "undefined" ? localStorage.getItem("samin_auth_token") : null;
+    const baseUrl = getBackendApiUrl();
+
+    if (token) {
+      try {
+        await fetch(`${baseUrl}/api/logout`, {
+          method: "POST",
+          headers: getAuthHeaders(),
+        });
+      } catch (err) {
+        console.error("Logout error (/api/logout):", err);
+      }
+    }
+
     if (typeof window !== "undefined") {
       localStorage.removeItem("samin_admin_logged_in");
       localStorage.removeItem("samin_auth_token");
@@ -1377,8 +1496,11 @@ export default function AdminDashboard() {
   };
 
   const approveApplicant = async (id: string) => {
+    if (processingApplicantIds.has(id)) return;
     const app = applicants.find((a) => a.id === id);
     if (!app) return;
+
+    setProcessingApplicantIds((prev) => new Set(prev).add(id));
 
     try {
       const baseUrl = getBackendApiUrl();
@@ -1396,17 +1518,20 @@ export default function AdminDashboard() {
         }
       }
 
+      const newTutorId = id.startsWith("TUT-") ? id : `TUT-${id}`;
       const newTutor: Tutor = {
-        id: id.startsWith("TUT-") ? id : `TUT-${id}`,
+        id: newTutorId,
         name: app.name,
         school: app.degree,
         subject: app.subjects.join(", "),
         students: 0,
-        region: "UK 🇬🇧",
         img: "/images/tutor-1.jpg",
-        rate: "£45/hr",
       };
-      setTutors((prev) => [newTutor, ...prev]);
+      setTutors((prev) => {
+        const alreadyExists = prev.some((t) => String(t.id) === String(newTutorId) || String(t.id) === String(id));
+        if (alreadyExists) return prev;
+        return [newTutor, ...prev];
+      });
       setApplicants((prev) => prev.filter((a) => a.id !== id));
       setExpandedApplicant(null);
       setTutorStats((prev) => ({
@@ -1418,6 +1543,12 @@ export default function AdminDashboard() {
     } catch (err: any) {
       console.error("Approve error:", err);
       showToast(`⚠️ ${err.message || "Failed to update tutor status."}`);
+    } finally {
+      setProcessingApplicantIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
     }
   };
 
@@ -1486,6 +1617,7 @@ export default function AdminDashboard() {
 
   const handleEnrollTutorSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isEnrollingTutor) return;
     setEnrollTutorError(null);
     setEnrollTutorFieldErrors({});
 
@@ -1657,7 +1789,12 @@ export default function AdminDashboard() {
                 style={{ width: "100%", padding: "0.65rem 0.85rem", border: "1.5px solid #d1d5db", borderRadius: "8px", fontSize: "0.9rem", outline: "none", boxSizing: "border-box" }} />
             </div>
             <div style={{ marginBottom: "1.5rem", position: "relative" }}>
-              <label style={{ fontSize: "0.8rem", fontWeight: 700, color: "#374151", display: "block", marginBottom: "0.4rem" }}>Password</label>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.4rem" }}>
+                <label style={{ fontSize: "0.8rem", fontWeight: 700, color: "#374151", margin: 0 }}>Password</label>
+                <Link href="/forgot-password" style={{ fontSize: "0.76rem", color: "#0d9488", textDecoration: "none", fontWeight: 600 }}>
+                  Forgot password?
+                </Link>
+              </div>
               <input type={showPw ? "text" : "password"} required value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)} placeholder="Master password"
                 style={{ width: "100%", padding: "0.65rem 2.5rem 0.65rem 0.85rem", border: "1.5px solid #d1d5db", borderRadius: "8px", fontSize: "0.9rem", outline: "none", boxSizing: "border-box" }} />
               <button type="button" onClick={() => setShowPw((p) => !p)} style={{ position: "absolute", right: "0.75rem", top: "2.1rem", background: "none", border: "none", cursor: "pointer", color: "#6b7280" }}>
@@ -1708,6 +1845,7 @@ export default function AdminDashboard() {
         @keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
         .page-enter{animation:fadeUp 0.25s ease}
         @keyframes spin{to{transform:rotate(360deg)}}
+        @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.35}}
         .toast{position:fixed;bottom:1.5rem;right:1.5rem;background:#1e293b;color:#fff;padding:0.75rem 1.2rem;border-radius:10px;font-size:0.85rem;font-weight:600;z-index:9999;box-shadow:0 8px 24px rgba(0,0,0,0.2);animation:fadeUp 0.3s ease}
         @media(max-width:768px){
           .sidebar{position:fixed!important;left:0;top:0;z-index:200;height:100vh;transform:translateX(-100%);transition:transform 0.3s}
@@ -1782,6 +1920,9 @@ export default function AdminDashboard() {
               </div>
             </div>
           )}
+          <Link href="/change-password" style={{ display: "flex", alignItems: "center", gap: "0.6rem", padding: "0.65rem 1rem", borderRadius: "8px", color: "#4b5563", textDecoration: "none", fontSize: "0.84rem", fontWeight: 600 }}>
+            <Key size={16} /> Change Password
+          </Link>
           <Link href="/" style={{ display: "flex", alignItems: "center", gap: "0.6rem", padding: "0.65rem 1rem", borderRadius: "8px", color: "#4b5563", textDecoration: "none", fontSize: "0.84rem", fontWeight: 600 }}>
             <Globe size={16} /> Public Website
           </Link>
@@ -2086,12 +2227,48 @@ export default function AdminDashboard() {
 
                       {/* Actions */}
                       <div style={{ display: "flex", gap: "0.45rem" }}>
-                        <button onClick={(e) => { e.stopPropagation(); approveApplicant(app.id); }}
-                          className="action-btn" style={{ background: "#d1fae5", color: "#065f46", flex: 1, justifyContent: "center" }}>
-                          <CheckCircle2 size={13} /> Approve &amp; Onboard
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            approveApplicant(app.id);
+                          }}
+                          disabled={processingApplicantIds.has(app.id)}
+                          className="action-btn"
+                          style={{
+                            background: processingApplicantIds.has(app.id) ? "#e2e8f0" : "#d1fae5",
+                            color: processingApplicantIds.has(app.id) ? "#64748b" : "#065f46",
+                            flex: 1,
+                            justifyContent: "center",
+                            cursor: processingApplicantIds.has(app.id) ? "not-allowed" : "pointer",
+                            pointerEvents: processingApplicantIds.has(app.id) ? "none" : "auto",
+                            opacity: processingApplicantIds.has(app.id) ? 0.7 : 1,
+                          }}
+                        >
+                          {processingApplicantIds.has(app.id) ? (
+                            <>
+                              <RefreshCw size={12} className="spin" /> Onboarding…
+                            </>
+                          ) : (
+                            <>
+                              <CheckCircle2 size={13} /> Approve &amp; Onboard
+                            </>
+                          )}
                         </button>
-                        <button onClick={(e) => { e.stopPropagation(); declineApplicant(app.id); }}
-                          className="action-btn" style={{ background: "#fee2e2", color: "#991b1b" }}>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            declineApplicant(app.id);
+                          }}
+                          disabled={processingApplicantIds.has(app.id)}
+                          className="action-btn"
+                          style={{
+                            background: "#fee2e2",
+                            color: "#991b1b",
+                            cursor: processingApplicantIds.has(app.id) ? "not-allowed" : "pointer",
+                            pointerEvents: processingApplicantIds.has(app.id) ? "none" : "auto",
+                            opacity: processingApplicantIds.has(app.id) ? 0.6 : 1,
+                          }}
+                        >
                           <XCircle size={13} /> Decline
                         </button>
                       </div>
@@ -2214,9 +2391,7 @@ export default function AdminDashboard() {
                         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.4rem", marginBottom: "0.75rem" }}>
                           {[
                             { l: "Students", v: `Student ${studentCount} active` },
-                            { l: "Rate", v: t.rate },
-                            { l: "Region", v: t.region },
-                            { l: "ID", v: `#${t.id}` },
+                            { l: "Tutor ID", v: `#${t.id}` },
                           ].map(({ l, v }) => (
                             <div key={l} style={{ background: "#f8fafc", borderRadius: "6px", padding: "0.32rem 0.55rem" }}>
                               <div style={{ fontSize: "0.62rem", color: "#94a3b8", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em" }}>{l}</div>
@@ -2369,26 +2544,24 @@ export default function AdminDashboard() {
                                 <div style={{ fontSize: "0.78rem", color: "#0f172a", fontWeight: 500 }}>{b.email}</div>
                                 <div style={{ fontSize: "0.72rem", color: "#64748b" }}>{b.phone}</div>
                               </td>
-                              <td style={{ padding: "0.85rem 1rem" }} onClick={(e) => e.stopPropagation()}>
-                                <select
-                                  value={b.rawStatus || b.status}
-                                  onChange={(e) => updateStudentStatusApi(b.id, e.target.value)}
+                              <td style={{ padding: "0.85rem 1rem" }}>
+                                <span
                                   style={{
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: "0.3rem",
                                     fontSize: "0.72rem",
                                     fontWeight: 700,
                                     padding: "0.25rem 0.65rem",
                                     borderRadius: "20px",
-                                    border: "1px solid rgba(0,0,0,0.08)",
-                                    cursor: "pointer",
                                     background: currentBadge.bg,
                                     color: currentBadge.color,
+                                    border: "1px solid rgba(0,0,0,0.06)",
+                                    whiteSpace: "nowrap",
                                   }}
                                 >
-                                  <option value="pending_match">Pending Match</option>
-                                  <option value="matched">Matched</option>
-                                  <option value="completed">Completed</option>
-                                  <option value="cancelled">Cancelled</option>
-                                </select>
+                                  {currentBadge.label || (b.status ? b.status.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()) : "Pending Match")}
+                                </span>
                                 {/* Compact tutor pills below status */}
                                 {Array.isArray(b.assignedTutors) && b.assignedTutors.length > 0 && (
                                   <div style={{ display: "flex", flexDirection: "column", gap: "0.2rem", marginTop: "0.35rem" }}>
@@ -3320,19 +3493,20 @@ export default function AdminDashboard() {
                   style={{
                     flex: 1,
                     padding: "0.75rem",
-                    background: "linear-gradient(135deg,#20b2a4,#0d9488)",
+                    background: isEnrollingTutor ? "#94a3b8" : "linear-gradient(135deg,#20b2a4,#0d9488)",
                     color: "#fff",
                     border: "none",
                     borderRadius: "8px",
                     fontWeight: 800,
                     fontSize: "0.9rem",
                     cursor: isEnrollingTutor ? "not-allowed" : "pointer",
+                    pointerEvents: isEnrollingTutor ? "none" : "auto",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
                     gap: "0.45rem",
-                    boxShadow: "0 4px 12px rgba(32,178,164,0.3)",
-                    opacity: isEnrollingTutor ? 0.75 : 1,
+                    boxShadow: isEnrollingTutor ? "none" : "0 4px 12px rgba(32,178,164,0.3)",
+                    opacity: isEnrollingTutor ? 0.7 : 1,
                   }}
                 >
                   {isEnrollingTutor ? (
@@ -3750,7 +3924,21 @@ export default function AdminDashboard() {
                         approveApplicant(String(selectedTutor.id));
                         setIsDetailOpen(false);
                       }}
-                      style={{ padding: "0.55rem 1rem", background: "linear-gradient(135deg,#20b2a4,#0d9488)", color: "#fff", border: "none", borderRadius: "8px", fontWeight: 700, fontSize: "0.82rem", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "0.35rem" }}
+                      disabled={processingApplicantIds.has(String(selectedTutor.id))}
+                      style={{
+                        padding: "0.55rem 1rem",
+                        background: processingApplicantIds.has(String(selectedTutor.id)) ? "#94a3b8" : "linear-gradient(135deg,#20b2a4,#0d9488)",
+                        color: "#fff",
+                        border: "none",
+                        borderRadius: "8px",
+                        fontWeight: 700,
+                        fontSize: "0.82rem",
+                        cursor: processingApplicantIds.has(String(selectedTutor.id)) ? "not-allowed" : "pointer",
+                        pointerEvents: processingApplicantIds.has(String(selectedTutor.id)) ? "none" : "auto",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "0.35rem",
+                      }}
                     >
                       <CheckCircle2 size={14} /> Approve &amp; Onboard
                     </button>
@@ -3759,7 +3947,21 @@ export default function AdminDashboard() {
                         declineApplicant(String(selectedTutor.id));
                         setIsDetailOpen(false);
                       }}
-                      style={{ padding: "0.55rem 0.9rem", background: "#fee2e2", color: "#991b1b", border: "1px solid #fca5a5", borderRadius: "8px", fontWeight: 700, fontSize: "0.82rem", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "0.35rem" }}
+                      disabled={processingApplicantIds.has(String(selectedTutor.id))}
+                      style={{
+                        padding: "0.55rem 0.9rem",
+                        background: "#fee2e2",
+                        color: "#991b1b",
+                        border: "1px solid #fca5a5",
+                        borderRadius: "8px",
+                        fontWeight: 700,
+                        fontSize: "0.82rem",
+                        cursor: processingApplicantIds.has(String(selectedTutor.id)) ? "not-allowed" : "pointer",
+                        pointerEvents: processingApplicantIds.has(String(selectedTutor.id)) ? "none" : "auto",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "0.35rem",
+                      }}
                     >
                       <XCircle size={14} /> Decline
                     </button>
@@ -3854,26 +4056,20 @@ export default function AdminDashboard() {
                     {selectedStudent.status ? selectedStudent.status.replace("_", " ") : "Pending Match"}
                   </div>
                 </div>
-                <div style={{ display: "flex", gap: "0.35rem" }}>
-                  <button
-                    onClick={() => updateStudentStatusApi(selectedStudent.id, "matched")}
-                    style={{ padding: "0.35rem 0.7rem", borderRadius: "6px", border: "none", background: selectedStudent.status === "matched" ? "#0d9488" : "#f0fdf9", color: selectedStudent.status === "matched" ? "#fff" : "#0d9488", fontWeight: 700, fontSize: "0.72rem", cursor: "pointer" }}
-                  >
-                    Matched
-                  </button>
-                  <button
-                    onClick={() => updateStudentStatusApi(selectedStudent.id, "pending_match")}
-                    style={{ padding: "0.35rem 0.7rem", borderRadius: "6px", border: "none", background: selectedStudent.status === "pending_match" ? "#d97706" : "#fffbeb", color: selectedStudent.status === "pending_match" ? "#fff" : "#d97706", fontWeight: 700, fontSize: "0.72rem", cursor: "pointer" }}
-                  >
-                    Pending
-                  </button>
-                  <button
-                    onClick={() => updateStudentStatusApi(selectedStudent.id, "completed")}
-                    style={{ padding: "0.35rem 0.7rem", borderRadius: "6px", border: "none", background: selectedStudent.status === "completed" ? "#0284c7" : "#e0f2fe", color: selectedStudent.status === "completed" ? "#fff" : "#0284c7", fontWeight: 700, fontSize: "0.72rem", cursor: "pointer" }}
-                  >
-                    Completed
-                  </button>
-                </div>
+                <span
+                  style={{
+                    fontSize: "0.72rem",
+                    fontWeight: 700,
+                    padding: "0.25rem 0.65rem",
+                    borderRadius: "20px",
+                    background: selectedStudent.status === "matched" ? "#d1fae5" : selectedStudent.status === "completed" ? "#e0f2fe" : selectedStudent.status === "cancelled" ? "#fee2e2" : "#fef3c7",
+                    color: selectedStudent.status === "matched" ? "#065f46" : selectedStudent.status === "completed" ? "#0369a1" : selectedStudent.status === "cancelled" ? "#991b1b" : "#b45309",
+                    border: "1px solid rgba(0,0,0,0.06)",
+                    textTransform: "capitalize",
+                  }}
+                >
+                  {selectedStudent.status ? selectedStudent.status.replace("_", " ") : "Pending Match"}
+                </span>
               </div>
 
               {/* Contact Information */}
@@ -4317,7 +4513,7 @@ export default function AdminDashboard() {
               <div style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: "0.3rem", background: "rgba(255,255,255,0.1)", padding: "0.25rem 0.6rem", borderRadius: "8px" }}>
                   <span style={{ fontSize: "0.7rem", color: "#94a3b8", fontWeight: 600 }}>Extend:</span>
-                  {[4, 8, 12].map((w) => (
+                  {[4, 8, 12, 26, 52].map((w) => (
                     <button
                       key={w}
                       onClick={() => generateFutureSessions(w)}
@@ -4334,7 +4530,7 @@ export default function AdminDashboard() {
                       }}
                       title={`Generate sessions for next ${w} weeks`}
                     >
-                      +{w}w
+                      {w >= 52 ? "1yr" : w >= 26 ? "6m" : `+${w}w`}
                     </button>
                   ))}
                 </div>
@@ -4492,20 +4688,23 @@ export default function AdminDashboard() {
                                   href={slot.meeting_link}
                                   target="_blank"
                                   rel="noopener noreferrer"
+                                  title="Join this recurring lesson room"
                                   style={{
                                     display: "inline-flex",
                                     alignItems: "center",
-                                    gap: "0.35rem",
-                                    fontSize: "0.72rem",
-                                    color: "#0369a1",
-                                    background: "#e0f2fe",
-                                    padding: "0.25rem 0.55rem",
-                                    borderRadius: "6px",
+                                    gap: "0.4rem",
+                                    fontSize: "0.74rem",
+                                    color: "#fff",
+                                    background: "linear-gradient(135deg,#16a34a,#15803d)",
+                                    padding: "0.32rem 0.75rem",
+                                    borderRadius: "7px",
                                     textDecoration: "none",
                                     fontWeight: 700,
+                                    boxShadow: "0 2px 8px rgba(22,163,74,0.3)",
                                   }}
                                 >
-                                  <Video size={12} /> Join Lesson Room <ExternalLink size={11} />
+                                  <span style={{ width: "7px", height: "7px", borderRadius: "50%", background: "#bbf7d0", display: "inline-block", animation: "pulse 1.5s infinite" }} />
+                                  <Video size={13} /> Join Meeting Room <ExternalLink size={11} />
                                 </a>
                               </div>
                             ) : (
@@ -4694,21 +4893,35 @@ export default function AdminDashboard() {
                                   href={session.meeting_link}
                                   target="_blank"
                                   rel="noopener noreferrer"
+                                  title="Join this session's meeting room"
                                   style={{
-                                    padding: "0.35rem 0.65rem",
-                                    background: "#f0f9ff",
-                                    border: "1px solid #bae6fd",
-                                    color: "#0284c7",
-                                    borderRadius: "6px",
-                                    fontSize: "0.72rem",
+                                    padding: "0.38rem 0.8rem",
+                                    background: isScheduled ? "linear-gradient(135deg,#16a34a,#15803d)" : "#f0f9ff",
+                                    border: isScheduled ? "none" : "1px solid #bae6fd",
+                                    color: isScheduled ? "#fff" : "#0284c7",
+                                    borderRadius: "7px",
+                                    fontSize: "0.75rem",
                                     fontWeight: 700,
                                     textDecoration: "none",
                                     display: "inline-flex",
                                     alignItems: "center",
-                                    gap: "0.3rem",
+                                    gap: "0.4rem",
+                                    boxShadow: isScheduled ? "0 2px 8px rgba(22,163,74,0.35)" : "none",
                                   }}
                                 >
-                                  <Video size={12} /> Meeting Link
+                                  {isScheduled && (
+                                    <span style={{
+                                      width: "7px",
+                                      height: "7px",
+                                      borderRadius: "50%",
+                                      background: "#bbf7d0",
+                                      display: "inline-block",
+                                      animation: "pulse 1.5s infinite",
+                                    }} />
+                                  )}
+                                  <Video size={13} />
+                                  {isScheduled ? "Join Meeting" : "View Meeting Link"}
+                                  <ExternalLink size={11} />
                                 </a>
                               )}
 
@@ -4930,6 +5143,11 @@ export default function AdminDashboard() {
                         <option value={4}>Next 4 Weeks (Standard)</option>
                         <option value={8}>Next 8 Weeks</option>
                         <option value={12}>Next 12 Weeks (Full Term)</option>
+                        <option value={16}>Next 16 Weeks</option>
+                        <option value={20}>Next 20 Weeks</option>
+                        <option value={26}>Next 26 Weeks (6 Months)</option>
+                        <option value={39}>Next 39 Weeks (9 Months)</option>
+                        <option value={52}>Next 52 Weeks (1 Year)</option>
                       </select>
                     </div>
                   </div>

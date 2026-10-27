@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import {
   GraduationCap,
   CheckCircle2,
@@ -307,6 +308,7 @@ export default function Home() {
 
   // Admin "Approve & Onboard" tutor dialogue state
   const [isOnboardOpen, setIsOnboardOpen] = useState(false);
+  const [isOnboardingSubmitting, setIsOnboardingSubmitting] = useState(false);
   const [onboardSuccess, setOnboardSuccess] = useState(false);
   const [onboardedTutorName, setOnboardedTutorName] = useState("");
   const [tutorForm, setTutorForm] = useState({
@@ -457,7 +459,25 @@ export default function Home() {
   };
 
 
-  const handleAdminLogout = () => {
+  const handleAdminLogout = async () => {
+    const token = typeof window !== "undefined" ? localStorage.getItem("samin_auth_token") : null;
+    const baseUrl = getBackendApiUrl();
+
+    if (token) {
+      try {
+        await fetch(`${baseUrl}/api/logout`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+        });
+      } catch (err) {
+        console.error("Logout error (/api/logout):", err);
+      }
+    }
+
     setIsAdminLoggedIn(false);
     if (typeof window !== "undefined") {
       localStorage.removeItem("samin_admin_logged_in");
@@ -486,21 +506,33 @@ export default function Home() {
 
   const handleOnboardTutorSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!tutorForm.name.trim()) return;
+    if (isOnboardingSubmitting) return;
+
+    const trimmedName = tutorForm.name.trim();
+    if (!trimmedName) return;
+
+    setIsOnboardingSubmitting(true);
 
     const newTutor = {
-      name: tutorForm.name.trim(),
+      name: trimmedName,
       role: `${tutorForm.subjects.join(", ")} • ${tutorForm.degree}`,
       img: tutorForm.img || "/images/tutor-1.jpg",
       isNew: true,
     };
 
-    setTutorsList((prev) => [newTutor, ...prev]);
+    setTutorsList((prev) => {
+      if (prev.some((t) => t.name.toLowerCase() === trimmedName.toLowerCase())) {
+        return prev;
+      }
+      return [newTutor, ...prev];
+    });
+
     if (selectedApplicantId) {
       setApplicantsList((prev) => prev.filter((a) => a.id !== selectedApplicantId));
     }
-    setOnboardedTutorName(tutorForm.name.trim());
+    setOnboardedTutorName(trimmedName);
     setOnboardSuccess(true);
+    setIsOnboardingSubmitting(false);
   };
 
   const handleApplySubmit = async (e: React.FormEvent) => {
@@ -1616,7 +1648,16 @@ export default function Home() {
                     </div>
 
                     <div className="form-group">
-                      <label htmlFor="adminPassword">Password</label>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.4rem" }}>
+                        <label htmlFor="adminPassword" style={{ margin: 0 }}>Password</label>
+                        <Link
+                          href="/forgot-password"
+                          onClick={() => setIsAdminLoginOpen(false)}
+                          style={{ fontSize: "0.78rem", color: "var(--teal)", textDecoration: "none", fontWeight: 600 }}
+                        >
+                          Forgot password?
+                        </Link>
+                      </div>
                       <div className="password-input-wrap">
                         <input
                           id="adminPassword"
@@ -1990,11 +2031,20 @@ export default function Home() {
 
                   <button
                     type="submit"
+                    disabled={isOnboardingSubmitting}
                     className="btn-submit"
-                    style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem" }}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: "0.5rem",
+                      cursor: isOnboardingSubmitting ? "not-allowed" : "pointer",
+                      pointerEvents: isOnboardingSubmitting ? "none" : "auto",
+                      opacity: isOnboardingSubmitting ? 0.7 : 1,
+                    }}
                   >
                     <UserPlus size={16} />
-                    <span>Complete Onboarding &amp; Add to Faculty Roster</span>
+                    <span>{isOnboardingSubmitting ? "Onboarding…" : "Complete Onboarding & Add to Faculty Roster"}</span>
                   </button>
                 </form>
               )}

@@ -1,19 +1,18 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   Lock,
   Eye,
   EyeOff,
-  ShieldCheck,
   CheckCircle2,
   AlertCircle,
-  KeyRound,
   ArrowRight,
   LogOut,
-  Sparkles,
+  ArrowLeft,
 } from "lucide-react";
 
 export default function ChangePasswordPage() {
@@ -34,15 +33,20 @@ export default function ChangePasswordPage() {
 
   const [userName, setUserName] = useState<string>("");
   const [userEmail, setUserEmail] = useState<string>("");
+  const [userRole, setUserRole] = useState<string>("admin");
+  const [isMustChange, setIsMustChange] = useState<boolean>(false);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
       const token = localStorage.getItem("samin_auth_token");
       if (!token) {
-        // No authenticated session, redirect to home/login
+        // No authenticated session, redirect to home
         router.push("/");
         return;
       }
+
+      const must = localStorage.getItem("samin_must_change_password") === "true";
+      setIsMustChange(must);
 
       const storedUser = localStorage.getItem("samin_user");
       if (storedUser) {
@@ -50,6 +54,8 @@ export default function ChangePasswordPage() {
           const u = JSON.parse(storedUser);
           if (u.name) setUserName(u.name);
           if (u.email) setUserEmail(u.email);
+          if (u.role) setUserRole(u.role);
+          if (u.must_change_password) setIsMustChange(true);
         } catch {}
       }
     }
@@ -68,7 +74,25 @@ export default function ChangePasswordPage() {
     return "https://online-lesson-backend.onrender.com";
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    const token = typeof window !== "undefined" ? localStorage.getItem("samin_auth_token") : null;
+    const baseUrl = getBackendApiUrl();
+
+    if (token) {
+      try {
+        await fetch(`${baseUrl}/api/logout`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+        });
+      } catch (err) {
+        console.error("Logout error (/api/logout):", err);
+      }
+    }
+
     if (typeof window !== "undefined") {
       localStorage.removeItem("samin_admin_logged_in");
       localStorage.removeItem("samin_auth_token");
@@ -80,6 +104,8 @@ export default function ChangePasswordPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (loading) return;
+
     setErrorMsg(null);
     setFieldErrors({});
 
@@ -150,7 +176,7 @@ export default function ChangePasswordPage() {
         }
       }
 
-      // Automatically redirect after brief celebration
+      // Redirect to respective dashboard
       setTimeout(() => {
         let dest = "/admin/dashboard";
         if (typeof window !== "undefined") {
@@ -162,7 +188,7 @@ export default function ChangePasswordPage() {
           } catch {}
         }
         router.push(dest);
-      }, 1600);
+      }, 1400);
     } catch (err: any) {
       console.error("Change password request error:", err);
       setErrorMsg(err?.message || "An unexpected network error occurred.");
@@ -173,28 +199,28 @@ export default function ChangePasswordPage() {
 
   const isMinLength = newPassword.length >= 8;
   const isMatch = Boolean(newPassword && confirmPassword && newPassword === confirmPassword);
+  const dashboardHref = userRole === "tutor" ? "/tutor/dashboard" : "/admin/dashboard";
 
   return (
     <div
       style={{
         minHeight: "100vh",
-        background: "radial-gradient(ellipse at top, #0f2744 0%, #061121 100%)",
-        color: "#f8fafc",
+        background: "#f8fafc",
+        fontFamily: "'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
         display: "flex",
         flexDirection: "column",
-        fontFamily: "inherit",
+        color: "#1e293b",
       }}
     >
-      {/* Top Header */}
+      {/* Top Navbar */}
       <header
         style={{
-          borderBottom: "1px solid rgba(255,255,255,0.08)",
-          padding: "1rem 2rem",
+          background: "#ffffff",
+          borderBottom: "1px solid #e2e8f0",
+          padding: "0.85rem 1.5rem",
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
-          backdropFilter: "blur(8px)",
-          background: "rgba(6,17,33,0.5)",
         }}
       >
         <Link
@@ -202,476 +228,433 @@ export default function ChangePasswordPage() {
           style={{
             display: "flex",
             alignItems: "center",
-            gap: "0.75rem",
+            gap: "0.6rem",
             textDecoration: "none",
-            color: "#fff",
           }}
         >
           <div
             style={{
-              width: "38px",
-              height: "38px",
-              borderRadius: "10px",
-              background: "linear-gradient(135deg, #20b2a4 0%, #0d9488 100%)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              boxShadow: "0 4px 12px rgba(32,178,164,0.3)",
+              width: "32px",
+              height: "32px",
+              borderRadius: "50%",
+              overflow: "hidden",
+              border: "2px solid #20b2a4",
+              flexShrink: 0,
             }}
           >
-            <ShieldCheck size={22} color="#fff" />
+            <Image
+              src="/images/samin_logo.jpeg"
+              alt="Samin Home Tutors"
+              width={32}
+              height={32}
+              style={{ width: "100%", height: "100%", objectFit: "cover" }}
+            />
           </div>
           <div>
-            <div style={{ fontWeight: 800, fontSize: "1.05rem", letterSpacing: "-0.02em" }}>
-              Samin Online Tutoring
+            <div style={{ fontWeight: 800, fontSize: "0.95rem", color: "#0f172a", lineHeight: 1.2 }}>
+              <span style={{ color: "#20b2a4" }}>Samin</span> Tutors
             </div>
-            <div style={{ fontSize: "0.72rem", color: "#94a3b8" }}>
-              Account Security Portal
-            </div>
+            <div style={{ fontSize: "0.7rem", color: "#64748b" }}>Security Settings</div>
           </div>
         </Link>
 
-        <button
-          onClick={handleLogout}
-          style={{
-            background: "rgba(255,255,255,0.06)",
-            border: "1px solid rgba(255,255,255,0.12)",
-            color: "#94a3b8",
-            borderRadius: "8px",
-            padding: "0.45rem 0.85rem",
-            fontSize: "0.8rem",
-            fontWeight: 600,
-            cursor: "pointer",
-            display: "inline-flex",
-            alignItems: "center",
-            gap: "0.4rem",
-            transition: "all 0.2s ease",
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.color = "#f87171";
-            e.currentTarget.style.borderColor = "rgba(239,68,68,0.3)";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.color = "#94a3b8";
-            e.currentTarget.style.borderColor = "rgba(255,255,255,0.12)";
-          }}
-        >
-          <LogOut size={14} />
-          <span>Sign Out</span>
-        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+          {!isMustChange && (
+            <Link
+              href={dashboardHref}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "0.35rem",
+                padding: "0.45rem 0.85rem",
+                borderRadius: "6px",
+                border: "1px solid #cbd5e1",
+                background: "#ffffff",
+                color: "#475569",
+                fontSize: "0.8rem",
+                fontWeight: 600,
+                textDecoration: "none",
+              }}
+            >
+              <ArrowLeft size={13} />
+              <span>Back to Dashboard</span>
+            </Link>
+          )}
+
+          <button
+            onClick={handleLogout}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "0.35rem",
+              padding: "0.45rem 0.85rem",
+              borderRadius: "6px",
+              border: "1px solid #fecaca",
+              background: "#fff",
+              color: "#dc2626",
+              fontSize: "0.8rem",
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
+          >
+            <LogOut size={13} />
+            <span>Sign Out</span>
+          </button>
+        </div>
       </header>
 
-      {/* Main Container */}
+      {/* Main Content Card */}
       <main
         style={{
           flex: 1,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          padding: "2rem 1rem",
+          padding: "2.5rem 1rem",
         }}
       >
         <div
           style={{
             width: "100%",
-            maxWidth: "460px",
-            background: "rgba(15, 33, 60, 0.7)",
-            border: "1px solid rgba(255, 255, 255, 0.12)",
-            borderRadius: "20px",
-            boxShadow: "0 25px 60px rgba(0,0,0,0.45), 0 0 40px rgba(32,178,164,0.12)",
-            overflow: "hidden",
-            backdropFilter: "blur(16px)",
+            maxWidth: "420px",
+            background: "#ffffff",
+            borderRadius: "12px",
+            border: "1px solid #e2e8f0",
+            boxShadow: "0 4px 18px rgba(0,0,0,0.04), 0 1px 3px rgba(0,0,0,0.02)",
+            padding: "2rem",
           }}
         >
-          {/* Header Accent Bar */}
-          <div
-            style={{
-              height: "4px",
-              background: "linear-gradient(90deg, #20b2a4, #38bdf8, #818cf8)",
-            }}
-          />
-
-          <div style={{ padding: "2rem 2.2rem" }}>
-            {/* Icon & Title */}
-            <div style={{ textAlign: "center", marginBottom: "1.75rem" }}>
-              <div
-                style={{
-                  width: "56px",
-                  height: "56px",
-                  borderRadius: "16px",
-                  background: "linear-gradient(135deg, rgba(32,178,164,0.2) 0%, rgba(13,148,136,0.1) 100%)",
-                  border: "1px solid rgba(32,178,164,0.3)",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  marginBottom: "1rem",
-                  boxShadow: "0 8px 24px rgba(32,178,164,0.2)",
-                }}
-              >
-                <KeyRound size={28} color="#2dd4bf" />
-              </div>
-              <h1
-                style={{
-                  fontSize: "1.45rem",
-                  fontWeight: 800,
-                  margin: "0 0 0.4rem",
-                  color: "#fff",
-                  letterSpacing: "-0.02em",
-                }}
-              >
-                Set New Password
-              </h1>
-              <p style={{ fontSize: "0.86rem", color: "#94a3b8", margin: 0, lineHeight: 1.45 }}>
-                {userName ? `Welcome, ${userName}! ` : ""}
-                Please replace your temporary password with a secure personal password.
-              </p>
-            </div>
-
-            {/* Notification Banner */}
+          {/* Header */}
+          <div style={{ marginBottom: "1.5rem" }}>
             <div
               style={{
-                background: "rgba(234, 179, 8, 0.12)",
-                border: "1px solid rgba(234, 179, 8, 0.3)",
-                borderRadius: "12px",
-                padding: "0.85rem 1rem",
+                width: "40px",
+                height: "40px",
+                borderRadius: "10px",
+                background: "#f0fdf9",
+                border: "1px solid #ccfbf1",
+                color: "#0d9488",
                 display: "flex",
-                alignItems: "flex-start",
-                gap: "0.75rem",
-                marginBottom: "1.5rem",
+                alignItems: "center",
+                justifyContent: "center",
+                marginBottom: "0.85rem",
               }}
             >
-              <AlertCircle size={18} color="#facc15" style={{ flexShrink: 0, marginTop: "2px" }} />
-              <div style={{ fontSize: "0.8rem", color: "#fef08a", lineHeight: 1.4 }}>
-                <strong>Temporary Password Active:</strong> For your security, password change is required before you can access the dashboard and lesson calendar.
+              <Lock size={20} />
+            </div>
+            <h1 style={{ fontSize: "1.25rem", fontWeight: 800, color: "#0f172a", margin: "0 0 0.35rem" }}>
+              {isMustChange ? "Set Your New Password" : "Change Password"}
+            </h1>
+            <p style={{ fontSize: "0.83rem", color: "#64748b", margin: 0, lineHeight: 1.45 }}>
+              {isMustChange
+                ? "Please replace your temporary password with a permanent, secure password."
+                : "Enter your current password to choose a new one."}
+            </p>
+          </div>
+
+          {/* Temporary Password Notice */}
+          {isMustChange && (
+            <div
+              style={{
+                background: "#fffbeb",
+                border: "1px solid #fef3c7",
+                borderRadius: "8px",
+                padding: "0.75rem 0.9rem",
+                display: "flex",
+                alignItems: "flex-start",
+                gap: "0.55rem",
+                marginBottom: "1.25rem",
+              }}
+            >
+              <AlertCircle size={16} color="#d97706" style={{ flexShrink: 0, marginTop: "2px" }} />
+              <div style={{ fontSize: "0.78rem", color: "#92400e", lineHeight: 1.4 }}>
+                A password change is required before you can access the dashboard.
               </div>
             </div>
+          )}
 
-            {/* Top Error Alert */}
-            {errorMsg && (
+          {/* Error Message */}
+          {errorMsg && (
+            <div
+              style={{
+                background: "#fef2f2",
+                border: "1px solid #fecaca",
+                borderRadius: "8px",
+                padding: "0.75rem 0.9rem",
+                display: "flex",
+                alignItems: "center",
+                gap: "0.55rem",
+                marginBottom: "1.25rem",
+                fontSize: "0.8rem",
+                color: "#dc2626",
+              }}
+            >
+              <AlertCircle size={15} color="#dc2626" style={{ flexShrink: 0 }} />
+              <span>{errorMsg}</span>
+            </div>
+          )}
+
+          {/* Success State */}
+          {success ? (
+            <div style={{ textAlign: "center", padding: "1.5rem 0" }}>
               <div
                 style={{
-                  background: "rgba(239, 68, 68, 0.15)",
-                  border: "1px solid rgba(239, 68, 68, 0.35)",
-                  borderRadius: "12px",
-                  padding: "0.85rem 1rem",
+                  width: "48px",
+                  height: "48px",
+                  borderRadius: "50%",
+                  background: "#ecfdf5",
+                  border: "1.5px solid #a7f3d0",
+                  color: "#059669",
                   display: "flex",
                   alignItems: "center",
-                  gap: "0.65rem",
-                  marginBottom: "1.25rem",
-                  fontSize: "0.83rem",
-                  color: "#fca5a5",
+                  justifyContent: "center",
+                  margin: "0 auto 1rem",
                 }}
               >
-                <AlertCircle size={16} color="#ef4444" style={{ flexShrink: 0 }} />
-                <span>{errorMsg}</span>
+                <CheckCircle2 size={26} />
               </div>
-            )}
-
-            {/* Success State */}
-            {success ? (
-              <div
-                style={{
-                  textAlign: "center",
-                  padding: "1.5rem 0",
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  gap: "0.75rem",
-                }}
-              >
-                <div
+              <h2 style={{ fontSize: "1.1rem", fontWeight: 700, color: "#0f172a", margin: "0 0 0.35rem" }}>
+                Password Updated!
+              </h2>
+              <p style={{ fontSize: "0.82rem", color: "#64748b", margin: 0 }}>
+                Redirecting to your dashboard…
+              </p>
+            </div>
+          ) : (
+            <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+              {/* Current Password */}
+              <div>
+                <label
                   style={{
-                    width: "56px",
-                    height: "56px",
-                    borderRadius: "50%",
-                    background: "rgba(34, 197, 94, 0.2)",
-                    border: "2px solid #22c55e",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  <CheckCircle2 size={32} color="#22c55e" />
-                </div>
-                <h3 style={{ fontSize: "1.15rem", fontWeight: 700, margin: 0, color: "#fff" }}>
-                  Password Changed Successfully!
-                </h3>
-                <p style={{ fontSize: "0.85rem", color: "#94a3b8", margin: 0 }}>
-                  Redirecting you to the dashboard…
-                </p>
-                <div
-                  style={{
-                    marginTop: "0.5rem",
-                    width: "28px",
-                    height: "28px",
-                    border: "3px solid #20b2a4",
-                    borderTopColor: "transparent",
-                    borderRadius: "50%",
-                    animation: "spin 0.8s linear infinite",
-                  }}
-                />
-              </div>
-            ) : (
-              <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "1.15rem" }}>
-                {/* Current Password Field */}
-                <div>
-                  <label
-                    style={{
-                      display: "block",
-                      fontSize: "0.8rem",
-                      fontWeight: 700,
-                      color: "#cbd5e1",
-                      marginBottom: "0.4rem",
-                    }}
-                  >
-                    Current / Temporary Password
-                  </label>
-                  <div style={{ position: "relative" }}>
-                    <input
-                      type={showCurrent ? "text" : "password"}
-                      required
-                      value={currentPassword}
-                      onChange={(e) => setCurrentPassword(e.target.value)}
-                      placeholder="Enter temporary password from email"
-                      style={{
-                        width: "100%",
-                        padding: "0.65rem 2.5rem 0.65rem 0.85rem",
-                        background: "rgba(255,255,255,0.06)",
-                        border: fieldErrors.current_password ? "1.5px solid #ef4444" : "1.5px solid rgba(255,255,255,0.14)",
-                        borderRadius: "10px",
-                        color: "#fff",
-                        fontSize: "0.88rem",
-                        outline: "none",
-                        boxSizing: "border-box",
-                        transition: "border-color 0.2s",
-                      }}
-                      onFocus={(e) => {
-                        if (!fieldErrors.current_password) e.currentTarget.style.borderColor = "#20b2a4";
-                      }}
-                      onBlur={(e) => {
-                        if (!fieldErrors.current_password) e.currentTarget.style.borderColor = "rgba(255,255,255,0.14)";
-                      }}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowCurrent(!showCurrent)}
-                      style={{
-                        position: "absolute",
-                        right: "10px",
-                        top: "50%",
-                        transform: "translateY(-50%)",
-                        background: "none",
-                        border: "none",
-                        color: "#94a3b8",
-                        cursor: "pointer",
-                        padding: "4px",
-                      }}
-                    >
-                      {showCurrent ? <EyeOff size={16} /> : <Eye size={16} />}
-                    </button>
-                  </div>
-                  {fieldErrors.current_password && (
-                    <div style={{ fontSize: "0.75rem", color: "#f87171", marginTop: "0.25rem" }}>
-                      {fieldErrors.current_password[0]}
-                    </div>
-                  )}
-                </div>
-
-                {/* New Password Field */}
-                <div>
-                  <label
-                    style={{
-                      display: "block",
-                      fontSize: "0.8rem",
-                      fontWeight: 700,
-                      color: "#cbd5e1",
-                      marginBottom: "0.4rem",
-                    }}
-                  >
-                    New Password
-                  </label>
-                  <div style={{ position: "relative" }}>
-                    <input
-                      type={showNew ? "text" : "password"}
-                      required
-                      minLength={8}
-                      value={newPassword}
-                      onChange={(e) => setNewPassword(e.target.value)}
-                      placeholder="Minimum 8 characters"
-                      style={{
-                        width: "100%",
-                        padding: "0.65rem 2.5rem 0.65rem 0.85rem",
-                        background: "rgba(255,255,255,0.06)",
-                        border: fieldErrors.password ? "1.5px solid #ef4444" : "1.5px solid rgba(255,255,255,0.14)",
-                        borderRadius: "10px",
-                        color: "#fff",
-                        fontSize: "0.88rem",
-                        outline: "none",
-                        boxSizing: "border-box",
-                        transition: "border-color 0.2s",
-                      }}
-                      onFocus={(e) => {
-                        if (!fieldErrors.password) e.currentTarget.style.borderColor = "#20b2a4";
-                      }}
-                      onBlur={(e) => {
-                        if (!fieldErrors.password) e.currentTarget.style.borderColor = "rgba(255,255,255,0.14)";
-                      }}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowNew(!showNew)}
-                      style={{
-                        position: "absolute",
-                        right: "10px",
-                        top: "50%",
-                        transform: "translateY(-50%)",
-                        background: "none",
-                        border: "none",
-                        color: "#94a3b8",
-                        cursor: "pointer",
-                        padding: "4px",
-                      }}
-                    >
-                      {showNew ? <EyeOff size={16} /> : <Eye size={16} />}
-                    </button>
-                  </div>
-                  {fieldErrors.password && (
-                    <div style={{ fontSize: "0.75rem", color: "#f87171", marginTop: "0.25rem" }}>
-                      {fieldErrors.password[0]}
-                    </div>
-                  )}
-
-                  {/* Requirements Tracker */}
-                  <div style={{ display: "flex", gap: "1rem", marginTop: "0.4rem", fontSize: "0.73rem" }}>
-                    <span style={{ color: isMinLength ? "#4ade80" : "#94a3b8", display: "inline-flex", alignItems: "center", gap: "0.25rem" }}>
-                      <CheckCircle2 size={12} color={isMinLength ? "#4ade80" : "#64748b"} /> 8+ characters
-                    </span>
-                  </div>
-                </div>
-
-                {/* Confirm Password Field */}
-                <div>
-                  <label
-                    style={{
-                      display: "block",
-                      fontSize: "0.8rem",
-                      fontWeight: 700,
-                      color: "#cbd5e1",
-                      marginBottom: "0.4rem",
-                    }}
-                  >
-                    Confirm New Password
-                  </label>
-                  <div style={{ position: "relative" }}>
-                    <input
-                      type={showConfirm ? "text" : "password"}
-                      required
-                      value={confirmPassword}
-                      onChange={(e) => setConfirmPassword(e.target.value)}
-                      placeholder="Re-enter your new password"
-                      style={{
-                        width: "100%",
-                        padding: "0.65rem 2.5rem 0.65rem 0.85rem",
-                        background: "rgba(255,255,255,0.06)",
-                        border: confirmPassword && !isMatch ? "1.5px solid #ef4444" : "1.5px solid rgba(255,255,255,0.14)",
-                        borderRadius: "10px",
-                        color: "#fff",
-                        fontSize: "0.88rem",
-                        outline: "none",
-                        boxSizing: "border-box",
-                        transition: "border-color 0.2s",
-                      }}
-                      onFocus={(e) => {
-                        if (!confirmPassword || isMatch) e.currentTarget.style.borderColor = "#20b2a4";
-                      }}
-                      onBlur={(e) => {
-                        if (!confirmPassword || isMatch) e.currentTarget.style.borderColor = "rgba(255,255,255,0.14)";
-                      }}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowConfirm(!showConfirm)}
-                      style={{
-                        position: "absolute",
-                        right: "10px",
-                        top: "50%",
-                        transform: "translateY(-50%)",
-                        background: "none",
-                        border: "none",
-                        color: "#94a3b8",
-                        cursor: "pointer",
-                        padding: "4px",
-                      }}
-                    >
-                      {showConfirm ? <EyeOff size={16} /> : <Eye size={16} />}
-                    </button>
-                  </div>
-                  {confirmPassword && (
-                    <div style={{ fontSize: "0.73rem", marginTop: "0.3rem", color: isMatch ? "#4ade80" : "#f87171", display: "flex", alignItems: "center", gap: "0.25rem" }}>
-                      <CheckCircle2 size={12} color={isMatch ? "#4ade80" : "#f87171"} />
-                      {isMatch ? "Passwords match" : "Passwords do not match"}
-                    </div>
-                  )}
-                </div>
-
-                {/* Submit Button */}
-                <button
-                  type="submit"
-                  disabled={loading}
-                  style={{
-                    marginTop: "0.75rem",
-                    padding: "0.8rem 1.25rem",
-                    background: "linear-gradient(135deg, #20b2a4 0%, #0d9488 100%)",
-                    color: "#fff",
-                    border: "none",
-                    borderRadius: "10px",
+                    display: "block",
+                    fontSize: "0.78rem",
                     fontWeight: 700,
-                    fontSize: "0.92rem",
-                    cursor: loading ? "not-allowed" : "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: "0.5rem",
-                    boxShadow: "0 4px 14px rgba(32,178,164,0.35)",
-                    opacity: loading ? 0.75 : 1,
-                    transition: "all 0.2s ease",
+                    color: "#334155",
+                    marginBottom: "0.35rem",
                   }}
                 >
-                  {loading ? (
-                    <>
-                      <div
-                        style={{
-                          width: "16px",
-                          height: "16px",
-                          border: "2px solid #fff",
-                          borderTopColor: "transparent",
-                          borderRadius: "50%",
-                          animation: "spin 0.7s linear infinite",
-                        }}
-                      />
-                      <span>Updating Password…</span>
-                    </>
-                  ) : (
-                    <>
-                      <span>Update Password &amp; Continue</span>
-                      <ArrowRight size={16} />
-                    </>
-                  )}
-                </button>
-              </form>
-            )}
-          </div>
+                  {isMustChange ? "Temporary Password" : "Current Password"}
+                </label>
+                <div style={{ position: "relative" }}>
+                  <input
+                    type={showCurrent ? "text" : "password"}
+                    required
+                    value={currentPassword}
+                    onChange={(e) => setCurrentPassword(e.target.value)}
+                    placeholder={isMustChange ? "Temporary password from email" : "Your current password"}
+                    style={{
+                      width: "100%",
+                      padding: "0.6rem 2.2rem 0.6rem 0.8rem",
+                      borderRadius: "7px",
+                      border: fieldErrors.current_password ? "1.5px solid #ef4444" : "1.5px solid #cbd5e1",
+                      fontSize: "0.88rem",
+                      outline: "none",
+                      boxSizing: "border-box",
+                      background: "#fff",
+                      color: "#0f172a",
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowCurrent(!showCurrent)}
+                    style={{
+                      position: "absolute",
+                      right: "8px",
+                      top: "50%",
+                      transform: "translateY(-50%)",
+                      background: "none",
+                      border: "none",
+                      cursor: "pointer",
+                      color: "#94a3b8",
+                      padding: "4px",
+                    }}
+                    aria-label={showCurrent ? "Hide password" : "Show password"}
+                  >
+                    {showCurrent ? <EyeOff size={15} /> : <Eye size={15} />}
+                  </button>
+                </div>
+                {fieldErrors.current_password && (
+                  <div style={{ fontSize: "0.73rem", color: "#ef4444", marginTop: "0.25rem" }}>
+                    {fieldErrors.current_password[0]}
+                  </div>
+                )}
+              </div>
+
+              {/* New Password */}
+              <div>
+                <label
+                  style={{
+                    display: "block",
+                    fontSize: "0.78rem",
+                    fontWeight: 700,
+                    color: "#334155",
+                    marginBottom: "0.35rem",
+                  }}
+                >
+                  New Password
+                </label>
+                <div style={{ position: "relative" }}>
+                  <input
+                    type={showNew ? "text" : "password"}
+                    required
+                    minLength={8}
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="At least 8 characters"
+                    style={{
+                      width: "100%",
+                      padding: "0.6rem 2.2rem 0.6rem 0.8rem",
+                      borderRadius: "7px",
+                      border: fieldErrors.password ? "1.5px solid #ef4444" : "1.5px solid #cbd5e1",
+                      fontSize: "0.88rem",
+                      outline: "none",
+                      boxSizing: "border-box",
+                      background: "#fff",
+                      color: "#0f172a",
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowNew(!showNew)}
+                    style={{
+                      position: "absolute",
+                      right: "8px",
+                      top: "50%",
+                      transform: "translateY(-50%)",
+                      background: "none",
+                      border: "none",
+                      cursor: "pointer",
+                      color: "#94a3b8",
+                      padding: "4px",
+                    }}
+                    aria-label={showNew ? "Hide password" : "Show password"}
+                  >
+                    {showNew ? <EyeOff size={15} /> : <Eye size={15} />}
+                  </button>
+                </div>
+                {fieldErrors.password && (
+                  <div style={{ fontSize: "0.73rem", color: "#ef4444", marginTop: "0.25rem" }}>
+                    {fieldErrors.password[0]}
+                  </div>
+                )}
+                <div style={{ fontSize: "0.72rem", color: isMinLength ? "#059669" : "#64748b", marginTop: "0.3rem" }}>
+                  {isMinLength ? "✓ Meets minimum length (8+ characters)" : "Must be at least 8 characters"}
+                </div>
+              </div>
+
+              {/* Confirm Password */}
+              <div>
+                <label
+                  style={{
+                    display: "block",
+                    fontSize: "0.78rem",
+                    fontWeight: 700,
+                    color: "#334155",
+                    marginBottom: "0.35rem",
+                  }}
+                >
+                  Confirm New Password
+                </label>
+                <div style={{ position: "relative" }}>
+                  <input
+                    type={showConfirm ? "text" : "password"}
+                    required
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="Re-enter new password"
+                    style={{
+                      width: "100%",
+                      padding: "0.6rem 2.2rem 0.6rem 0.8rem",
+                      borderRadius: "7px",
+                      border: confirmPassword && !isMatch ? "1.5px solid #ef4444" : "1.5px solid #cbd5e1",
+                      fontSize: "0.88rem",
+                      outline: "none",
+                      boxSizing: "border-box",
+                      background: "#fff",
+                      color: "#0f172a",
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirm(!showConfirm)}
+                    style={{
+                      position: "absolute",
+                      right: "8px",
+                      top: "50%",
+                      transform: "translateY(-50%)",
+                      background: "none",
+                      border: "none",
+                      cursor: "pointer",
+                      color: "#94a3b8",
+                      padding: "4px",
+                    }}
+                    aria-label={showConfirm ? "Hide password" : "Show password"}
+                  >
+                    {showConfirm ? <EyeOff size={15} /> : <Eye size={15} />}
+                  </button>
+                </div>
+                {confirmPassword && (
+                  <div style={{ fontSize: "0.72rem", marginTop: "0.3rem", color: isMatch ? "#059669" : "#dc2626" }}>
+                    {isMatch ? "✓ Passwords match" : "Passwords do not match"}
+                  </div>
+                )}
+              </div>
+
+              {/* Submit Button */}
+              <button
+                type="submit"
+                disabled={loading}
+                style={{
+                  marginTop: "0.5rem",
+                  padding: "0.75rem",
+                  background: loading ? "#94a3b8" : "#0d9488",
+                  color: "#ffffff",
+                  border: "none",
+                  borderRadius: "7px",
+                  fontWeight: 700,
+                  fontSize: "0.88rem",
+                  cursor: loading ? "not-allowed" : "pointer",
+                  pointerEvents: loading ? "none" : "auto",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: "0.4rem",
+                  transition: "background 0.15s ease",
+                }}
+              >
+                {loading ? "Updating Password…" : "Save New Password"}
+              </button>
+
+              {/* Cancel / Dashboard link if not mandatory */}
+              {!isMustChange && (
+                <div style={{ textAlign: "center", marginTop: "0.25rem" }}>
+                  <Link
+                    href={dashboardHref}
+                    style={{
+                      fontSize: "0.8rem",
+                      color: "#64748b",
+                      textDecoration: "none",
+                      fontWeight: 600,
+                    }}
+                  >
+                    Cancel and return to dashboard
+                  </Link>
+                </div>
+              )}
+            </form>
+          )}
         </div>
       </main>
 
       {/* Footer */}
       <footer
         style={{
-          borderTop: "1px solid rgba(255,255,255,0.06)",
+          borderTop: "1px solid #e2e8f0",
+          background: "#ffffff",
           padding: "1rem",
           textAlign: "center",
           fontSize: "0.75rem",
-          color: "#64748b",
+          color: "#94a3b8",
         }}
       >
         © {new Date().getFullYear()} Samin Home Tutors Ltd. All rights reserved.

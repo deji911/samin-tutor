@@ -35,6 +35,7 @@ import {
   Star,
   Send,
   MessageSquare,
+  Key,
 } from "lucide-react";
 
 /* ─── Types based on API responses ────────────────────────── */
@@ -705,7 +706,21 @@ export default function TutorDashboard() {
     }
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    const token = typeof window !== "undefined" ? localStorage.getItem("samin_auth_token") : null;
+    const baseUrl = getBackendApiUrl();
+
+    if (token) {
+      try {
+        await fetch(`${baseUrl}/api/logout`, {
+          method: "POST",
+          headers: getAuthHeaders(),
+        });
+      } catch (err) {
+        console.error("Logout error (/api/logout):", err);
+      }
+    }
+
     if (typeof window !== "undefined") {
       localStorage.removeItem("samin_auth_token");
       localStorage.removeItem("samin_user");
@@ -782,7 +797,12 @@ export default function TutorDashboard() {
               />
             </div>
             <div>
-              <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 700, color: "#334155", marginBottom: "0.35rem" }}>Password</label>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.35rem" }}>
+                <label style={{ fontSize: "0.78rem", fontWeight: 700, color: "#334155", margin: 0 }}>Password</label>
+                <Link href="/forgot-password" style={{ fontSize: "0.75rem", color: "#0d9488", textDecoration: "none", fontWeight: 600 }}>
+                  Forgot password?
+                </Link>
+              </div>
               <input
                 type="password"
                 required
@@ -944,6 +964,9 @@ export default function TutorDashboard() {
               </div>
             </div>
           )}
+          <Link href="/change-password" style={{ display: "flex", alignItems: "center", gap: "0.6rem", padding: "0.6rem 0.85rem", borderRadius: "8px", color: "#4b5563", textDecoration: "none", fontSize: "0.82rem", fontWeight: 600 }}>
+            <Key size={15} /> Change Password
+          </Link>
           <Link href="/" style={{ display: "flex", alignItems: "center", gap: "0.6rem", padding: "0.6rem 0.85rem", borderRadius: "8px", color: "#4b5563", textDecoration: "none", fontSize: "0.82rem", fontWeight: 600 }}>
             <BookOpen size={15} /> Public Website
           </Link>

@@ -464,7 +464,21 @@ export default function StudentPortalDashboard() {
     }
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    const token = typeof window !== "undefined" ? localStorage.getItem("samin_auth_token") : null;
+    const baseUrl = getBackendApiUrl();
+
+    if (token) {
+      try {
+        await fetch(`${baseUrl}/api/logout`, {
+          method: "POST",
+          headers: getAuthHeaders(),
+        });
+      } catch (err) {
+        console.error("Logout error (/api/logout):", err);
+      }
+    }
+
     if (typeof window !== "undefined") {
       localStorage.removeItem("samin_auth_token");
       localStorage.removeItem("samin_user");
@@ -519,9 +533,14 @@ export default function StudentPortalDashboard() {
             </div>
 
             <div>
-              <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 700, color: "#374151", marginBottom: "0.3rem" }}>
-                Password
-              </label>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.3rem" }}>
+                <label style={{ fontSize: "0.78rem", fontWeight: 700, color: "#374151", margin: 0 }}>
+                  Password
+                </label>
+                <Link href="/forgot-password" style={{ fontSize: "0.74rem", color: "#0d9488", textDecoration: "none", fontWeight: 600 }}>
+                  Forgot password?
+                </Link>
+              </div>
               <input
                 type="password"
                 required
