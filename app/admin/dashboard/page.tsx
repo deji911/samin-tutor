@@ -41,8 +41,12 @@ import {
   Copy,
   Award,
   BookOpen,
+  RotateCcw,
+  DollarSign,
+  CreditCard,
 } from "lucide-react";
 import { QUALIFICATIONS_LIST } from "../../constants/qualifications";
+import NotificationEnvelope from "@/components/NotificationEnvelope";
 
 /* ─── Constants ───────────────────────────────────────────── */
 const ADMIN_EMAIL = "saminhometutors@gmail.com";
@@ -275,7 +279,94 @@ type LessonReport = {
   };
 };
 
-type NavTab = "overview" | "applicants" | "tutors" | "bookings" | "sessions" | "reports";
+type AdminChangeRequest = {
+  id: number;
+  lesson_session_id: number;
+  requested_by: number;
+  request_type: "reschedule" | "cancel" | string;
+  proposed_date?: string | null;
+  proposed_start_time?: string | null;
+  proposed_end_time?: string | null;
+  reason: string;
+  status: "pending" | "approved" | "rejected" | string;
+  admin_notes?: string | null;
+  responded_by?: number | null;
+  responded_at?: string | null;
+  created_at: string;
+  updated_at: string;
+  session?: {
+    id: number;
+    student_id: number;
+    tutor_id: number;
+    lesson_schedule_id?: number;
+    subject: string;
+    date: string;
+    start_time: string;
+    end_time: string;
+    meeting_link?: string | null;
+    status: string;
+    notes?: string | null;
+    student?: {
+      id: number;
+      student_name: string;
+      parent_name?: string;
+      email?: string;
+      phone?: string;
+    };
+    tutor?: {
+      id: number;
+      name: string;
+      email?: string;
+      phone?: string;
+    };
+  };
+  requester?: {
+    id: number;
+    name: string;
+    email: string;
+    role: string;
+  };
+  responder?: {
+    id: number;
+    name: string;
+    email: string;
+  } | null;
+};
+
+type TutorPayoutSession = {
+  session_id: number;
+  date: string;
+  start_time: string;
+  end_time: string;
+  duration_hours: number;
+  subject: string;
+  student_name: string;
+  status: string;
+  attendance_status: string;
+  report_submitted: boolean;
+  earnings: number;
+};
+
+type TutorPayoutData = {
+  tutor?: {
+    id: number;
+    name: string;
+    email: string;
+    hourly_rate?: number;
+  };
+  month: string;
+  hourly_rate?: number;
+  summary: {
+    total_sessions?: number;
+    total_scheduled?: number;
+    completed_sessions: number;
+    total_hours: number;
+    total_earnings: number;
+  };
+  sessions: TutorPayoutSession[];
+};
+
+type NavTab = "overview" | "applicants" | "tutors" | "bookings" | "sessions" | "reports" | "changes";
 
 const statusStyle: Record<string, { bg: string; color: string; label?: string }> = {
   "New Inquiry": { bg: "#fef3c7", color: "#b45309", label: "New Inquiry" },
@@ -422,6 +513,35 @@ export default function AdminDashboard() {
     email: string;
     temporary_password?: string;
   } | null>(null);
+
+  // Change Requests State (GET /api/admin/change-requests, PATCH /api/admin/change-requests/{id})
+  const [adminChangeRequests, setAdminChangeRequests] = useState<AdminChangeRequest[]>([]);
+  const [changeRequestsLoading, setChangeRequestsLoading] = useState(false);
+  const [changeRequestsPage, setChangeRequestsPage] = useState(1);
+  const [changeRequestsLastPage, setChangeRequestsLastPage] = useState(1);
+  const [changeRequestsTotal, setChangeRequestsTotal] = useState(0);
+  const [changeRequestsStatusFilter, setChangeRequestsStatusFilter] = useState<string>("all");
+  const [changeRequestsCounts, setChangeRequestsCounts] = useState({
+    total: 0,
+    pending: 0,
+    approved: 0,
+    rejected: 0,
+  });
+  const [reviewingRequest, setReviewingRequest] = useState<AdminChangeRequest | null>(null);
+  const [reviewAction, setReviewAction] = useState<"approve" | "reject">("approve");
+  const [reviewNotes, setReviewNotes] = useState("");
+  const [isSubmittingReview, setIsSubmittingReview] = useState(false);
+
+  // Tutor Rate & Payouts Modal State (PATCH /api/admin/tutors/{tutorId}/rate & GET /api/admin/tutors/{tutorId}/payouts)
+  const [payoutTutor, setPayoutTutor] = useState<any | null>(null);
+  const [payoutMonth, setPayoutMonth] = useState<string>(new Date().toISOString().slice(0, 7));
+  const [payoutData, setPayoutData] = useState<TutorPayoutData | null>(null);
+  const [loadingPayoutData, setLoadingPayoutData] = useState(false);
+  const [editingHourlyRate, setEditingHourlyRate] = useState<string>("");
+  const [isSavingHourlyRate, setIsSavingHourlyRate] = useState(false);
+
+  // Logout confirmation modal
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
   const getBackendApiUrl = () => {
     if (process.env.NEXT_PUBLIC_API_URL) {
@@ -1334,7 +1454,7 @@ export default function AdminDashboard() {
 
     if (stored === "true" || token) {
       setIsAuthed(true);
-      Promise.all([fetchCurrentUser(), fetchTutorsFromApi(), fetchStudentsFromApi(), fetchTutorStats(), fetchStudentStats(), fetchAdminReports(1)]).finally(() => {
+      Promise.all([fetchCurrentUser(), fetchTutorsFromApi(), fetchStudentsFromApi(), fetchTutorStats(), fetchStudentStats(), fetchAdminReports(1), fetchAdminChangeRequests(1)]).finally(() => {
         setInitialLoading(false);
       });
     } else {
@@ -1369,11 +1489,167 @@ export default function AdminDashboard() {
     }
   };
 
-  useEffect(() => {
-    if (isAuthed && activeTab === "reports") {
-      fetchAdminReports(reportsPage);
+  /* ── 1. Admin Change Requests: GET /api/admin/change-requests ── */
+  const fetchAdminChangeRequests = async (page = 1, status = changeRequestsStatusFilter) => {
+    setChangeRequestsLoading(true);
+    try {
+      const baseUrl = getBackendApiUrl();
+      const params = new URLSearchParams();
+      params.append("page", String(page));
+      params.append("per_page", "20");
+      if (status && status !== "all") {
+        params.append("status", status);
+      }
+
+      const res = await fetch(`${baseUrl}/api/admin/change-requests?${params.toString()}`, {
+        headers: getAuthHeaders(),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data?.counts) {
+          setChangeRequestsCounts(data.counts);
+        }
+        const crObj = data?.change_requests;
+        const list = crObj?.data || (Array.isArray(crObj) ? crObj : Array.isArray(data) ? data : []);
+        setAdminChangeRequests(Array.isArray(list) ? list : []);
+        setChangeRequestsTotal(crObj?.total || list.length);
+        setChangeRequestsPage(crObj?.current_page || page);
+        setChangeRequestsLastPage(crObj?.last_page || 1);
+      }
+    } catch (err) {
+      console.error("Failed to fetch admin change requests:", err);
+    } finally {
+      setChangeRequestsLoading(false);
     }
-  }, [activeTab, isAuthed]);
+  };
+
+  /* ── 2. Review Change Request: PATCH /api/admin/change-requests/{id} ── */
+  const submitReviewChangeRequest = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!reviewingRequest) return;
+    setIsSubmittingReview(true);
+
+    try {
+      const baseUrl = getBackendApiUrl();
+      const res = await fetch(`${baseUrl}/api/admin/change-requests/${reviewingRequest.id}`, {
+        method: "PATCH",
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          action: reviewAction,
+          admin_notes: reviewNotes.trim() || undefined,
+        }),
+      });
+
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        throw new Error(data?.message || `Failed to review change request (HTTP ${res.status})`);
+      }
+
+      showToast(data?.message || `Session change request ${reviewAction === "approve" ? "approved" : "rejected"} successfully.`);
+      setReviewingRequest(null);
+      setReviewNotes("");
+
+      // Refresh list and counts
+      fetchAdminChangeRequests(changeRequestsPage, changeRequestsStatusFilter);
+      // Refresh student timetable / sessions in background
+      if (timetableStudent) {
+        fetchStudentSessions(timetableStudent.id);
+      }
+    } catch (err: any) {
+      console.error("Review change request error:", err);
+      showToast(`⚠️ ${err.message || "Failed to process request."}`);
+    } finally {
+      setIsSubmittingReview(false);
+    }
+  };
+
+  const openReviewModal = (request: AdminChangeRequest, action: "approve" | "reject") => {
+    setReviewingRequest(request);
+    setReviewAction(action);
+    setReviewNotes(action === "approve" ? "Rescheduled as requested." : "");
+  };
+
+  /* ── 3. Tutor Payouts & Hourly Rate: GET /api/admin/tutors/{tutorId}/payouts & PATCH /api/admin/tutors/{tutorId}/rate ── */
+  const fetchTutorPayouts = async (tutorId: number | string, month: string) => {
+    setLoadingPayoutData(true);
+    const cleanId = String(tutorId).replace(/^(APP-|TUT-)/, "");
+    try {
+      const baseUrl = getBackendApiUrl();
+      const res = await fetch(`${baseUrl}/api/admin/tutors/${cleanId}/payouts?month=${month}`, {
+        headers: getAuthHeaders(),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setPayoutData(data);
+        if (data?.tutor?.hourly_rate !== undefined) {
+          setEditingHourlyRate(String(data.tutor.hourly_rate));
+        }
+      } else {
+        setPayoutData(null);
+      }
+    } catch (err) {
+      console.error("Failed to fetch tutor payouts:", err);
+      setPayoutData(null);
+    } finally {
+      setLoadingPayoutData(false);
+    }
+  };
+
+  const openTutorPayoutModal = (tutor: any) => {
+    setPayoutTutor(tutor);
+    const initialRate = tutor.hourly_rate ?? tutor.tutor_profile?.hourly_rate ?? "";
+    setEditingHourlyRate(String(initialRate || ""));
+    fetchTutorPayouts(tutor.id, payoutMonth);
+  };
+
+  const saveTutorHourlyRate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!payoutTutor) return;
+    const rateNum = Number(editingHourlyRate);
+    if (isNaN(rateNum) || rateNum < 0) {
+      showToast("⚠️ Please enter a valid hourly rate (e.g. 5000).");
+      return;
+    }
+
+    setIsSavingHourlyRate(true);
+    const cleanId = String(payoutTutor.id).replace(/^(APP-|TUT-)/, "");
+    try {
+      const baseUrl = getBackendApiUrl();
+      const res = await fetch(`${baseUrl}/api/admin/tutors/${cleanId}/rate`, {
+        method: "PATCH",
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ hourly_rate: rateNum }),
+      });
+
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        throw new Error(data?.message || `Failed to update hourly rate (HTTP ${res.status})`);
+      }
+
+      showToast(data?.message || `Hourly rate updated to ₦${rateNum.toLocaleString()} / hr successfully.`);
+      // Re-fetch payout data with new rate calculation
+      fetchTutorPayouts(payoutTutor.id, payoutMonth);
+    } catch (err: any) {
+      console.error("Save hourly rate error:", err);
+      showToast(`⚠️ ${err.message || "Failed to update hourly rate."}`);
+    } finally {
+      setIsSavingHourlyRate(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isAuthed) {
+      if (activeTab === "reports") {
+        fetchAdminReports(reportsPage);
+      }
+      if (activeTab === "changes") {
+        fetchAdminChangeRequests(changeRequestsPage, changeRequestsStatusFilter);
+      }
+    }
+  }, [activeTab, isAuthed, changeRequestsStatusFilter]);
 
   const showToast = (msg: string) => {
     setToast(msg);
@@ -1505,9 +1781,10 @@ export default function AdminDashboard() {
     try {
       const baseUrl = getBackendApiUrl();
       const token = typeof window !== "undefined" ? localStorage.getItem("samin_auth_token") : null;
+      const targetId = String(id).replace(/^(APP-|TUT-)/, "");
 
       if (token) {
-        const res = await fetch(`${baseUrl}/api/admin/tutors/${id}/status`, {
+        const res = await fetch(`${baseUrl}/api/admin/tutors/${targetId}/status`, {
           method: "PATCH",
           headers: getAuthHeaders(),
           body: JSON.stringify({ status: "approved" }),
@@ -1559,9 +1836,10 @@ export default function AdminDashboard() {
     try {
       const baseUrl = getBackendApiUrl();
       const token = typeof window !== "undefined" ? localStorage.getItem("samin_auth_token") : null;
+      const targetId = String(id).replace(/^(APP-|TUT-)/, "");
 
       if (token) {
-        const res = await fetch(`${baseUrl}/api/admin/tutors/${id}/status`, {
+        const res = await fetch(`${baseUrl}/api/admin/tutors/${targetId}/status`, {
           method: "PATCH",
           headers: getAuthHeaders(),
           body: JSON.stringify({ status: "rejected" }),
@@ -1593,9 +1871,10 @@ export default function AdminDashboard() {
     try {
       const baseUrl = getBackendApiUrl();
       const token = typeof window !== "undefined" ? localStorage.getItem("samin_auth_token") : null;
+      const targetId = String(id).replace(/^(APP-|TUT-)/, "");
 
       if (token) {
-        await fetch(`${baseUrl}/api/admin/tutors/${id}/status`, {
+        await fetch(`${baseUrl}/api/admin/tutors/${targetId}/status`, {
           method: "PATCH",
           headers: getAuthHeaders(),
           body: JSON.stringify({ status: "rejected" }),
@@ -1822,6 +2101,7 @@ export default function AdminDashboard() {
     { tab: "bookings",    icon: <Users size={18} />,           label: "Students",    badge: (studentStats.pending_match || newInquiries) || undefined },
     { tab: "sessions",    icon: <Calendar size={18} />,        label: "Timetables & Sessions" },
     { tab: "reports",     icon: <FileText size={18} />,        label: "Lesson Reports", badge: reportsTotal || undefined },
+    { tab: "changes",     icon: <RotateCcw size={18} />,       label: "Change Requests", badge: changeRequestsCounts.pending || undefined },
   ];
 
   return (
@@ -1885,15 +2165,19 @@ export default function AdminDashboard() {
         {/* Nav items */}
         <nav style={{ flex: 1, display: "flex", flexDirection: "column", gap: "0.15rem" }}>
           {navItems.map(({ tab, icon, label, badge }) => (
-            <button key={tab} onClick={() => { setActiveTab(tab); setSidebarOpen(false); }}
+            <button key={tab} onClick={() => {
+              setActiveTab(tab);
+              setSidebarOpen(false);
+              if (tab === "changes") fetchAdminChangeRequests(1);
+            }}
               className={`nav-btn${activeTab === tab ? " active" : ""}`}
               style={{ color: activeTab === tab ? "#0d9488" : "#4b5563" }}>
               {icon}
               <span style={{ flex: 1 }}>{label}</span>
               {badge !== undefined && badge > 0 && (
                 <span style={{
-                  background: tab === "applicants" ? "#fef3c7" : tab === "bookings" ? "#fee2e2" : "#dbeafe",
-                  color: tab === "applicants" ? "#b45309" : tab === "bookings" ? "#dc2626" : "#1d4ed8",
+                  background: tab === "applicants" ? "#fef3c7" : tab === "bookings" ? "#fee2e2" : tab === "changes" ? "#fef3c7" : "#dbeafe",
+                  color: tab === "applicants" ? "#b45309" : tab === "bookings" ? "#dc2626" : tab === "changes" ? "#b45309" : "#1d4ed8",
                   fontSize: "0.68rem", fontWeight: 800, padding: "0.1rem 0.45rem", borderRadius: "10px", minWidth: "20px", textAlign: "center"
                 }}>{badge}</span>
               )}
@@ -1904,17 +2188,49 @@ export default function AdminDashboard() {
         {/* Bottom */}
         <div style={{ borderTop: "1px solid #f1f5f9", paddingTop: "0.85rem", display: "flex", flexDirection: "column", gap: "0.25rem" }}>
           {currentUser && (
-            <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "8px", padding: "0.6rem 0.75rem", marginBottom: "0.35rem" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                <div style={{ width: "26px", height: "26px", borderRadius: "50%", background: "linear-gradient(135deg,#20b2a4,#0d9488)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: "0.75rem", flexShrink: 0 }}>
+            <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "10px", padding: "0.65rem 0.75rem", marginBottom: "0.35rem" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>
+                {/* Avatar with Verified Badge Overlay */}
+                <div style={{ position: "relative", width: "34px", height: "34px", borderRadius: "50%", background: "linear-gradient(135deg,#20b2a4,#0d9488)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: "0.85rem", flexShrink: 0, boxShadow: "0 2px 6px rgba(13,148,136,0.25)" }}>
                   {currentUser.name?.charAt(0) || "A"}
+                  <div
+                    style={{
+                      position: "absolute",
+                      bottom: "-2px",
+                      right: "-2px",
+                      background: "#0d9488",
+                      borderRadius: "50%",
+                      width: "14px",
+                      height: "14px",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      border: "2px solid #fff",
+                      color: "#fff",
+                      boxShadow: "0 1px 3px rgba(0,0,0,0.15)",
+                    }}
+                    title="Verified Administrator"
+                  >
+                    <Check size={9} strokeWidth={3} />
+                  </div>
                 </div>
                 <div style={{ minWidth: 0, flex: 1 }}>
-                  <div style={{ fontSize: "0.76rem", fontWeight: 700, color: "#0f172a", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  <div style={{ fontSize: "0.8rem", fontWeight: 700, color: "#0f172a", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                     {currentUser.name || "Admin"}
                   </div>
-                  <div style={{ fontSize: "0.65rem", color: "#64748b", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                    {currentUser.email || "admin@samin.com"}
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.25rem", marginTop: "0.1rem" }}>
+                    <span
+                      style={{
+                        fontSize: "0.66rem",
+                        fontWeight: 700,
+                        color: "#0d9488",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "0.2rem",
+                      }}
+                    >
+                      <ShieldCheck size={11} color="#0d9488" /> Verified Admin
+                    </span>
                   </div>
                 </div>
               </div>
@@ -1926,7 +2242,7 @@ export default function AdminDashboard() {
           <Link href="/" style={{ display: "flex", alignItems: "center", gap: "0.6rem", padding: "0.65rem 1rem", borderRadius: "8px", color: "#4b5563", textDecoration: "none", fontSize: "0.84rem", fontWeight: 600 }}>
             <Globe size={16} /> Public Website
           </Link>
-          <button onClick={handleLogout}
+          <button onClick={() => setShowLogoutConfirm(true)}
             style={{ display: "flex", alignItems: "center", gap: "0.6rem", width: "100%", padding: "0.65rem 1rem", borderRadius: "8px", border: "none", background: "none", color: "#ef4444", fontSize: "0.84rem", fontWeight: 600, cursor: "pointer", textAlign: "left" }}>
             <LogOut size={16} /> Sign Out
           </button>
@@ -1950,6 +2266,7 @@ export default function AdminDashboard() {
                 {activeTab === "bookings" && "Student Registrations"}
                 {activeTab === "sessions" && "Student Timetables & Sessions"}
                 {activeTab === "reports" && "Lesson & Progress Reports"}
+                {activeTab === "changes" && "Session Change Requests"}
               </h1>
               <p style={{ fontSize: "0.73rem", color: "#94a3b8", margin: 0 }}>
                 {new Date().toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
@@ -1963,12 +2280,13 @@ export default function AdminDashboard() {
                 fetchTutorsFromApi();
                 fetchStudentsFromApi();
                 fetchAdminReports(reportsPage);
+                fetchAdminChangeRequests(changeRequestsPage, changeRequestsStatusFilter);
                 if (timetableStudent) {
                   fetchStudentTimetable(timetableStudent.id);
                   fetchStudentSessions(timetableStudent.id);
                 }
               }}
-              disabled={isLoadingTutors || isLoadingStudents}
+              disabled={isLoadingTutors || isLoadingStudents || changeRequestsLoading}
               title="Sync live tutor & student data from backend"
               style={{
                 display: "inline-flex",
@@ -1981,49 +2299,31 @@ export default function AdminDashboard() {
                 color: "#475569",
                 fontSize: "0.75rem",
                 fontWeight: 600,
-                cursor: (isLoadingTutors || isLoadingStudents) ? "not-allowed" : "pointer",
+                cursor: (isLoadingTutors || isLoadingStudents || changeRequestsLoading) ? "not-allowed" : "pointer",
               }}
             >
-              <RefreshCw size={13} style={{ animation: (isLoadingTutors || isLoadingStudents) ? "spin 0.8s linear infinite" : "none" }} />
+              <RefreshCw size={13} style={{ animation: (isLoadingTutors || isLoadingStudents || changeRequestsLoading) ? "spin 0.8s linear infinite" : "none" }} />
               <span>Sync</span>
             </button>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "0.5rem",
-                background: "#f0fdf9",
-                border: "1px solid #99f6e4",
-                borderRadius: "8px",
-                padding: "0.38rem 0.75rem",
+
+            {/* Notifications Envelope */}
+            <NotificationEnvelope
+              onActionClick={(actionUrl) => {
+                if (actionUrl.includes("change-requests") || actionUrl.includes("changes")) {
+                  setActiveTab("changes");
+                  fetchAdminChangeRequests(1, "all");
+                } else if (actionUrl.includes("tutor")) {
+                  setActiveTab("tutors");
+                } else if (actionUrl.includes("student") || actionUrl.includes("booking")) {
+                  setActiveTab("bookings");
+                } else if (actionUrl.includes("session")) {
+                  setActiveTab("sessions");
+                } else if (actionUrl.includes("report")) {
+                  setActiveTab("reports");
+                }
               }}
-              title={currentUser?.email ? `${currentUser.name} (${currentUser.email})${currentUser.phone ? ` • ${currentUser.phone}` : ""}` : undefined}
-            >
-              <ShieldCheck size={14} color="#0d9488" />
-              <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "#0d9488" }}>
-                {currentUser?.name || "Admin"} ({currentUser?.role || "Active"})
-              </span>
-            </div>
-            <button
-              onClick={handleLogout}
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "0.35rem",
-                padding: "0.38rem 0.75rem",
-                borderRadius: "8px",
-                border: "1px solid #fee2e2",
-                background: "#fef2f2",
-                color: "#dc2626",
-                fontSize: "0.75rem",
-                fontWeight: 700,
-                cursor: "pointer",
-              }}
-              title="Sign Out to Public Website"
-            >
-              <LogOut size={13} />
-              <span>Sign Out</span>
-            </button>
+            />
+
           </div>
         </header>
 
@@ -2432,6 +2732,14 @@ export default function AdminDashboard() {
                             style={{ background: "#f0fdf9", color: "#0d9488", border: "1px solid #99f6e4", flex: 1, justifyContent: "center" }}
                           >
                             <Eye size={13} /> View Profile
+                          </button>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); openTutorPayoutModal(t); }}
+                            className="action-btn"
+                            style={{ background: "#ecfdf5", color: "#047857", border: "1px solid #a7f3d0", padding: "0.35rem 0.65rem" }}
+                            title="Set hourly rate & view payouts"
+                          >
+                            <DollarSign size={13} /> Rate &amp; Payouts
                           </button>
                           <button
                             onClick={(e) => { e.stopPropagation(); removeTutor(t.id); }}
@@ -3008,6 +3316,325 @@ export default function AdminDashboard() {
                   </div>
                 )}
               </div>
+            </div>
+          )}
+
+          {/* ── Session Change Requests Tab (GET /api/admin/change-requests) ── */}
+          {activeTab === "changes" && (
+            <div className="page-enter" style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
+              {/* Header */}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "0.8rem" }}>
+                <div>
+                  <h3 style={{ fontSize: "1.1rem", fontWeight: 800, color: "#0f172a", margin: "0 0 0.2rem", display: "flex", alignItems: "center", gap: "0.45rem" }}>
+                    <RotateCcw size={20} color="#0d9488" />
+                    Tutor Session Change Requests
+                  </h3>
+                  <p style={{ fontSize: "0.78rem", color: "#64748b", margin: 0 }}>
+                    Review, approve, or reject reschedule and cancellation requests submitted by tutors
+                  </p>
+                </div>
+
+                <button
+                  onClick={() => fetchAdminChangeRequests(changeRequestsPage, changeRequestsStatusFilter)}
+                  disabled={changeRequestsLoading}
+                  style={{
+                    padding: "0.45rem 0.85rem",
+                    borderRadius: "8px",
+                    background: "#fff",
+                    border: "1px solid #cbd5e1",
+                    fontSize: "0.8rem",
+                    fontWeight: 700,
+                    color: "#334155",
+                    cursor: changeRequestsLoading ? "not-allowed" : "pointer",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "0.35rem",
+                  }}
+                >
+                  <RefreshCw size={13} style={{ animation: changeRequestsLoading ? "spin 0.8s linear infinite" : "none" }} />
+                  <span>Refresh Requests</span>
+                </button>
+              </div>
+
+              {/* Stat Cards */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "0.85rem" }}>
+                <div className="dash-card" style={{ padding: "1.1rem 1.3rem", borderLeft: "4px solid #0d9488" }}>
+                  <div style={{ fontSize: "0.72rem", fontWeight: 700, color: "#64748b", textTransform: "uppercase" }}>Total Requests</div>
+                  <div style={{ fontSize: "1.65rem", fontWeight: 800, color: "#0f172a", marginTop: "0.2rem" }}>
+                    {changeRequestsCounts.total}
+                  </div>
+                  <div style={{ fontSize: "0.72rem", color: "#64748b", marginTop: "0.25rem" }}>All time requests submitted</div>
+                </div>
+
+                <div className="dash-card" style={{ padding: "1.1rem 1.3rem", borderLeft: "4px solid #f59e0b", background: "#fffdfa" }}>
+                  <div style={{ fontSize: "0.72rem", fontWeight: 700, color: "#b45309", textTransform: "uppercase" }}>Awaiting Review</div>
+                  <div style={{ fontSize: "1.65rem", fontWeight: 800, color: "#b45309", marginTop: "0.2rem" }}>
+                    {changeRequestsCounts.pending}
+                  </div>
+                  <div style={{ fontSize: "0.72rem", color: "#b45309", marginTop: "0.25rem" }}>Requires immediate admin action</div>
+                </div>
+
+                <div className="dash-card" style={{ padding: "1.1rem 1.3rem", borderLeft: "4px solid #10b981", background: "#fafffd" }}>
+                  <div style={{ fontSize: "0.72rem", fontWeight: 700, color: "#047857", textTransform: "uppercase" }}>Approved</div>
+                  <div style={{ fontSize: "1.65rem", fontWeight: 800, color: "#047857", marginTop: "0.2rem" }}>
+                    {changeRequestsCounts.approved}
+                  </div>
+                  <div style={{ fontSize: "0.72rem", color: "#047857", marginTop: "0.25rem" }}>Calendar sessions updated</div>
+                </div>
+
+                <div className="dash-card" style={{ padding: "1.1rem 1.3rem", borderLeft: "4px solid #ef4444", background: "#fffafa" }}>
+                  <div style={{ fontSize: "0.72rem", fontWeight: 700, color: "#b91c1c", textTransform: "uppercase" }}>Declined</div>
+                  <div style={{ fontSize: "1.65rem", fontWeight: 800, color: "#b91c1c", marginTop: "0.2rem" }}>
+                    {changeRequestsCounts.rejected}
+                  </div>
+                  <div style={{ fontSize: "0.72rem", color: "#b91c1c", marginTop: "0.25rem" }}>Kept existing session schedule</div>
+                </div>
+              </div>
+
+              {/* Status Filter Pills */}
+              <div style={{ display: "flex", alignItems: "center", gap: "0.45rem", flexWrap: "wrap" }}>
+                {(["all", "pending", "approved", "rejected"] as const).map((st) => {
+                  const isActive = changeRequestsStatusFilter === st;
+                  const count = st === "all" ? changeRequestsCounts.total : changeRequestsCounts[st];
+                  return (
+                    <button
+                      key={st}
+                      onClick={() => {
+                        setChangeRequestsStatusFilter(st);
+                        fetchAdminChangeRequests(1, st);
+                      }}
+                      style={{
+                        padding: "0.38rem 0.85rem",
+                        borderRadius: "20px",
+                        border: isActive ? "1.5px solid #20b2a4" : "1px solid #cbd5e1",
+                        background: isActive ? "#e8f8f7" : "#fff",
+                        color: isActive ? "#0d9488" : "#475569",
+                        fontWeight: 700,
+                        fontSize: "0.78rem",
+                        cursor: "pointer",
+                        textTransform: "capitalize",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "0.35rem",
+                      }}
+                    >
+                      <span>{st}</span>
+                      <span style={{ fontSize: "0.7rem", opacity: 0.85 }}>({count})</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Requests List */}
+              {changeRequestsLoading && adminChangeRequests.length === 0 ? (
+                <div className="dash-card" style={{ padding: "3rem", textAlign: "center", color: "#64748b" }}>
+                  <div style={{ width: "28px", height: "28px", border: "2.5px solid #20b2a4", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.7s linear infinite", margin: "0 auto 0.6rem" }} />
+                  <span style={{ fontSize: "0.82rem" }}>Loading change requests from backend…</span>
+                </div>
+              ) : adminChangeRequests.length === 0 ? (
+                <div className="dash-card" style={{ padding: "3.5rem 1.5rem", textAlign: "center", color: "#94a3b8" }}>
+                  <RotateCcw size={40} color="#cbd5e1" style={{ margin: "0 auto 0.8rem" }} />
+                  <div style={{ fontSize: "0.95rem", fontWeight: 700, color: "#475569" }}>No Change Requests Found</div>
+                  <div style={{ fontSize: "0.8rem", color: "#94a3b8", marginTop: "0.3rem" }}>
+                    {changeRequestsStatusFilter !== "all"
+                      ? `There are no change requests with status '${changeRequestsStatusFilter}'.`
+                      : "When tutors request a session reschedule or cancellation, it will appear here for admin review."}
+                  </div>
+                </div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: "0.9rem" }}>
+                  {adminChangeRequests.map((req) => {
+                    const isReschedule = req.request_type === "reschedule";
+                    const isPending = req.status === "pending";
+                    const isApproved = req.status === "approved";
+                    const isRejected = req.status === "rejected";
+
+                    return (
+                      <div
+                        key={req.id}
+                        className="dash-card"
+                        style={{
+                          padding: "1.25rem 1.4rem",
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: "0.85rem",
+                          borderLeft: isPending ? "4px solid #f59e0b" : isApproved ? "4px solid #10b981" : "4px solid #ef4444",
+                        }}
+                      >
+                        {/* Header bar */}
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "0.5rem" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>
+                            <span
+                              style={{
+                                fontSize: "0.72rem",
+                                fontWeight: 800,
+                                padding: "0.2rem 0.6rem",
+                                borderRadius: "6px",
+                                background: isReschedule ? "#e0f2fe" : "#fee2e2",
+                                color: isReschedule ? "#0369a1" : "#991b1b",
+                                textTransform: "uppercase",
+                              }}
+                            >
+                              {isReschedule ? "Reschedule Request" : "Cancellation Request"}
+                            </span>
+                            <span style={{ fontSize: "0.78rem", color: "#64748b", fontWeight: 700 }}>
+                              Request #{req.id} • Session #{req.lesson_session_id}
+                            </span>
+                          </div>
+
+                          <div style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>
+                            <span
+                              style={{
+                                fontSize: "0.72rem",
+                                fontWeight: 800,
+                                padding: "0.2rem 0.6rem",
+                                borderRadius: "20px",
+                                background: isPending ? "#fef3c7" : isApproved ? "#d1fae5" : "#fee2e2",
+                                color: isPending ? "#b45309" : isApproved ? "#065f46" : "#991b1b",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "0.3rem",
+                              }}
+                            >
+                              {isPending && <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#b45309" }} />}
+                              {isPending ? "Awaiting Review" : req.status}
+                            </span>
+
+                            <span style={{ fontSize: "0.72rem", color: "#94a3b8" }}>
+                              {new Date(req.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Details grid */}
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: "0.9rem", background: "#f8fafc", padding: "0.9rem 1rem", borderRadius: "10px", border: "1px solid #f1f5f9" }}>
+                          {/* Student & Session */}
+                          <div>
+                            <div style={{ fontSize: "0.7rem", fontWeight: 700, color: "#64748b", textTransform: "uppercase" }}>Original Scheduled Session</div>
+                            <div style={{ fontWeight: 800, fontSize: "0.92rem", color: "#0f172a", marginTop: "0.15rem" }}>
+                              {req.session?.student?.student_name || "Student"} • {req.session?.subject || "Subject"}
+                            </div>
+                            <div style={{ fontSize: "0.76rem", color: "#475569", marginTop: "0.1rem" }}>
+                              📅 {req.session?.date} • 🕒 {req.session?.start_time?.slice(0, 5)} - {req.session?.end_time?.slice(0, 5)}
+                            </div>
+                            {req.session?.student?.parent_name && (
+                              <div style={{ fontSize: "0.74rem", color: "#64748b", marginTop: "0.2rem" }}>
+                                Parent: {req.session.student.parent_name} {req.session.student.phone ? `(${req.session.student.phone})` : ""}
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Tutor & Proposed Reschedule */}
+                          <div>
+                            <div style={{ fontSize: "0.7rem", fontWeight: 700, color: "#0d9488", textTransform: "uppercase" }}>
+                              Requested By Tutor
+                            </div>
+                            <div style={{ fontWeight: 800, fontSize: "0.92rem", color: "#0f172a", marginTop: "0.15rem" }}>
+                              {req.session?.tutor?.name || req.requester?.name || "Tutor"}
+                            </div>
+                            {req.session?.tutor?.email && (
+                              <div style={{ fontSize: "0.74rem", color: "#64748b" }}>
+                                {req.session.tutor.email} {req.session.tutor.phone ? `• ${req.session.tutor.phone}` : ""}
+                              </div>
+                            )}
+
+                            {isReschedule && (
+                              <div style={{ marginTop: "0.45rem", background: "#e0f2fe", border: "1px solid #bae6fd", borderRadius: "6px", padding: "0.45rem 0.65rem" }}>
+                                <div style={{ fontSize: "0.68rem", fontWeight: 800, color: "#0369a1", textTransform: "uppercase" }}>Proposed New Schedule</div>
+                                <div style={{ fontSize: "0.82rem", fontWeight: 800, color: "#0284c7", marginTop: "0.1rem" }}>
+                                  📅 {req.proposed_date} • 🕒 {req.proposed_start_time?.slice(0, 5)} {req.proposed_end_time ? `- ${req.proposed_end_time.slice(0, 5)}` : ""}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Reason */}
+                        <div style={{ fontSize: "0.82rem", color: "#334155" }}>
+                          <strong style={{ color: "#0f172a" }}>Tutor Reason: </strong>
+                          <span style={{ fontStyle: "italic", color: "#475569" }}>"{req.reason}"</span>
+                        </div>
+
+                        {/* Admin Feedback note if present */}
+                        {req.admin_notes && (
+                          <div style={{ background: isApproved ? "#f0fdf9" : "#fef2f2", border: isApproved ? "1px solid #99f6e4" : "1px solid #fecaca", borderRadius: "8px", padding: "0.55rem 0.8rem", fontSize: "0.78rem", color: isApproved ? "#065f46" : "#991b1b" }}>
+                            <strong>Admin Note: </strong> {req.admin_notes}
+                            {req.responder?.name && <span style={{ color: "#64748b", marginLeft: "0.35rem" }}>— by {req.responder.name}</span>}
+                          </div>
+                        )}
+
+                        {/* Review Actions */}
+                        {isPending && (
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: "0.6rem", borderTop: "1px solid #f1f5f9", paddingTop: "0.75rem" }}>
+                            <button
+                              onClick={() => openReviewModal(req, "approve")}
+                              style={{
+                                padding: "0.42rem 1rem",
+                                borderRadius: "8px",
+                                background: "linear-gradient(135deg,#10b981,#059669)",
+                                color: "#fff",
+                                border: "none",
+                                fontWeight: 700,
+                                fontSize: "0.8rem",
+                                cursor: "pointer",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "0.35rem",
+                              }}
+                            >
+                              <CheckCircle2 size={14} /> Approve Request
+                            </button>
+
+                            <button
+                              onClick={() => openReviewModal(req, "reject")}
+                              style={{
+                                padding: "0.42rem 0.9rem",
+                                borderRadius: "8px",
+                                background: "#fff",
+                                color: "#dc2626",
+                                border: "1px solid #fecaca",
+                                fontWeight: 700,
+                                fontSize: "0.8rem",
+                                cursor: "pointer",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "0.35rem",
+                              }}
+                            >
+                              <XCircle size={14} /> Decline
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Pagination */}
+              {changeRequestsLastPage > 1 && (
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0.75rem 0" }}>
+                  <div style={{ fontSize: "0.78rem", color: "#64748b" }}>
+                    Showing page <strong>{changeRequestsPage}</strong> of <strong>{changeRequestsLastPage}</strong> ({changeRequestsTotal} requests)
+                  </div>
+                  <div style={{ display: "flex", gap: "0.4rem" }}>
+                    <button
+                      disabled={changeRequestsPage <= 1}
+                      onClick={() => fetchAdminChangeRequests(changeRequestsPage - 1, changeRequestsStatusFilter)}
+                      style={{ padding: "0.35rem 0.75rem", borderRadius: "6px", border: "1px solid #cbd5e1", background: "#fff", fontSize: "0.76rem", cursor: changeRequestsPage <= 1 ? "not-allowed" : "pointer" }}
+                    >
+                      Previous
+                    </button>
+                    <button
+                      disabled={changeRequestsPage >= changeRequestsLastPage}
+                      onClick={() => fetchAdminChangeRequests(changeRequestsPage + 1, changeRequestsStatusFilter)}
+                      style={{ padding: "0.35rem 0.75rem", borderRadius: "6px", border: "1px solid #cbd5e1", background: "#fff", fontSize: "0.76rem", cursor: changeRequestsPage >= changeRequestsLastPage ? "not-allowed" : "pointer" }}
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -3968,15 +4595,37 @@ export default function AdminDashboard() {
                   </>
                 )}
                 {selectedTutor.tutor_profile?.approval_status === "approved" && (
-                  <button
-                    onClick={() => {
-                      removeTutor(String(selectedTutor.id));
-                      setIsDetailOpen(false);
-                    }}
-                    style={{ padding: "0.55rem 0.9rem", background: "#fee2e2", color: "#991b1b", border: "1px solid #fca5a5", borderRadius: "8px", fontWeight: 700, fontSize: "0.82rem", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "0.35rem" }}
-                  >
-                    <Trash2 size={14} /> Remove from Roster
-                  </button>
+                  <>
+                    <button
+                      onClick={() => {
+                        openTutorPayoutModal(selectedTutor);
+                      }}
+                      style={{
+                        padding: "0.55rem 0.95rem",
+                        background: "#ecfdf5",
+                        color: "#047857",
+                        border: "1px solid #a7f3d0",
+                        borderRadius: "8px",
+                        fontWeight: 700,
+                        fontSize: "0.82rem",
+                        cursor: "pointer",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "0.35rem",
+                      }}
+                    >
+                      <DollarSign size={14} /> Rate &amp; Payouts
+                    </button>
+                    <button
+                      onClick={() => {
+                        removeTutor(String(selectedTutor.id));
+                        setIsDetailOpen(false);
+                      }}
+                      style={{ padding: "0.55rem 0.9rem", background: "#fee2e2", color: "#991b1b", border: "1px solid #fca5a5", borderRadius: "8px", fontWeight: 700, fontSize: "0.82rem", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "0.35rem" }}
+                    >
+                      <Trash2 size={14} /> Remove from Roster
+                    </button>
+                  </>
                 )}
               </div>
 
@@ -5604,6 +6253,637 @@ export default function AdminDashboard() {
                 style={{ padding: "0.5rem 1.25rem", background: "#0f172a", color: "#fff", border: "none", borderRadius: "8px", fontSize: "0.8rem", fontWeight: 700, cursor: "pointer" }}
               >
                 Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Review Session Change Request Modal (PATCH /api/admin/change-requests/{id}) ── */}
+      {reviewingRequest && (
+        <div
+          onClick={() => setReviewingRequest(null)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15,23,42,0.65)",
+            backdropFilter: "blur(4px)",
+            zIndex: 1050,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "1rem",
+            animation: "fadeUp 0.2s ease",
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: "#fff",
+              borderRadius: "16px",
+              width: "100%",
+              maxWidth: "520px",
+              overflow: "hidden",
+              boxShadow: "0 25px 60px rgba(0,0,0,0.3)",
+              display: "flex",
+              flexDirection: "column",
+            }}
+          >
+            {/* Header */}
+            <div
+              style={{
+                background: reviewAction === "approve" ? "linear-gradient(135deg,#0d9488,#059669)" : "linear-gradient(135deg,#e11d48,#be123c)",
+                padding: "1.25rem 1.5rem",
+                color: "#fff",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "0.55rem" }}>
+                {reviewAction === "approve" ? <CheckCircle2 size={22} /> : <XCircle size={22} />}
+                <div>
+                  <h3 style={{ margin: 0, fontSize: "1.05rem", fontWeight: 800 }}>
+                    {reviewAction === "approve" ? "Approve Session Change Request" : "Decline Session Change Request"}
+                  </h3>
+                  <div style={{ fontSize: "0.74rem", color: "rgba(255,255,255,0.85)", marginTop: "0.15rem" }}>
+                    Request #{reviewingRequest.id} • Session #{reviewingRequest.lesson_session_id}
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={() => setReviewingRequest(null)}
+                style={{ background: "rgba(255,255,255,0.2)", border: "none", color: "#fff", width: "28px", height: "28px", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}
+              >
+                <X size={15} />
+              </button>
+            </div>
+
+            {/* Form */}
+            <form onSubmit={submitReviewChangeRequest} style={{ padding: "1.25rem 1.5rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
+              {/* Context card */}
+              <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "10px", padding: "0.85rem 1rem", display: "flex", flexDirection: "column", gap: "0.45rem", fontSize: "0.8rem" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ fontWeight: 700, color: "#0f172a" }}>
+                    {reviewingRequest.session?.student?.student_name || "Student"} • {reviewingRequest.session?.subject || "Subject"}
+                  </span>
+                  <span style={{
+                    fontSize: "0.68rem",
+                    fontWeight: 800,
+                    padding: "0.15rem 0.5rem",
+                    borderRadius: "12px",
+                    background: reviewingRequest.request_type === "reschedule" ? "#e0f2fe" : "#fee2e2",
+                    color: reviewingRequest.request_type === "reschedule" ? "#0284c7" : "#b91c1c",
+                    textTransform: "capitalize",
+                  }}>
+                    {reviewingRequest.request_type}
+                  </span>
+                </div>
+
+                <div style={{ fontSize: "0.74rem", color: "#64748b" }}>
+                  <strong>Original:</strong> 📅 {reviewingRequest.session?.date} • 🕒 {reviewingRequest.session?.start_time?.slice(0, 5)} - {reviewingRequest.session?.end_time?.slice(0, 5)}
+                </div>
+
+                {reviewingRequest.request_type === "reschedule" && reviewingRequest.proposed_date && (
+                  <div style={{ fontSize: "0.75rem", color: "#0369a1", background: "#e0f2fe", padding: "0.35rem 0.6rem", borderRadius: "6px", fontWeight: 700 }}>
+                    <strong>Proposed:</strong> 📅 {reviewingRequest.proposed_date} • 🕒 {reviewingRequest.proposed_start_time?.slice(0, 5)} {reviewingRequest.proposed_end_time ? `- ${reviewingRequest.proposed_end_time.slice(0, 5)}` : ""}
+                  </div>
+                )}
+
+                <div style={{ fontSize: "0.76rem", color: "#475569" }}>
+                  <strong>Tutor Reason:</strong> <span style={{ fontStyle: "italic" }}>"{reviewingRequest.reason}"</span>
+                </div>
+              </div>
+
+              {/* Action Toggle */}
+              <div>
+                <label style={{ fontSize: "0.74rem", fontWeight: 700, color: "#334155", display: "block", marginBottom: "0.35rem", textTransform: "uppercase" }}>
+                  Decision Action
+                </label>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem" }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setReviewAction("approve");
+                      if (!reviewNotes || reviewNotes === "Unable to accommodate this request.") {
+                        setReviewNotes("Rescheduled as requested.");
+                      }
+                    }}
+                    style={{
+                      padding: "0.55rem 0.75rem",
+                      borderRadius: "8px",
+                      border: "1.5px solid",
+                      borderColor: reviewAction === "approve" ? "#0d9488" : "#e2e8f0",
+                      background: reviewAction === "approve" ? "#f0fdf9" : "#fff",
+                      color: reviewAction === "approve" ? "#0f766e" : "#64748b",
+                      fontWeight: 700,
+                      fontSize: "0.8rem",
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: "0.35rem",
+                    }}
+                  >
+                    <CheckCircle2 size={15} /> Approve
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setReviewAction("reject");
+                      if (!reviewNotes || reviewNotes === "Rescheduled as requested.") {
+                        setReviewNotes("Unable to accommodate this request.");
+                      }
+                    }}
+                    style={{
+                      padding: "0.55rem 0.75rem",
+                      borderRadius: "8px",
+                      border: "1.5px solid",
+                      borderColor: reviewAction === "reject" ? "#e11d48" : "#e2e8f0",
+                      background: reviewAction === "reject" ? "#fff1f2" : "#fff",
+                      color: reviewAction === "reject" ? "#be123c" : "#64748b",
+                      fontWeight: 700,
+                      fontSize: "0.8rem",
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: "0.35rem",
+                    }}
+                  >
+                    <XCircle size={15} /> Decline
+                  </button>
+                </div>
+              </div>
+
+              {/* Admin Notes */}
+              <div>
+                <label style={{ fontSize: "0.74rem", fontWeight: 700, color: "#334155", display: "block", marginBottom: "0.35rem", textTransform: "uppercase" }}>
+                  Admin Notes / Feedback to Tutor &amp; Student
+                </label>
+                <textarea
+                  value={reviewNotes}
+                  onChange={(e) => setReviewNotes(e.target.value)}
+                  placeholder="e.g. Rescheduled as requested / Calendar updated"
+                  rows={3}
+                  style={{
+                    width: "100%",
+                    padding: "0.6rem 0.75rem",
+                    borderRadius: "8px",
+                    border: "1.5px solid #cbd5e1",
+                    fontSize: "0.82rem",
+                    fontFamily: "inherit",
+                    resize: "none",
+                    outline: "none",
+                  }}
+                />
+              </div>
+
+              {/* Actions */}
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.6rem", marginTop: "0.5rem" }}>
+                <button
+                  type="button"
+                  onClick={() => setReviewingRequest(null)}
+                  style={{
+                    padding: "0.55rem 1rem",
+                    borderRadius: "8px",
+                    border: "1px solid #cbd5e1",
+                    background: "#fff",
+                    color: "#475569",
+                    fontSize: "0.82rem",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingReview}
+                  style={{
+                    padding: "0.55rem 1.25rem",
+                    borderRadius: "8px",
+                    border: "none",
+                    background: reviewAction === "approve" ? "linear-gradient(135deg,#0d9488,#059669)" : "linear-gradient(135deg,#e11d48,#be123c)",
+                    color: "#fff",
+                    fontSize: "0.82rem",
+                    fontWeight: 700,
+                    cursor: isSubmittingReview ? "not-allowed" : "pointer",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "0.4rem",
+                    boxShadow: "0 2px 6px rgba(0,0,0,0.15)",
+                  }}
+                >
+                  {isSubmittingReview ? (
+                    <>
+                      <RefreshCw size={13} className="spin" /> Processing…
+                    </>
+                  ) : reviewAction === "approve" ? (
+                    <>
+                      <CheckCircle2 size={14} /> Approve Request
+                    </>
+                  ) : (
+                    <>
+                      <XCircle size={14} /> Decline Request
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── Tutor Hourly Rate & Monthly Payouts Modal (PATCH /api/admin/tutors/{tutorId}/rate & GET /api/admin/tutors/{tutorId}/payouts) ── */}
+      {payoutTutor && (
+        <div
+          onClick={() => setPayoutTutor(null)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15,23,42,0.65)",
+            backdropFilter: "blur(4px)",
+            zIndex: 1050,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "1rem",
+            animation: "fadeUp 0.2s ease",
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: "#fff",
+              borderRadius: "16px",
+              width: "100%",
+              maxWidth: "760px",
+              maxHeight: "90vh",
+              overflow: "hidden",
+              boxShadow: "0 25px 60px rgba(0,0,0,0.3)",
+              display: "flex",
+              flexDirection: "column",
+            }}
+          >
+            {/* Header */}
+            <div
+              style={{
+                background: "linear-gradient(135deg,#0d9488,#0f766e)",
+                padding: "1.25rem 1.5rem",
+                color: "#fff",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+              }}
+            >
+              <div>
+                <div style={{ fontSize: "0.72rem", textTransform: "uppercase", letterSpacing: "0.05em", color: "#99f6e4", fontWeight: 700, display: "flex", alignItems: "center", gap: "0.3rem" }}>
+                  <DollarSign size={13} /> Tutor Compensation &amp; Payouts
+                </div>
+                <h3 style={{ margin: "0.2rem 0 0", fontSize: "1.1rem", fontWeight: 800 }}>
+                  {payoutTutor.name} (Tutor #{payoutTutor.id})
+                </h3>
+              </div>
+              <button
+                onClick={() => setPayoutTutor(null)}
+                style={{ background: "rgba(255,255,255,0.2)", border: "none", color: "#fff", width: "30px", height: "30px", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Scrollable Body */}
+            <div style={{ padding: "1.25rem 1.5rem", overflowY: "auto", display: "flex", flexDirection: "column", gap: "1.25rem", flex: 1 }}>
+              {/* 1. Hourly Rate Update Form */}
+              <div style={{ background: "#f8fafc", border: "1.5px solid #e2e8f0", borderRadius: "10px", padding: "1rem" }}>
+                <form onSubmit={saveTutorHourlyRate} style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", flexWrap: "wrap", gap: "0.75rem" }}>
+                  <div style={{ flex: 1, minWidth: "220px" }}>
+                    <label style={{ fontSize: "0.74rem", fontWeight: 700, color: "#334155", display: "block", marginBottom: "0.35rem", textTransform: "uppercase" }}>
+                      Tutor Hourly Rate (₦ / hr)
+                    </label>
+                    <div style={{ position: "relative" }}>
+                      <span style={{ position: "absolute", left: "0.75rem", top: "50%", transform: "translateY(-50%)", color: "#0d9488", fontWeight: 800, fontSize: "0.95rem" }}>
+                        ₦
+                      </span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="100"
+                        value={editingHourlyRate}
+                        onChange={(e) => setEditingHourlyRate(e.target.value)}
+                        placeholder="e.g. 5000"
+                        style={{
+                          width: "100%",
+                          padding: "0.5rem 0.75rem 0.5rem 2rem",
+                          borderRadius: "8px",
+                          border: "1.5px solid #cbd5e1",
+                          fontSize: "0.95rem",
+                          fontWeight: 700,
+                          color: "#0f172a",
+                          outline: "none",
+                        }}
+                      />
+                    </div>
+                    <div style={{ fontSize: "0.7rem", color: "#64748b", marginTop: "0.25rem" }}>
+                      Used automatically to calculate monthly tutor earnings from completed sessions.
+                    </div>
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={isSavingHourlyRate}
+                    style={{
+                      padding: "0.55rem 1.1rem",
+                      borderRadius: "8px",
+                      border: "none",
+                      background: "linear-gradient(135deg,#20b2a4,#0d9488)",
+                      color: "#fff",
+                      fontSize: "0.82rem",
+                      fontWeight: 700,
+                      cursor: isSavingHourlyRate ? "not-allowed" : "pointer",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "0.35rem",
+                    }}
+                  >
+                    {isSavingHourlyRate ? (
+                      <>
+                        <RefreshCw size={13} className="spin" /> Updating…
+                      </>
+                    ) : (
+                      <>
+                        <Check size={14} /> Update Rate
+                      </>
+                    )}
+                  </button>
+                </form>
+              </div>
+
+              {/* 2. Month Selector & Summary Metrics */}
+              <div>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.75rem", flexWrap: "wrap", gap: "0.5rem" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.45rem" }}>
+                    <span style={{ fontSize: "0.78rem", fontWeight: 700, color: "#334155" }}>Payout Month:</span>
+                    <input
+                      type="month"
+                      value={payoutMonth}
+                      onChange={(e) => {
+                        const m = e.target.value;
+                        setPayoutMonth(m);
+                        if (payoutTutor) fetchTutorPayouts(payoutTutor.id, m);
+                      }}
+                      style={{
+                        padding: "0.35rem 0.65rem",
+                        borderRadius: "6px",
+                        border: "1.5px solid #cbd5e1",
+                        fontSize: "0.8rem",
+                        fontWeight: 700,
+                        color: "#0f172a",
+                        cursor: "pointer",
+                      }}
+                    />
+                  </div>
+                  <button
+                    onClick={() => payoutTutor && fetchTutorPayouts(payoutTutor.id, payoutMonth)}
+                    disabled={loadingPayoutData}
+                    style={{
+                      background: "#f1f5f9",
+                      border: "1px solid #e2e8f0",
+                      borderRadius: "6px",
+                      padding: "0.35rem 0.65rem",
+                      fontSize: "0.75rem",
+                      fontWeight: 600,
+                      color: "#475569",
+                      cursor: loadingPayoutData ? "not-allowed" : "pointer",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "0.35rem",
+                    }}
+                  >
+                    <RefreshCw size={12} className={loadingPayoutData ? "spin" : ""} /> Refresh
+                  </button>
+                </div>
+
+                {/* Stat cards */}
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: "0.65rem" }}>
+                  <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "8px", padding: "0.75rem" }}>
+                    <div style={{ fontSize: "0.66rem", color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>Total Sessions</div>
+                    <div style={{ fontSize: "1.25rem", fontWeight: 800, color: "#0f172a", marginTop: "0.15rem" }}>
+                      {payoutData?.summary?.total_sessions ?? 0}
+                    </div>
+                  </div>
+                  <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "8px", padding: "0.75rem" }}>
+                    <div style={{ fontSize: "0.66rem", color: "#166534", fontWeight: 700, textTransform: "uppercase" }}>Completed</div>
+                    <div style={{ fontSize: "1.25rem", fontWeight: 800, color: "#15803d", marginTop: "0.15rem" }}>
+                      {payoutData?.summary?.completed_sessions ?? 0}
+                    </div>
+                  </div>
+                  <div style={{ background: "#f0f9ff", border: "1px solid #bae6fd", borderRadius: "8px", padding: "0.75rem" }}>
+                    <div style={{ fontSize: "0.66rem", color: "#0369a1", fontWeight: 700, textTransform: "uppercase" }}>Total Hours</div>
+                    <div style={{ fontSize: "1.25rem", fontWeight: 800, color: "#0284c7", marginTop: "0.15rem" }}>
+                      {payoutData?.summary?.total_hours ?? 0} hrs
+                    </div>
+                  </div>
+                  <div style={{ background: "#ecfdf5", border: "1.5px solid #6ee7b7", borderRadius: "8px", padding: "0.75rem" }}>
+                    <div style={{ fontSize: "0.66rem", color: "#047857", fontWeight: 800, textTransform: "uppercase" }}>Total Earnings</div>
+                    <div style={{ fontSize: "1.25rem", fontWeight: 800, color: "#065f46", marginTop: "0.15rem" }}>
+                      ₦{Number(payoutData?.summary?.total_earnings ?? 0).toLocaleString()}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* 3. Itemized Sessions Breakdown */}
+              <div>
+                <div style={{ fontSize: "0.76rem", fontWeight: 700, color: "#334155", textTransform: "uppercase", marginBottom: "0.5rem" }}>
+                  Itemized Session Breakdown ({payoutData?.sessions?.length ?? 0} sessions)
+                </div>
+
+                {loadingPayoutData ? (
+                  <div style={{ padding: "2.5rem 1rem", textAlign: "center", background: "#f8fafc", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
+                    <div style={{ width: "26px", height: "26px", border: "3px solid #20b2a4", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.7s linear infinite", margin: "0 auto 0.5rem" }} />
+                    <div style={{ fontSize: "0.8rem", color: "#64748b" }}>Loading payout breakdown…</div>
+                  </div>
+                ) : !payoutData?.sessions || payoutData.sessions.length === 0 ? (
+                  <div style={{ padding: "2rem 1rem", textAlign: "center", background: "#f8fafc", borderRadius: "8px", border: "1px solid #e2e8f0", fontSize: "0.82rem", color: "#64748b" }}>
+                    No sessions recorded for {payoutMonth}.
+                  </div>
+                ) : (
+                  <div style={{ border: "1px solid #e2e8f0", borderRadius: "8px", overflow: "hidden" }}>
+                    <div style={{ overflowX: "auto" }}>
+                      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.78rem" }}>
+                        <thead>
+                          <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
+                            {["Date & Time", "Duration", "Student & Subject", "Status", "Attendance", "Report", "Earnings"].map((h) => (
+                              <th key={h} style={{ padding: "0.55rem 0.75rem", textAlign: "left", fontSize: "0.68rem", fontWeight: 700, color: "#64748b", textTransform: "uppercase" }}>
+                                {h}
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {payoutData.sessions.map((sess, idx) => (
+                            <tr key={sess.session_id || idx} style={{ borderBottom: idx < payoutData.sessions.length - 1 ? "1px solid #f1f5f9" : "none" }}>
+                              <td style={{ padding: "0.6rem 0.75rem" }}>
+                                <div style={{ fontWeight: 700, color: "#0f172a" }}>{sess.date}</div>
+                                <div style={{ fontSize: "0.7rem", color: "#64748b" }}>{sess.start_time?.slice(0, 5)} - {sess.end_time?.slice(0, 5)}</div>
+                              </td>
+                              <td style={{ padding: "0.6rem 0.75rem", fontWeight: 600, color: "#334155" }}>
+                                {sess.duration_hours} hr{Number(sess.duration_hours) === 1 ? "" : "s"}
+                              </td>
+                              <td style={{ padding: "0.6rem 0.75rem" }}>
+                                <div style={{ fontWeight: 700, color: "#0f172a" }}>{sess.student_name}</div>
+                                <div style={{ fontSize: "0.7rem", color: "#0d9488" }}>{sess.subject}</div>
+                              </td>
+                              <td style={{ padding: "0.6rem 0.75rem" }}>
+                                <span style={{
+                                  fontSize: "0.66rem",
+                                  fontWeight: 700,
+                                  padding: "0.12rem 0.45rem",
+                                  borderRadius: "10px",
+                                  background: sess.status === "completed" ? "#dcfce7" : "#f1f5f9",
+                                  color: sess.status === "completed" ? "#15803d" : "#475569",
+                                  textTransform: "capitalize",
+                                }}>
+                                  {sess.status}
+                                </span>
+                              </td>
+                              <td style={{ padding: "0.6rem 0.75rem" }}>
+                                <span style={{
+                                  fontSize: "0.66rem",
+                                  fontWeight: 700,
+                                  color: sess.attendance_status === "present" ? "#15803d" : "#b45309",
+                                  textTransform: "capitalize",
+                                }}>
+                                  {sess.attendance_status || "—"}
+                                </span>
+                              </td>
+                              <td style={{ padding: "0.6rem 0.75rem" }}>
+                                {sess.report_submitted ? (
+                                  <span style={{ color: "#059669", fontWeight: 700, fontSize: "0.72rem" }}>✓ Submitted</span>
+                                ) : (
+                                  <span style={{ color: "#94a3b8", fontSize: "0.72rem" }}>Pending</span>
+                                )}
+                              </td>
+                              <td style={{ padding: "0.6rem 0.75rem", fontWeight: 800, color: sess.earnings > 0 ? "#059669" : "#64748b" }}>
+                                ₦{Number(sess.earnings || 0).toLocaleString()}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div style={{ padding: "0.85rem 1.5rem", borderTop: "1px solid #e2e8f0", background: "#f8fafc", display: "flex", justifyContent: "flex-end" }}>
+              <button
+                onClick={() => setPayoutTutor(null)}
+                style={{ padding: "0.5rem 1.25rem", background: "#0f172a", color: "#fff", border: "none", borderRadius: "8px", fontSize: "0.8rem", fontWeight: 700, cursor: "pointer" }}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Sign Out Confirmation Dialog ── */}
+      {showLogoutConfirm && (
+        <div
+          onClick={() => setShowLogoutConfirm(false)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15,23,42,0.65)",
+            backdropFilter: "blur(4px)",
+            zIndex: 1100,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "1rem",
+            animation: "fadeUp 0.15s ease",
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: "#fff",
+              borderRadius: "16px",
+              width: "100%",
+              maxWidth: "420px",
+              padding: "1.75rem 1.5rem",
+              boxShadow: "0 25px 60px rgba(0,0,0,0.3)",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              textAlign: "center",
+            }}
+          >
+            <div
+              style={{
+                width: "56px",
+                height: "56px",
+                borderRadius: "50%",
+                background: "#fee2e2",
+                color: "#dc2626",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                marginBottom: "1rem",
+              }}
+            >
+              <LogOut size={26} />
+            </div>
+
+            <h3 style={{ fontSize: "1.15rem", fontWeight: 800, color: "#0f172a", margin: "0 0 0.4rem" }}>
+              Confirm Sign Out
+            </h3>
+            <p style={{ fontSize: "0.85rem", color: "#64748b", margin: "0 0 1.5rem", lineHeight: 1.5 }}>
+              Are you sure you want to sign out of the Admin Portal? You will need your credentials to log back in.
+            </p>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem", width: "100%" }}>
+              <button
+                type="button"
+                onClick={() => setShowLogoutConfirm(false)}
+                style={{
+                  padding: "0.6rem 1rem",
+                  borderRadius: "8px",
+                  border: "1.5px solid #cbd5e1",
+                  background: "#fff",
+                  color: "#475569",
+                  fontSize: "0.85rem",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleLogout}
+                style={{
+                  padding: "0.6rem 1rem",
+                  borderRadius: "8px",
+                  border: "none",
+                  background: "#dc2626",
+                  color: "#fff",
+                  fontSize: "0.85rem",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: "0.4rem",
+                  boxShadow: "0 2px 6px rgba(220,38,38,0.3)",
+                }}
+              >
+                <LogOut size={15} /> Yes, Sign Out
               </button>
             </div>
           </div>

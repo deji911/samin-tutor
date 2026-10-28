@@ -817,24 +817,44 @@ export default function Home() {
               </button>
             )}
             {!isAdminLoggedIn && (
-              <a
-                href="/student/dashboard"
-                style={{
-                  background: "rgba(255,255,255,0.12)",
-                  color: "#fff",
-                  border: "1px solid rgba(255,255,255,0.25)",
-                  borderRadius: "4px",
-                  padding: "0.22rem 0.65rem",
-                  fontSize: "0.78rem",
-                  fontWeight: 600,
-                  textDecoration: "none",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: "0.3rem",
-                }}
-              >
-                Student Portal
-              </a>
+              <>
+                <a
+                  href="/student/dashboard"
+                  style={{
+                    background: "rgba(255,255,255,0.12)",
+                    color: "#fff",
+                    border: "1px solid rgba(255,255,255,0.25)",
+                    borderRadius: "4px",
+                    padding: "0.22rem 0.65rem",
+                    fontSize: "0.78rem",
+                    fontWeight: 600,
+                    textDecoration: "none",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "0.3rem",
+                  }}
+                >
+                  Student Portal
+                </a>
+                <a
+                  href="/tutor/dashboard"
+                  style={{
+                    background: "rgba(255,255,255,0.12)",
+                    color: "#fff",
+                    border: "1px solid rgba(255,255,255,0.25)",
+                    borderRadius: "4px",
+                    padding: "0.22rem 0.65rem",
+                    fontSize: "0.78rem",
+                    fontWeight: 600,
+                    textDecoration: "none",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "0.3rem",
+                  }}
+                >
+                  Tutor Portal
+                </a>
+              </>
             )}
             <a href="https://wa.me/2347059655382?text=Hello%20Samin%20Home%20Tutors!%20%F0%9F%8E%93%0A%0AI%20found%20your%20website%20and%20I%E2%80%99m%20interested%20in%20booking%20a%20FREE%20trial%20lesson.%0A%0APlease%20could%20you%20help%20me%20with%20more%20information%20about%3A%0A%E2%80%A2%20Available%20tutors%0A%E2%80%A2%20Subjects%20%26%20levels%20covered%0A%E2%80%A2%20Pricing%20%26%20scheduling%0A%0AThank%20you!" target="_blank" rel="noopener noreferrer">💬 WhatsApp Us</a>
           </div>

@@ -36,7 +36,12 @@ import {
   Send,
   MessageSquare,
   Key,
+  RotateCcw,
+  CalendarClock,
+  DollarSign,
+  CreditCard,
 } from "lucide-react";
+import NotificationEnvelope from "@/components/NotificationEnvelope";
 
 /* ─── Types based on API responses ────────────────────────── */
 type TutorProfile = {
@@ -150,7 +155,61 @@ type LessonReport = {
   };
 };
 
-type NavTab = "overview" | "schedule" | "students" | "sessions" | "reports" | "profile";
+type ChangeRequest = {
+  id: number;
+  lesson_session_id: number;
+  requested_by?: number;
+  request_type: "reschedule" | "cancel" | string;
+  proposed_date?: string;
+  proposed_start_time?: string;
+  proposed_end_time?: string;
+  reason: string;
+  status: "pending" | "approved" | "rejected" | string;
+  admin_notes?: string;
+  created_at?: string;
+  updated_at?: string;
+  session?: {
+    id: number;
+    subject?: string;
+    date?: string;
+    start_time?: string;
+    end_time?: string;
+    student?: {
+      id?: number;
+      student_name?: string;
+      parent_name?: string;
+    };
+  };
+};
+
+type TutorPayoutSession = {
+  session_id: number;
+  date: string;
+  start_time: string;
+  end_time: string;
+  duration_hours: number;
+  subject: string;
+  student_name: string;
+  status: string;
+  attendance_status: string;
+  report_submitted: boolean;
+  earnings: number;
+};
+
+type TutorPayoutResponse = {
+  month: string;
+  hourly_rate: number;
+  summary: {
+    total_scheduled?: number;
+    total_sessions?: number;
+    completed_sessions: number;
+    total_hours: number;
+    total_earnings: number;
+  };
+  sessions: TutorPayoutSession[];
+};
+
+type NavTab = "overview" | "schedule" | "students" | "sessions" | "reports" | "requests" | "payouts" | "profile";
 
 const statusStyle: Record<string, { bg: string; color: string; border: string; label: string }> = {
   scheduled: { bg: "#eff6ff", color: "#1d4ed8", border: "#bfdbfe", label: "Scheduled" },
@@ -158,6 +217,9 @@ const statusStyle: Record<string, { bg: string; color: string; border: string; l
   cancelled: { bg: "#fef2f2", color: "#991b1b", border: "#fecaca", label: "Cancelled" },
   rescheduled: { bg: "#fffbeb", color: "#b45309", border: "#fde68a", label: "Rescheduled" },
   active: { bg: "#ecfdf5", color: "#065f46", border: "#a7f3d0", label: "Active" },
+  pending: { bg: "#fffbeb", color: "#b45309", border: "#fde68a", label: "Pending" },
+  approved: { bg: "#ecfdf5", color: "#065f46", border: "#a7f3d0", label: "Approved" },
+  rejected: { bg: "#fef2f2", color: "#991b1b", border: "#fecaca", label: "Rejected" },
 };
 
 export default function TutorDashboard() {
@@ -236,6 +298,29 @@ export default function TutorDashboard() {
   const [tutorReports, setTutorReports] = useState<LessonReport[]>([]);
   const [loadingTutorReports, setLoadingTutorReports] = useState(false);
   const [reportSearchQuery, setReportSearchQuery] = useState("");
+
+  // Change Requests State (GET /api/tutor/change-requests & POST /api/tutor/sessions/{sessionId}/request-change)
+  const [changeRequests, setChangeRequests] = useState<ChangeRequest[]>([]);
+  const [loadingChangeRequests, setLoadingChangeRequests] = useState(false);
+  const [changeRequestFilter, setChangeRequestFilter] = useState<"all" | "pending" | "approved" | "rejected">("all");
+  const [changeRequestModalSession, setChangeRequestModalSession] = useState<UpcomingSession | null>(null);
+  const [changeRequestForm, setChangeRequestForm] = useState({
+    request_type: "reschedule" as "reschedule" | "cancel",
+    reason: "",
+    proposed_date: "",
+    proposed_start_time: "10:00",
+    proposed_end_time: "11:00",
+  });
+  const [isSubmittingChangeRequest, setIsSubmittingChangeRequest] = useState(false);
+  const [changeRequestError, setChangeRequestError] = useState<string | null>(null);
+
+  // Payouts State (GET /api/tutor/payouts?month=YYYY-MM)
+  const [payoutMonth, setPayoutMonth] = useState<string>(new Date().toISOString().slice(0, 7));
+  const [payoutData, setPayoutData] = useState<TutorPayoutResponse | null>(null);
+  const [loadingPayoutData, setLoadingPayoutData] = useState(false);
+
+  // Logout confirmation modal
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
   const getBackendApiUrl = () => {
     if (process.env.NEXT_PUBLIC_API_URL) {
@@ -415,6 +500,138 @@ export default function TutorDashboard() {
       console.error("Error gathering tutor reports:", err);
     } finally {
       setLoadingTutorReports(false);
+    }
+  };
+
+  /* ── Fetch Tutor Change Requests: GET /api/tutor/change-requests ── */
+  const fetchChangeRequests = async () => {
+    const token = typeof window !== "undefined" ? localStorage.getItem("samin_auth_token") : null;
+    if (!token) return;
+
+    setLoadingChangeRequests(true);
+    try {
+      const baseUrl = getBackendApiUrl();
+      const res = await fetch(`${baseUrl}/api/tutor/change-requests`, {
+        headers: getAuthHeaders(),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const list =
+          data.change_requests?.data ||
+          data.change_requests ||
+          data.data ||
+          (Array.isArray(data) ? data : []);
+        setChangeRequests(Array.isArray(list) ? list : []);
+      }
+    } catch (err) {
+      console.error("Error fetching change requests:", err);
+    } finally {
+      setLoadingChangeRequests(false);
+    }
+  };
+
+  /* ── Open Change Request Modal for an Upcoming Session ── */
+  const openChangeRequestModal = (session: UpcomingSession) => {
+    setChangeRequestModalSession(session);
+    setChangeRequestError(null);
+    setChangeRequestForm({
+      request_type: "reschedule",
+      reason: "",
+      proposed_date: session.date || "",
+      proposed_start_time: session.start_time ? session.start_time.slice(0, 5) : "10:00",
+      proposed_end_time: session.end_time ? session.end_time.slice(0, 5) : "11:00",
+    });
+  };
+
+  /* ── Submit Change Request: POST /api/tutor/sessions/{sessionId}/request-change ── */
+  const handleSubmitChangeRequest = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!changeRequestModalSession) return;
+    setChangeRequestError(null);
+
+    if (!changeRequestForm.reason.trim()) {
+      setChangeRequestError("Please specify a reason for this reschedule/cancellation request.");
+      return;
+    }
+
+    if (changeRequestForm.request_type === "reschedule") {
+      if (!changeRequestForm.proposed_date) {
+        setChangeRequestError("Please select a proposed new date.");
+        return;
+      }
+      if (!changeRequestForm.proposed_start_time) {
+        setChangeRequestError("Please select a proposed start time.");
+        return;
+      }
+    }
+
+    setIsSubmittingChangeRequest(true);
+    try {
+      const baseUrl = getBackendApiUrl();
+      const payload: any = {
+        request_type: changeRequestForm.request_type,
+        reason: changeRequestForm.reason.trim(),
+      };
+
+      if (changeRequestForm.request_type === "reschedule") {
+        payload.proposed_date = changeRequestForm.proposed_date;
+        payload.proposed_start_time = changeRequestForm.proposed_start_time;
+        if (changeRequestForm.proposed_end_time) {
+          payload.proposed_end_time = changeRequestForm.proposed_end_time;
+        }
+      }
+
+      const res = await fetch(`${baseUrl}/api/tutor/sessions/${changeRequestModalSession.id}/request-change`, {
+        method: "POST",
+        headers: getAuthHeaders(),
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        throw new Error(data?.message || `Failed to submit request (HTTP ${res.status})`);
+      }
+
+      showToast(data?.message || "✅ Session change request submitted successfully and is awaiting admin review.");
+      setChangeRequestModalSession(null);
+      fetchChangeRequests();
+      fetchDashboardData();
+      fetchSessions(sessionPage);
+    } catch (err: any) {
+      console.error("Change request error:", err);
+      setChangeRequestError(err.message || "Failed to submit change request.");
+    } finally {
+      setIsSubmittingChangeRequest(false);
+    }
+  };
+
+  const getSessionPendingRequest = (sessionId: number) => {
+    return changeRequests.find((cr) => cr.lesson_session_id === sessionId && cr.status === "pending");
+  };
+
+  /* ── Fetch Tutor Payouts: GET /api/tutor/payouts?month=YYYY-MM ── */
+  const fetchTutorPayouts = async (month: string) => {
+    const token = typeof window !== "undefined" ? localStorage.getItem("samin_auth_token") : null;
+    if (!token) return;
+
+    setLoadingPayoutData(true);
+    try {
+      const baseUrl = getBackendApiUrl();
+      const res = await fetch(`${baseUrl}/api/tutor/payouts?month=${month}`, {
+        headers: getAuthHeaders(),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setPayoutData(data);
+      } else {
+        setPayoutData(null);
+      }
+    } catch (err) {
+      console.error("Failed to fetch tutor payouts:", err);
+      setPayoutData(null);
+    } finally {
+      setLoadingPayoutData(false);
     }
   };
 
@@ -648,7 +865,7 @@ export default function TutorDashboard() {
         } catch {}
       }
 
-      Promise.all([fetchDashboardData(), fetchStudents(), fetchSessions(1)]).finally(() => {
+      Promise.all([fetchDashboardData(), fetchStudents(), fetchSessions(1), fetchChangeRequests()]).finally(() => {
         setInitialLoading(false);
       });
     } else {
@@ -846,12 +1063,15 @@ export default function TutorDashboard() {
   }
 
   /* ── Nav items for Tutor Portal (ONLY tutor features, NO admin features) ── */
+  const pendingRequestsCount = changeRequests.filter((r) => r.status === "pending").length;
   const navTabs: { tab: NavTab; icon: React.ReactNode; label: string; badge?: number }[] = [
     { tab: "overview", icon: <LayoutDashboard size={18} />, label: "Overview" },
     { tab: "schedule", icon: <Calendar size={18} />, label: "My Schedule", badge: stats.upcoming_sessions_count || undefined },
     { tab: "students", icon: <Users size={18} />, label: "My Students", badge: stats.total_students || undefined },
     { tab: "sessions", icon: <CalendarDays size={18} />, label: "All Sessions" },
     { tab: "reports", icon: <FileText size={18} />, label: "Lesson Reports" },
+    { tab: "requests", icon: <RotateCcw size={18} />, label: "Change Requests", badge: pendingRequestsCount || undefined },
+    { tab: "payouts", icon: <CreditCard size={18} />, label: "Payouts & Earnings" },
     { tab: "profile", icon: <Award size={18} />, label: "My Profile" },
   ];
 
@@ -930,6 +1150,8 @@ export default function TutorDashboard() {
                 setSidebarOpen(false);
                 if (tab === "sessions") fetchSessions(1);
                 if (tab === "students") fetchStudents();
+                if (tab === "requests") fetchChangeRequests();
+                if (tab === "payouts") fetchTutorPayouts(payoutMonth);
               }}
               className={`nav-btn${activeTab === tab ? " active" : ""}`}
               style={{ color: activeTab === tab ? "#0d9488" : "#4b5563" }}
@@ -948,17 +1170,58 @@ export default function TutorDashboard() {
         {/* Bottom Profile card & Sign out */}
         <div style={{ borderTop: "1px solid #f1f5f9", paddingTop: "0.85rem", display: "flex", flexDirection: "column", gap: "0.35rem" }}>
           {tutorProfile && (
-            <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "8px", padding: "0.65rem 0.75rem", marginBottom: "0.25rem" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "0.55rem" }}>
-                <div style={{ width: "28px", height: "28px", borderRadius: "50%", background: "linear-gradient(135deg,#20b2a4,#0d9488)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: "0.8rem", flexShrink: 0 }}>
+            <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "10px", padding: "0.75rem", marginBottom: "0.25rem" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.65rem" }}>
+                {/* Avatar with Verified Badge Overlay */}
+                <div style={{ position: "relative", width: "34px", height: "34px", borderRadius: "50%", background: "linear-gradient(135deg,#20b2a4,#0d9488)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: "0.85rem", flexShrink: 0, boxShadow: "0 2px 6px rgba(13,148,136,0.25)" }}>
                   {tutorProfile.name?.charAt(0) || "T"}
+                  {tutorProfile.approval_status === "approved" && (
+                    <div
+                      style={{
+                        position: "absolute",
+                        bottom: "-2px",
+                        right: "-2px",
+                        background: "#10b981",
+                        borderRadius: "50%",
+                        width: "14px",
+                        height: "14px",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        border: "2px solid #fff",
+                        color: "#fff",
+                        boxShadow: "0 1px 3px rgba(0,0,0,0.15)",
+                      }}
+                      title="Verified & Approved Tutor"
+                    >
+                      <Check size={9} strokeWidth={3} />
+                    </div>
+                  )}
                 </div>
+
                 <div style={{ minWidth: 0, flex: 1 }}>
-                  <div style={{ fontSize: "0.78rem", fontWeight: 700, color: "#0f172a", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  <div style={{ fontSize: "0.82rem", fontWeight: 700, color: "#0f172a", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                     {tutorProfile.name}
                   </div>
-                  <div style={{ fontSize: "0.68rem", color: "#10b981", fontWeight: 600 }}>
-                    {tutorProfile.qualification || "Verified Tutor"}
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.3rem", marginTop: "0.1rem" }}>
+                    <span
+                      style={{
+                        fontSize: "0.68rem",
+                        fontWeight: 700,
+                        color: tutorProfile.approval_status === "approved" ? "#059669" : "#b45309",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "0.2rem",
+                      }}
+                    >
+                      {tutorProfile.approval_status === "approved" ? (
+                        <>
+                          <CheckCircle2 size={11} color="#059669" /> Verified Tutor
+                        </>
+                      ) : (
+                        "Pending Approval"
+                      )}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -971,7 +1234,7 @@ export default function TutorDashboard() {
             <BookOpen size={15} /> Public Website
           </Link>
           <button
-            onClick={handleLogout}
+            onClick={() => setShowLogoutConfirm(true)}
             style={{ display: "flex", alignItems: "center", gap: "0.6rem", width: "100%", padding: "0.6rem 0.85rem", borderRadius: "8px", border: "none", background: "none", color: "#ef4444", fontSize: "0.82rem", fontWeight: 600, cursor: "pointer", textAlign: "left" }}
           >
             <LogOut size={15} /> Sign Out
@@ -994,6 +1257,8 @@ export default function TutorDashboard() {
                 {activeTab === "students" && "My Assigned Students"}
                 {activeTab === "sessions" && "Lesson Sessions"}
                 {activeTab === "reports" && "Lesson Reports & Feedback"}
+                {activeTab === "requests" && "Session Change Requests"}
+                {activeTab === "payouts" && "Payouts & Earnings"}
                 {activeTab === "profile" && "Tutor Profile"}
               </h1>
               <p style={{ fontSize: "0.72rem", color: "#94a3b8", margin: 0 }}>
@@ -1008,6 +1273,7 @@ export default function TutorDashboard() {
                 fetchDashboardData();
                 fetchStudents();
                 fetchSessions(sessionPage);
+                fetchChangeRequests();
               }}
               title="Sync latest sessions and timetable from server"
               style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem", padding: "0.4rem 0.75rem", borderRadius: "8px", border: "1px solid #e2e8f0", background: "#fff", color: "#475569", fontSize: "0.76rem", fontWeight: 600, cursor: "pointer" }}
@@ -1016,21 +1282,26 @@ export default function TutorDashboard() {
               <span>Refresh</span>
             </button>
 
-            <div style={{ display: "flex", alignItems: "center", gap: "0.45rem", background: "#f0fdf9", border: "1px solid #99f6e4", borderRadius: "8px", padding: "0.4rem 0.75rem" }}>
-              <ShieldCheck size={14} color="#0d9488" />
-              <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "#0d9488" }}>
-                {tutorProfile?.name || "Tutor"} ({tutorProfile?.approval_status || "Approved"})
-              </span>
-            </div>
-
-            <button
-              onClick={handleLogout}
-              style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem", padding: "0.4rem 0.75rem", borderRadius: "8px", border: "1px solid #fee2e2", background: "#fef2f2", color: "#dc2626", fontSize: "0.76rem", fontWeight: 700, cursor: "pointer" }}
-              title="Sign Out"
-            >
-              <LogOut size={13} />
-              <span>Sign Out</span>
-            </button>
+            {/* Notifications Envelope */}
+            <NotificationEnvelope
+              onActionClick={(actionUrl) => {
+                if (actionUrl.includes("payout")) {
+                  setActiveTab("payouts");
+                  fetchTutorPayouts(payoutMonth);
+                } else if (actionUrl.includes("session")) {
+                  setActiveTab("sessions");
+                  fetchSessions(1);
+                } else if (actionUrl.includes("schedule") || actionUrl.includes("timetable")) {
+                  setActiveTab("schedule");
+                } else if (actionUrl.includes("student")) {
+                  setActiveTab("students");
+                  fetchStudents();
+                } else if (actionUrl.includes("report")) {
+                  setActiveTab("reports");
+                  fetchTutorReports();
+                }
+              }}
+            />
           </div>
         </header>
 
@@ -1248,6 +1519,35 @@ export default function TutorDashboard() {
                               >
                                 <Edit3 size={13} /> Edit
                               </button>
+
+                              {getSessionPendingRequest(session.id) ? (
+                                <span
+                                  style={{
+                                    fontSize: "0.72rem",
+                                    fontWeight: 700,
+                                    padding: "0.25rem 0.6rem",
+                                    borderRadius: "20px",
+                                    background: "#fffbeb",
+                                    color: "#b45309",
+                                    border: "1px solid #fde68a",
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: "0.3rem",
+                                  }}
+                                  title="Change request submitted and awaiting admin approval"
+                                >
+                                  <RotateCcw size={11} /> Change Pending
+                                </span>
+                              ) : session.status === "scheduled" ? (
+                                <button
+                                  onClick={() => openChangeRequestModal(session)}
+                                  className="action-btn"
+                                  style={{ background: "#fff", color: "#d97706", border: "1px solid #fde68a", padding: "0.35rem 0.7rem", fontSize: "0.76rem" }}
+                                  title="Request reschedule or cancellation for this session"
+                                >
+                                  <RotateCcw size={12} /> Reschedule
+                                </button>
+                              ) : null}
 
                               {session.status === "scheduled" && (
                                 <button
@@ -1502,6 +1802,35 @@ export default function TutorDashboard() {
                               >
                                 <Edit3 size={13} /> Notes
                               </button>
+
+                              {getSessionPendingRequest(session.id) ? (
+                                <span
+                                  style={{
+                                    fontSize: "0.72rem",
+                                    fontWeight: 700,
+                                    padding: "0.25rem 0.6rem",
+                                    borderRadius: "20px",
+                                    background: "#fffbeb",
+                                    color: "#b45309",
+                                    border: "1px solid #fde68a",
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: "0.3rem",
+                                  }}
+                                  title="Change request submitted and awaiting admin approval"
+                                >
+                                  <RotateCcw size={11} /> Change Pending
+                                </span>
+                              ) : session.status === "scheduled" ? (
+                                <button
+                                  onClick={() => openChangeRequestModal(session)}
+                                  className="action-btn"
+                                  style={{ background: "#fff", color: "#d97706", border: "1px solid #fde68a" }}
+                                  title="Request reschedule or cancellation for this session"
+                                >
+                                  <RotateCcw size={12} /> Reschedule
+                                </button>
+                              ) : null}
 
                               {session.status === "scheduled" && (
                                 <button
@@ -1862,6 +2191,34 @@ export default function TutorDashboard() {
                                     >
                                       <Edit3 size={13} /> Notes
                                     </button>
+                                    {getSessionPendingRequest(sess.id) ? (
+                                      <span
+                                        style={{
+                                          fontSize: "0.72rem",
+                                          fontWeight: 700,
+                                          padding: "0.2rem 0.5rem",
+                                          borderRadius: "16px",
+                                          background: "#fffbeb",
+                                          color: "#b45309",
+                                          border: "1px solid #fde68a",
+                                          display: "inline-flex",
+                                          alignItems: "center",
+                                          gap: "0.25rem",
+                                        }}
+                                        title="Change request awaiting admin review"
+                                      >
+                                        <RotateCcw size={10} /> Pending
+                                      </span>
+                                    ) : sess.status === "scheduled" ? (
+                                      <button
+                                        onClick={() => openChangeRequestModal(sess)}
+                                        className="action-btn"
+                                        style={{ background: "#fff", color: "#d97706", border: "1px solid #fde68a", padding: "0.3rem 0.65rem", fontSize: "0.75rem" }}
+                                        title="Request to reschedule or cancel this session"
+                                      >
+                                        <RotateCcw size={12} /> Reschedule
+                                      </button>
+                                    ) : null}
                                     {sess.status === "scheduled" && (
                                       <button
                                         onClick={() => quickMarkCompleted(sess)}
@@ -2056,6 +2413,446 @@ export default function TutorDashboard() {
                         ))}
                     </div>
                   )}
+                </div>
+              )}
+
+              {/* ══════════════ CHANGE REQUESTS TAB ══════════════ */}
+              {activeTab === "requests" && (
+                <div style={{ display: "flex", flexDirection: "column", gap: "1.35rem" }} className="page-enter">
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "0.8rem" }}>
+                    <div>
+                      <h2 style={{ fontSize: "1.15rem", fontWeight: 800, color: "#0f172a", margin: 0 }}>
+                        Session Change Requests
+                      </h2>
+                      <p style={{ fontSize: "0.78rem", color: "#64748b", margin: "0.15rem 0 0" }}>
+                        Track your reschedule and cancellation requests submitted for admin review
+                      </p>
+                    </div>
+
+                    <button
+                      onClick={fetchChangeRequests}
+                      disabled={loadingChangeRequests}
+                      style={{
+                        padding: "0.45rem 0.85rem",
+                        borderRadius: "8px",
+                        background: "#fff",
+                        border: "1px solid #cbd5e1",
+                        fontSize: "0.8rem",
+                        fontWeight: 600,
+                        color: "#475569",
+                        cursor: loadingChangeRequests ? "not-allowed" : "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "0.35rem",
+                      }}
+                    >
+                      <RefreshCw size={13} style={{ animation: loadingChangeRequests ? "spin 0.8s linear infinite" : "none" }} />
+                      <span>Refresh</span>
+                    </button>
+                  </div>
+
+                  {/* Summary Metric Cards */}
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "0.85rem" }}>
+                    <div className="dash-card" style={{ padding: "1rem 1.2rem", borderLeft: "4px solid #0d9488" }}>
+                      <div style={{ fontSize: "0.72rem", fontWeight: 700, color: "#64748b", textTransform: "uppercase" }}>Total Requests</div>
+                      <div style={{ fontSize: "1.5rem", fontWeight: 800, color: "#0f172a", marginTop: "0.2rem" }}>
+                        {changeRequests.length}
+                      </div>
+                    </div>
+
+                    <div className="dash-card" style={{ padding: "1rem 1.2rem", borderLeft: "4px solid #f59e0b", background: "#fffdfa" }}>
+                      <div style={{ fontSize: "0.72rem", fontWeight: 700, color: "#b45309", textTransform: "uppercase" }}>Awaiting Review</div>
+                      <div style={{ fontSize: "1.5rem", fontWeight: 800, color: "#b45309", marginTop: "0.2rem" }}>
+                        {changeRequests.filter((r) => r.status === "pending").length}
+                      </div>
+                    </div>
+
+                    <div className="dash-card" style={{ padding: "1rem 1.2rem", borderLeft: "4px solid #10b981", background: "#fafffd" }}>
+                      <div style={{ fontSize: "0.72rem", fontWeight: 700, color: "#047857", textTransform: "uppercase" }}>Approved</div>
+                      <div style={{ fontSize: "1.5rem", fontWeight: 800, color: "#047857", marginTop: "0.2rem" }}>
+                        {changeRequests.filter((r) => r.status === "approved").length}
+                      </div>
+                    </div>
+
+                    <div className="dash-card" style={{ padding: "1rem 1.2rem", borderLeft: "4px solid #ef4444", background: "#fffafa" }}>
+                      <div style={{ fontSize: "0.72rem", fontWeight: 700, color: "#b91c1c", textTransform: "uppercase" }}>Declined</div>
+                      <div style={{ fontSize: "1.5rem", fontWeight: 800, color: "#b91c1c", marginTop: "0.2rem" }}>
+                        {changeRequests.filter((r) => r.status === "rejected").length}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Filter tabs */}
+                  <div style={{ display: "flex", gap: "0.45rem", flexWrap: "wrap", alignItems: "center" }}>
+                    {(["all", "pending", "approved", "rejected"] as const).map((st) => {
+                      const count = st === "all" ? changeRequests.length : changeRequests.filter((r) => r.status === st).length;
+                      const isActive = changeRequestFilter === st;
+                      return (
+                        <button
+                          key={st}
+                          onClick={() => setChangeRequestFilter(st)}
+                          style={{
+                            padding: "0.4rem 0.85rem",
+                            borderRadius: "20px",
+                            border: isActive ? "1.5px solid #20b2a4" : "1px solid #e2e8f0",
+                            background: isActive ? "#e8f8f7" : "#fff",
+                            color: isActive ? "#0d9488" : "#475569",
+                            fontSize: "0.78rem",
+                            fontWeight: 700,
+                            cursor: "pointer",
+                            textTransform: "capitalize",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "0.35rem",
+                          }}
+                        >
+                          <span>{st}</span>
+                          <span style={{ fontSize: "0.7rem", opacity: 0.85 }}>({count})</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Requests List */}
+                  {loadingChangeRequests ? (
+                    <div className="dash-card" style={{ padding: "3rem", textAlign: "center", color: "#64748b" }}>
+                      <div style={{ width: "28px", height: "28px", border: "2.5px solid #20b2a4", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.7s linear infinite", margin: "0 auto 0.6rem" }} />
+                      <span style={{ fontSize: "0.82rem" }}>Loading change requests…</span>
+                    </div>
+                  ) : changeRequests.filter((r) => changeRequestFilter === "all" || r.status === changeRequestFilter).length === 0 ? (
+                    <div className="dash-card" style={{ padding: "3.5rem 1.5rem", textAlign: "center", color: "#94a3b8" }}>
+                      <RotateCcw size={38} color="#cbd5e1" style={{ margin: "0 auto 0.8rem" }} />
+                      <div style={{ fontSize: "0.95rem", fontWeight: 700, color: "#475569" }}>No change requests found</div>
+                      <div style={{ fontSize: "0.8rem", color: "#94a3b8", marginTop: "0.3rem", maxWidth: "420px", margin: "0.3rem auto 0" }}>
+                        {changeRequestFilter !== "all"
+                          ? `There are no change requests with '${changeRequestFilter}' status.`
+                          : "You haven't submitted any reschedule or cancellation requests yet. You can request changes directly from your 'My Schedule' or 'All Sessions' tabs."}
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ display: "flex", flexDirection: "column", gap: "0.9rem" }}>
+                      {changeRequests
+                        .filter((r) => changeRequestFilter === "all" || r.status === changeRequestFilter)
+                        .map((req) => {
+                          const isReschedule = req.request_type === "reschedule";
+                          const isPending = req.status === "pending";
+                          const isApproved = req.status === "approved";
+                          const isRejected = req.status === "rejected";
+
+                          return (
+                            <div
+                              key={req.id}
+                              className="dash-card"
+                              style={{
+                                padding: "1.25rem 1.4rem",
+                                display: "flex",
+                                flexDirection: "column",
+                                gap: "0.85rem",
+                                borderLeft: isPending ? "4px solid #f59e0b" : isApproved ? "4px solid #10b981" : "4px solid #ef4444",
+                              }}
+                            >
+                              {/* Header row */}
+                              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "0.5rem" }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>
+                                  <span
+                                    style={{
+                                      fontSize: "0.74rem",
+                                      fontWeight: 800,
+                                      padding: "0.2rem 0.6rem",
+                                      borderRadius: "6px",
+                                      background: isReschedule ? "#e0f2fe" : "#fee2e2",
+                                      color: isReschedule ? "#0369a1" : "#991b1b",
+                                      textTransform: "uppercase",
+                                      letterSpacing: "0.03em",
+                                    }}
+                                  >
+                                    {isReschedule ? "Reschedule Request" : "Cancellation Request"}
+                                  </span>
+
+                                  <span style={{ fontSize: "0.78rem", color: "#64748b", fontWeight: 600 }}>
+                                    Request #{req.id} • Session #{req.lesson_session_id}
+                                  </span>
+                                </div>
+
+                                <div style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>
+                                  <span
+                                    style={{
+                                      fontSize: "0.72rem",
+                                      fontWeight: 800,
+                                      padding: "0.22rem 0.65rem",
+                                      borderRadius: "20px",
+                                      ...statusStyle[req.status],
+                                      display: "inline-flex",
+                                      alignItems: "center",
+                                      gap: "0.3rem",
+                                    }}
+                                  >
+                                    {isPending && <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#b45309" }} />}
+                                    {isApproved && "✓ "}
+                                    {isRejected && "✕ "}
+                                    {isPending ? "Awaiting Admin Review" : req.status}
+                                  </span>
+
+                                  {req.created_at && (
+                                    <span style={{ fontSize: "0.72rem", color: "#94a3b8" }}>
+                                      {new Date(req.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Lesson and Proposed Details */}
+                              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: "0.85rem", background: "#f8fafc", padding: "0.85rem 1rem", borderRadius: "10px", border: "1px solid #f1f5f9" }}>
+                                <div>
+                                  <div style={{ fontSize: "0.7rem", fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.03em" }}>Original Lesson Session</div>
+                                  <div style={{ fontWeight: 800, fontSize: "0.92rem", color: "#0f172a", marginTop: "0.15rem" }}>
+                                    {req.session?.student?.student_name || "Student"} • {req.session?.subject || "Subject"}
+                                  </div>
+                                  <div style={{ fontSize: "0.76rem", color: "#475569", marginTop: "0.1rem" }}>
+                                    📅 {req.session?.date ? new Date(req.session.date).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" }) : "Scheduled Session"} • 🕒 {req.session?.start_time?.slice(0, 5)} - {req.session?.end_time?.slice(0, 5)}
+                                  </div>
+                                </div>
+
+                                {isReschedule && (
+                                  <div>
+                                    <div style={{ fontSize: "0.7rem", fontWeight: 700, color: "#0369a1", textTransform: "uppercase", letterSpacing: "0.03em" }}>Proposed New Schedule</div>
+                                    <div style={{ fontWeight: 800, fontSize: "0.92rem", color: "#0369a1", marginTop: "0.15rem" }}>
+                                      📅 {req.proposed_date ? new Date(req.proposed_date).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", year: "numeric" }) : "—"}
+                                    </div>
+                                    <div style={{ fontSize: "0.76rem", color: "#0284c7", fontWeight: 700, marginTop: "0.1rem" }}>
+                                      🕒 {req.proposed_start_time?.slice(0, 5)} {req.proposed_end_time ? `- ${req.proposed_end_time.slice(0, 5)}` : ""}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Reason provided by tutor */}
+                              <div style={{ fontSize: "0.82rem", color: "#334155" }}>
+                                <strong style={{ color: "#0f172a" }}>Reason: </strong>
+                                <span style={{ fontStyle: "italic", color: "#475569" }}>"{req.reason}"</span>
+                              </div>
+
+                              {/* Admin notes if provided */}
+                              {req.admin_notes && (
+                                <div style={{ background: isApproved ? "#f0fdf9" : "#fef2f2", border: isApproved ? "1px solid #99f6e4" : "1px solid #fecaca", borderRadius: "8px", padding: "0.6rem 0.85rem", fontSize: "0.78rem", color: isApproved ? "#065f46" : "#991b1b" }}>
+                                  <strong>Admin Feedback: </strong> {req.admin_notes}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ══════════════ PAYOUTS TAB (GET /api/tutor/payouts) ══════════════ */}
+              {activeTab === "payouts" && (
+                <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }} className="page-enter">
+                  {/* Header */}
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "0.75rem" }}>
+                    <div>
+                      <h2 style={{ fontSize: "1.1rem", fontWeight: 800, color: "#0f172a", margin: 0, display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                        <CreditCard size={20} color="#0d9488" />
+                        Monthly Payouts & Earnings Breakdown
+                      </h2>
+                      <p style={{ fontSize: "0.78rem", color: "#64748b", margin: "0.15rem 0 0" }}>
+                        Your completed session earnings based on your set hourly rate
+                      </p>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>
+                      <span style={{ fontSize: "0.78rem", fontWeight: 700, color: "#334155" }}>Month:</span>
+                      <input
+                        type="month"
+                        value={payoutMonth}
+                        onChange={(e) => {
+                          const m = e.target.value;
+                          setPayoutMonth(m);
+                          fetchTutorPayouts(m);
+                        }}
+                        style={{
+                          padding: "0.4rem 0.65rem",
+                          borderRadius: "8px",
+                          border: "1.5px solid #cbd5e1",
+                          fontSize: "0.82rem",
+                          fontWeight: 700,
+                          color: "#0f172a",
+                          cursor: "pointer",
+                          outline: "none",
+                        }}
+                      />
+                      <button
+                        onClick={() => fetchTutorPayouts(payoutMonth)}
+                        disabled={loadingPayoutData}
+                        style={{
+                          background: "#f1f5f9",
+                          border: "1px solid #e2e8f0",
+                          borderRadius: "6px",
+                          padding: "0.4rem 0.7rem",
+                          fontSize: "0.76rem",
+                          fontWeight: 600,
+                          color: "#475569",
+                          cursor: loadingPayoutData ? "not-allowed" : "pointer",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "0.35rem",
+                        }}
+                      >
+                        <RefreshCw size={13} className={loadingPayoutData ? "spin" : ""} /> Refresh
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Summary Stat Cards */}
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: "1rem" }}>
+                    <div className="dash-card" style={{ padding: "1.1rem 1.25rem", borderLeft: "4px solid #94a3b8" }}>
+                      <div style={{ fontSize: "0.68rem", fontWeight: 700, color: "#64748b", textTransform: "uppercase" }}>Hourly Rate</div>
+                      <div style={{ fontSize: "1.55rem", fontWeight: 800, color: "#0f172a", marginTop: "0.2rem" }}>
+                        {payoutData?.hourly_rate ? `₦${Number(payoutData.hourly_rate).toLocaleString()}` : "—"}
+                      </div>
+                      <div style={{ fontSize: "0.7rem", color: "#94a3b8", marginTop: "0.25rem" }}>per hour</div>
+                    </div>
+                    <div className="dash-card" style={{ padding: "1.1rem 1.25rem", borderLeft: "4px solid #0284c7" }}>
+                      <div style={{ fontSize: "0.68rem", fontWeight: 700, color: "#64748b", textTransform: "uppercase" }}>Total Hours</div>
+                      <div style={{ fontSize: "1.55rem", fontWeight: 800, color: "#0284c7", marginTop: "0.2rem" }}>
+                        {payoutData?.summary?.total_hours ?? 0}
+                      </div>
+                      <div style={{ fontSize: "0.7rem", color: "#94a3b8", marginTop: "0.25rem" }}>completed this month</div>
+                    </div>
+                    <div className="dash-card" style={{ padding: "1.1rem 1.25rem", borderLeft: "4px solid #10b981" }}>
+                      <div style={{ fontSize: "0.68rem", fontWeight: 700, color: "#64748b", textTransform: "uppercase" }}>Completed Sessions</div>
+                      <div style={{ fontSize: "1.55rem", fontWeight: 800, color: "#059669", marginTop: "0.2rem" }}>
+                        {payoutData?.summary?.completed_sessions ?? 0}
+                      </div>
+                      <div style={{ fontSize: "0.7rem", color: "#94a3b8", marginTop: "0.25rem" }}>
+                        of {payoutData?.summary?.total_sessions ?? payoutData?.summary?.total_scheduled ?? 0} scheduled
+                      </div>
+                    </div>
+                    <div className="dash-card" style={{ padding: "1.1rem 1.25rem", borderLeft: "4px solid #20b2a4", background: "linear-gradient(135deg,#f0fdf9,#fff)" }}>
+                      <div style={{ fontSize: "0.68rem", fontWeight: 700, color: "#0d9488", textTransform: "uppercase" }}>Total Earnings</div>
+                      <div style={{ fontSize: "1.55rem", fontWeight: 800, color: "#065f46", marginTop: "0.2rem" }}>
+                        ₦{Number(payoutData?.summary?.total_earnings ?? 0).toLocaleString()}
+                      </div>
+                      <div style={{ fontSize: "0.7rem", color: "#64748b", marginTop: "0.25rem" }}>for {payoutMonth}</div>
+                    </div>
+                  </div>
+
+                  {/* Itemised Sessions Table */}
+                  <div className="dash-card" style={{ overflow: "hidden" }}>
+                    <div style={{ padding: "1rem 1.25rem", borderBottom: "1px solid #f1f5f9", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                      <h3 style={{ margin: 0, fontSize: "0.9rem", fontWeight: 800, color: "#0f172a", display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                        <DollarSign size={16} color="#0d9488" />
+                        Itemised Session Breakdown
+                        <span style={{ fontSize: "0.72rem", background: "#f0fdf9", color: "#0d9488", border: "1px solid #99f6e4", padding: "0.1rem 0.45rem", borderRadius: "10px", fontWeight: 700 }}>
+                          {payoutData?.sessions?.length ?? 0} sessions
+                        </span>
+                      </h3>
+                    </div>
+
+                    {loadingPayoutData ? (
+                      <div style={{ padding: "3rem", textAlign: "center", color: "#64748b" }}>
+                        <div style={{ width: "28px", height: "28px", border: "2.5px solid #20b2a4", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.7s linear infinite", margin: "0 auto 0.6rem" }} />
+                        <span style={{ fontSize: "0.82rem" }}>Loading payout breakdown for {payoutMonth}…</span>
+                      </div>
+                    ) : !payoutData?.sessions || payoutData.sessions.length === 0 ? (
+                      <div style={{ padding: "3.5rem 1.5rem", textAlign: "center" }}>
+                        <CreditCard size={38} color="#cbd5e1" style={{ margin: "0 auto 0.75rem", display: "block" }} />
+                        <div style={{ fontSize: "0.95rem", fontWeight: 700, color: "#475569" }}>No sessions recorded for {payoutMonth}</div>
+                        <div style={{ fontSize: "0.8rem", color: "#94a3b8", marginTop: "0.3rem" }}>
+                          Payouts are calculated from completed sessions with submitted attendance reports.
+                        </div>
+                      </div>
+                    ) : (
+                      <div style={{ overflowX: "auto" }}>
+                        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.8rem" }}>
+                          <thead>
+                            <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
+                              {["Date & Time", "Duration", "Student & Subject", "Status", "Attendance", "Report", "Earnings"].map((h) => (
+                                <th key={h} style={{ padding: "0.65rem 1rem", textAlign: "left", fontSize: "0.68rem", fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.04em", whiteSpace: "nowrap" }}>
+                                  {h}
+                                </th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {payoutData.sessions.map((sess, idx) => (
+                              <tr
+                                key={sess.session_id || idx}
+                                style={{ borderBottom: idx < payoutData.sessions.length - 1 ? "1px solid #f1f5f9" : "none" }}
+                              >
+                                <td style={{ padding: "0.75rem 1rem" }}>
+                                  <div style={{ fontWeight: 700, color: "#0f172a" }}>{sess.date}</div>
+                                  <div style={{ fontSize: "0.7rem", color: "#64748b", marginTop: "0.1rem" }}>
+                                    {sess.start_time?.slice(0, 5)} – {sess.end_time?.slice(0, 5)}
+                                  </div>
+                                </td>
+                                <td style={{ padding: "0.75rem 1rem", fontWeight: 700, color: "#334155" }}>
+                                  {sess.duration_hours} hr{Number(sess.duration_hours) !== 1 ? "s" : ""}
+                                </td>
+                                <td style={{ padding: "0.75rem 1rem" }}>
+                                  <div style={{ fontWeight: 700, color: "#0f172a" }}>{sess.student_name}</div>
+                                  <div style={{ fontSize: "0.7rem", color: "#0d9488", marginTop: "0.1rem" }}>{sess.subject}</div>
+                                </td>
+                                <td style={{ padding: "0.75rem 1rem" }}>
+                                  <span style={{
+                                    fontSize: "0.68rem",
+                                    fontWeight: 700,
+                                    padding: "0.15rem 0.5rem",
+                                    borderRadius: "10px",
+                                    background: sess.status === "completed" ? "#dcfce7" : "#f1f5f9",
+                                    color: sess.status === "completed" ? "#15803d" : "#475569",
+                                    textTransform: "capitalize",
+                                  }}>
+                                    {sess.status}
+                                  </span>
+                                </td>
+                                <td style={{ padding: "0.75rem 1rem" }}>
+                                  <span style={{
+                                    fontSize: "0.72rem",
+                                    fontWeight: 700,
+                                    color: sess.attendance_status === "present" ? "#059669" : sess.attendance_status === "absent" ? "#dc2626" : "#b45309",
+                                    textTransform: "capitalize",
+                                  }}>
+                                    {sess.attendance_status || "—"}
+                                  </span>
+                                </td>
+                                <td style={{ padding: "0.75rem 1rem" }}>
+                                  {sess.report_submitted ? (
+                                    <span style={{ color: "#059669", fontWeight: 700, fontSize: "0.74rem", display: "flex", alignItems: "center", gap: "0.25rem" }}>
+                                      <CheckCircle2 size={13} /> Submitted
+                                    </span>
+                                  ) : (
+                                    <span style={{ color: "#94a3b8", fontSize: "0.74rem" }}>Pending</span>
+                                  )}
+                                </td>
+                                <td style={{ padding: "0.75rem 1rem", fontWeight: 800, color: sess.earnings > 0 ? "#059669" : "#64748b", fontSize: "0.88rem" }}>
+                                  ₦{Number(sess.earnings || 0).toLocaleString()}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                          {/* Totals row */}
+                          <tfoot>
+                            <tr style={{ background: "#f0fdf9", borderTop: "2px solid #a7f3d0" }}>
+                              <td colSpan={1} style={{ padding: "0.75rem 1rem", fontWeight: 800, color: "#0f172a", fontSize: "0.82rem" }}>
+                                Month Total
+                              </td>
+                              <td style={{ padding: "0.75rem 1rem", fontWeight: 800, color: "#0284c7" }}>
+                                {payoutData.summary.total_hours} hrs
+                              </td>
+                              <td colSpan={3} style={{ padding: "0.75rem 1rem", fontSize: "0.74rem", color: "#64748b" }}>
+                                {payoutData.summary.completed_sessions} completed sessions
+                              </td>
+                              <td style={{ padding: "0.75rem 1rem" }} />
+                              <td style={{ padding: "0.75rem 1rem", fontWeight: 800, color: "#065f46", fontSize: "0.95rem" }}>
+                                ₦{Number(payoutData.summary.total_earnings).toLocaleString()}
+                              </td>
+                            </tr>
+                          </tfoot>
+                        </table>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
 
@@ -2682,6 +3479,326 @@ export default function TutorDashboard() {
                 style={{ padding: "0.5rem 1.25rem", borderRadius: "8px", background: "#0f172a", border: "none", color: "#fff", fontWeight: 700, fontSize: "0.82rem", cursor: "pointer" }}
               >
                 Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Request Session Change Modal (POST /api/tutor/sessions/{sessionId}/request-change) ── */}
+      {changeRequestModalSession && (
+        <div
+          onClick={() => !isSubmittingChangeRequest && setChangeRequestModalSession(null)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15,23,42,0.65)",
+            backdropFilter: "blur(4px)",
+            zIndex: 1000,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "1rem",
+            animation: "fadeUp 0.2s ease",
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: "#fff",
+              borderRadius: "16px",
+              width: "100%",
+              maxWidth: "540px",
+              maxHeight: "92vh",
+              overflow: "hidden",
+              boxShadow: "0 25px 60px rgba(0,0,0,0.3)",
+              display: "flex",
+              flexDirection: "column",
+            }}
+          >
+            {/* Header */}
+            <div style={{ background: "linear-gradient(135deg,#0d9488,#0f766e)", padding: "1.2rem 1.5rem", color: "#fff", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div>
+                <div style={{ fontSize: "0.72rem", textTransform: "uppercase", letterSpacing: "0.05em", color: "#ccfbf1", fontWeight: 700 }}>
+                  Session Change Request
+                </div>
+                <h3 style={{ margin: "0.2rem 0 0", fontSize: "1.1rem", fontWeight: 800 }}>
+                  {changeRequestModalSession.student?.student_name || "Student"} • {changeRequestModalSession.subject}
+                </h3>
+                <div style={{ fontSize: "0.74rem", color: "#e0f2fe", marginTop: "0.15rem" }}>
+                  Current: 📅 {changeRequestModalSession.date} • 🕒 {changeRequestModalSession.start_time?.slice(0, 5)} - {changeRequestModalSession.end_time?.slice(0, 5)}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => !isSubmittingChangeRequest && setChangeRequestModalSession(null)}
+                style={{ background: "rgba(255,255,255,0.2)", border: "none", color: "#fff", width: "30px", height: "30px", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Form */}
+            <form onSubmit={handleSubmitChangeRequest} style={{ display: "flex", flexDirection: "column", flex: 1, overflow: "hidden" }}>
+              <div style={{ padding: "1.25rem 1.5rem", overflowY: "auto", display: "flex", flexDirection: "column", gap: "1rem", flex: 1 }}>
+                {changeRequestError && (
+                  <div style={{ background: "#fee2e2", border: "1px solid #fecaca", color: "#dc2626", borderRadius: "8px", padding: "0.75rem", fontSize: "0.82rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                    <AlertCircle size={16} /> {changeRequestError}
+                  </div>
+                )}
+
+                {/* Request Type Selector (Segmented) */}
+                <div>
+                  <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 700, color: "#374151", marginBottom: "0.35rem" }}>
+                    Request Type <span style={{ color: "#ef4444" }}>*</span>
+                  </label>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.6rem" }}>
+                    <button
+                      type="button"
+                      onClick={() => setChangeRequestForm({ ...changeRequestForm, request_type: "reschedule" })}
+                      style={{
+                        padding: "0.65rem 0.85rem",
+                        borderRadius: "8px",
+                        border: changeRequestForm.request_type === "reschedule" ? "2px solid #0d9488" : "1.5px solid #cbd5e1",
+                        background: changeRequestForm.request_type === "reschedule" ? "#f0fdf9" : "#fff",
+                        color: changeRequestForm.request_type === "reschedule" ? "#0f766e" : "#475569",
+                        fontWeight: 700,
+                        fontSize: "0.85rem",
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: "0.4rem",
+                      }}
+                    >
+                      <RotateCcw size={15} /> Propose Reschedule
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setChangeRequestForm({ ...changeRequestForm, request_type: "cancel" })}
+                      style={{
+                        padding: "0.65rem 0.85rem",
+                        borderRadius: "8px",
+                        border: changeRequestForm.request_type === "cancel" ? "2px solid #ef4444" : "1.5px solid #cbd5e1",
+                        background: changeRequestForm.request_type === "cancel" ? "#fef2f2" : "#fff",
+                        color: changeRequestForm.request_type === "cancel" ? "#b91c1c" : "#475569",
+                        fontWeight: 700,
+                        fontSize: "0.85rem",
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: "0.4rem",
+                      }}
+                    >
+                      <XCircle size={15} /> Request Cancellation
+                    </button>
+                  </div>
+                </div>
+
+                {/* If Reschedule: Proposed Date and Times */}
+                {changeRequestForm.request_type === "reschedule" && (
+                  <div style={{ background: "#f8fafc", padding: "0.9rem", borderRadius: "10px", border: "1px solid #e2e8f0", display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+                    <div style={{ fontSize: "0.75rem", fontWeight: 700, color: "#0369a1", textTransform: "uppercase" }}>
+                      Proposed New Date & Time
+                    </div>
+
+                    <div>
+                      <label style={{ display: "block", fontSize: "0.76rem", fontWeight: 700, color: "#475569", marginBottom: "0.25rem" }}>
+                        Proposed Date <span style={{ color: "#ef4444" }}>*</span>
+                      </label>
+                      <input
+                        type="date"
+                        required
+                        value={changeRequestForm.proposed_date}
+                        onChange={(e) => setChangeRequestForm({ ...changeRequestForm, proposed_date: e.target.value })}
+                        style={{ width: "100%", padding: "0.55rem 0.75rem", borderRadius: "8px", border: "1.5px solid #cbd5e1", fontSize: "0.85rem", outline: "none", background: "#fff" }}
+                      />
+                    </div>
+
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.65rem" }}>
+                      <div>
+                        <label style={{ display: "block", fontSize: "0.76rem", fontWeight: 700, color: "#475569", marginBottom: "0.25rem" }}>
+                          Start Time <span style={{ color: "#ef4444" }}>*</span>
+                        </label>
+                        <input
+                          type="time"
+                          required
+                          value={changeRequestForm.proposed_start_time}
+                          onChange={(e) => setChangeRequestForm({ ...changeRequestForm, proposed_start_time: e.target.value })}
+                          style={{ width: "100%", padding: "0.55rem 0.75rem", borderRadius: "8px", border: "1.5px solid #cbd5e1", fontSize: "0.85rem", outline: "none", background: "#fff" }}
+                        />
+                      </div>
+
+                      <div>
+                        <label style={{ display: "block", fontSize: "0.76rem", fontWeight: 700, color: "#475569", marginBottom: "0.25rem" }}>
+                          End Time (Optional)
+                        </label>
+                        <input
+                          type="time"
+                          value={changeRequestForm.proposed_end_time}
+                          onChange={(e) => setChangeRequestForm({ ...changeRequestForm, proposed_end_time: e.target.value })}
+                          style={{ width: "100%", padding: "0.55rem 0.75rem", borderRadius: "8px", border: "1.5px solid #cbd5e1", fontSize: "0.85rem", outline: "none", background: "#fff" }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Reason for change */}
+                <div>
+                  <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 700, color: "#374151", marginBottom: "0.35rem" }}>
+                    Reason for Request <span style={{ color: "#ef4444" }}>*</span>
+                  </label>
+                  <textarea
+                    required
+                    rows={3}
+                    value={changeRequestForm.reason}
+                    onChange={(e) => setChangeRequestForm({ ...changeRequestForm, reason: e.target.value })}
+                    placeholder="e.g. Doctor appointment on Tuesday morning, student exam preparation conflict, etc."
+                    style={{ width: "100%", padding: "0.6rem 0.8rem", borderRadius: "8px", border: "1.5px solid #cbd5e1", fontSize: "0.85rem", outline: "none", resize: "vertical", fontFamily: "inherit" }}
+                  />
+                  <span style={{ fontSize: "0.72rem", color: "#64748b" }}>
+                    This reason is sent to the admin team to coordinate with the student's parents.
+                  </span>
+                </div>
+
+                {/* Notice */}
+                <div style={{ background: "#fffbeb", border: "1px solid #fde68a", borderRadius: "8px", padding: "0.7rem 0.85rem", fontSize: "0.76rem", color: "#b45309", display: "flex", gap: "0.5rem", alignItems: "flex-start" }}>
+                  <AlertCircle size={15} style={{ flexShrink: 0, marginTop: "0.1rem" }} />
+                  <div>
+                    Once submitted, this request will be marked as <strong>Awaiting Admin Review</strong>. The session will remain scheduled until an administrator approves the change.
+                  </div>
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div style={{ padding: "1rem 1.5rem", borderTop: "1px solid #e2e8f0", background: "#f8fafc", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <button
+                  type="button"
+                  onClick={() => !isSubmittingChangeRequest && setChangeRequestModalSession(null)}
+                  style={{ padding: "0.55rem 1rem", borderRadius: "8px", background: "#f1f5f9", border: "none", color: "#475569", fontWeight: 600, fontSize: "0.82rem", cursor: "pointer" }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingChangeRequest}
+                  style={{
+                    padding: "0.55rem 1.35rem",
+                    borderRadius: "8px",
+                    background: isSubmittingChangeRequest ? "#94a3b8" : "linear-gradient(135deg,#0d9488,#0f766e)",
+                    border: "none",
+                    color: "#fff",
+                    fontWeight: 700,
+                    fontSize: "0.84rem",
+                    cursor: isSubmittingChangeRequest ? "not-allowed" : "pointer",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "0.35rem",
+                  }}
+                >
+                  <Send size={14} /> {isSubmittingChangeRequest ? "Submitting…" : "Submit Request"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── Sign Out Confirmation Dialog ── */}
+      {showLogoutConfirm && (
+        <div
+          onClick={() => setShowLogoutConfirm(false)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15,23,42,0.65)",
+            backdropFilter: "blur(4px)",
+            zIndex: 1100,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "1rem",
+            animation: "fadeUp 0.15s ease",
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: "#fff",
+              borderRadius: "16px",
+              width: "100%",
+              maxWidth: "400px",
+              padding: "1.75rem 1.5rem",
+              boxShadow: "0 25px 60px rgba(0,0,0,0.3)",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              textAlign: "center",
+            }}
+          >
+            <div
+              style={{
+                width: "56px",
+                height: "56px",
+                borderRadius: "50%",
+                background: "#fee2e2",
+                color: "#dc2626",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                marginBottom: "1rem",
+              }}
+            >
+              <LogOut size={26} />
+            </div>
+
+            <h3 style={{ fontSize: "1.1rem", fontWeight: 800, color: "#0f172a", margin: "0 0 0.4rem" }}>
+              Confirm Sign Out
+            </h3>
+            <p style={{ fontSize: "0.84rem", color: "#64748b", margin: "0 0 1.5rem", lineHeight: 1.55 }}>
+              Are you sure you want to sign out of the Tutor Portal? Your session data is safe.
+            </p>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem", width: "100%" }}>
+              <button
+                type="button"
+                onClick={() => setShowLogoutConfirm(false)}
+                style={{
+                  padding: "0.6rem 1rem",
+                  borderRadius: "8px",
+                  border: "1.5px solid #cbd5e1",
+                  background: "#fff",
+                  color: "#475569",
+                  fontSize: "0.84rem",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleLogout}
+                style={{
+                  padding: "0.6rem 1rem",
+                  borderRadius: "8px",
+                  border: "none",
+                  background: "#dc2626",
+                  color: "#fff",
+                  fontSize: "0.84rem",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: "0.4rem",
+                  boxShadow: "0 2px 6px rgba(220,38,38,0.3)",
+                }}
+              >
+                <LogOut size={15} /> Yes, Sign Out
               </button>
             </div>
           </div>

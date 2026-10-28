@@ -28,7 +28,9 @@ import {
   CheckCircle2,
   AlertCircle,
   Sparkles,
+  Check,
 } from "lucide-react";
+import NotificationEnvelope from "@/components/NotificationEnvelope";
 
 /* ─── Types matching StudentPortalController responses ─────── */
 type StudentProfile = {
@@ -254,6 +256,9 @@ export default function StudentPortalDashboard() {
   // Progress Tab State
   const [progressData, setProgressData] = useState<ProgressSummary | null>(null);
   const [progressLoading, setProgressLoading] = useState(false);
+
+  // Logout confirmation modal state
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
   const getBackendApiUrl = () => {
     if (process.env.NEXT_PUBLIC_API_URL) {
@@ -669,15 +674,38 @@ export default function StudentPortalDashboard() {
         <div style={{ borderTop: "1px solid #f1f5f9", paddingTop: "0.85rem", display: "flex", flexDirection: "column", gap: "0.4rem" }}>
           <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "10px", padding: "0.75rem" }}>
             <div style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>
-              <div style={{ width: "32px", height: "32px", borderRadius: "50%", background: "linear-gradient(135deg,#20b2a4,#0d9488)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: "0.85rem", flexShrink: 0 }}>
+              {/* Avatar with Verified Badge Overlay */}
+              <div style={{ position: "relative", width: "34px", height: "34px", borderRadius: "50%", background: "linear-gradient(135deg,#20b2a4,#0d9488)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: "0.85rem", flexShrink: 0, boxShadow: "0 2px 6px rgba(13,148,136,0.25)" }}>
                 {student.student_name?.charAt(0) || "S"}
+                <div
+                  style={{
+                    position: "absolute",
+                    bottom: "-2px",
+                    right: "-2px",
+                    background: "#0d9488",
+                    borderRadius: "50%",
+                    width: "14px",
+                    height: "14px",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    border: "2px solid #fff",
+                    color: "#fff",
+                    boxShadow: "0 1px 3px rgba(0,0,0,0.15)",
+                  }}
+                  title="Enrolled Student"
+                >
+                  <Check size={9} strokeWidth={3} />
+                </div>
               </div>
               <div style={{ minWidth: 0, flex: 1 }}>
                 <div style={{ fontSize: "0.82rem", fontWeight: 700, color: "#0f172a", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                   {student.student_name}
                 </div>
-                <div style={{ fontSize: "0.7rem", color: "#64748b" }}>
-                  {student.level}
+                <div style={{ display: "flex", alignItems: "center", gap: "0.25rem", marginTop: "0.1rem" }}>
+                  <span style={{ fontSize: "0.68rem", fontWeight: 700, color: "#0d9488", display: "inline-flex", alignItems: "center", gap: "0.2rem" }}>
+                    <CheckCircle2 size={11} color="#0d9488" /> {student.level || "Enrolled Student"}
+                  </span>
                 </div>
               </div>
             </div>
@@ -692,7 +720,7 @@ export default function StudentPortalDashboard() {
             <BookOpen size={15} /> Samin Homepage
           </Link>
           <button
-            onClick={handleLogout}
+            onClick={() => setShowLogoutConfirm(true)}
             style={{ display: "flex", alignItems: "center", gap: "0.6rem", width: "100%", padding: "0.55rem 0.75rem", borderRadius: "8px", border: "none", background: "none", color: "#ef4444", fontSize: "0.82rem", fontWeight: 600, cursor: "pointer", textAlign: "left" }}
           >
             <LogOut size={15} /> Sign Out
@@ -737,6 +765,25 @@ export default function StudentPortalDashboard() {
             >
               <RefreshCw size={13} /> Sync Data
             </button>
+
+            {/* Notifications Envelope */}
+            <NotificationEnvelope
+              onActionClick={(actionUrl) => {
+                if (actionUrl.includes("timetable") || actionUrl.includes("schedule")) {
+                  setActiveTab("timetable");
+                } else if (actionUrl.includes("session")) {
+                  setActiveTab("sessions");
+                  fetchSessions(1);
+                } else if (actionUrl.includes("report")) {
+                  setActiveTab("reports");
+                  fetchReports(1);
+                } else if (actionUrl.includes("tutor")) {
+                  setActiveTab("tutors");
+                } else if (actionUrl.includes("progress")) {
+                  setActiveTab("progress");
+                }
+              }}
+            />
           </div>
         </header>
 
@@ -1537,6 +1584,106 @@ export default function StudentPortalDashboard() {
                 style={{ padding: "0.5rem 1.25rem", borderRadius: "8px", background: "#0f172a", border: "none", color: "#fff", fontWeight: 700, fontSize: "0.82rem", cursor: "pointer" }}
               >
                 Close Report
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* ── Sign Out Confirmation Dialog ── */}
+      {showLogoutConfirm && (
+        <div
+          onClick={() => setShowLogoutConfirm(false)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15,23,42,0.65)",
+            backdropFilter: "blur(4px)",
+            zIndex: 1100,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "1rem",
+            animation: "fadeUp 0.15s ease",
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: "#fff",
+              borderRadius: "16px",
+              width: "100%",
+              maxWidth: "400px",
+              padding: "1.75rem 1.5rem",
+              boxShadow: "0 25px 60px rgba(0,0,0,0.3)",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              textAlign: "center",
+            }}
+          >
+            <div
+              style={{
+                width: "56px",
+                height: "56px",
+                borderRadius: "50%",
+                background: "#fee2e2",
+                color: "#dc2626",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                marginBottom: "1rem",
+              }}
+            >
+              <LogOut size={26} />
+            </div>
+
+            <h3 style={{ fontSize: "1.1rem", fontWeight: 800, color: "#0f172a", margin: "0 0 0.4rem" }}>
+              Confirm Sign Out
+            </h3>
+            <p style={{ fontSize: "0.84rem", color: "#64748b", margin: "0 0 1.5rem", lineHeight: 1.55 }}>
+              Are you sure you want to sign out of the Student &amp; Parent Portal?
+            </p>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem", width: "100%" }}>
+              <button
+                type="button"
+                onClick={() => setShowLogoutConfirm(false)}
+                style={{
+                  padding: "0.6rem 1rem",
+                  borderRadius: "8px",
+                  border: "1.5px solid #cbd5e1",
+                  background: "#fff",
+                  color: "#475569",
+                  fontSize: "0.84rem",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowLogoutConfirm(false);
+                  handleLogout();
+                }}
+                style={{
+                  padding: "0.6rem 1rem",
+                  borderRadius: "8px",
+                  border: "none",
+                  background: "#dc2626",
+                  color: "#fff",
+                  fontSize: "0.84rem",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: "0.4rem",
+                  boxShadow: "0 2px 6px rgba(220,38,38,0.3)",
+                }}
+              >
+                <LogOut size={15} /> Yes, Sign Out
               </button>
             </div>
           </div>
