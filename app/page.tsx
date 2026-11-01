@@ -33,6 +33,8 @@ import {
   Sparkles,
   AlertCircle,
   Plus,
+  Copy,
+  Check,
 } from "lucide-react";
 import { QUALIFICATIONS_LIST } from "./constants/qualifications";
 
@@ -259,15 +261,29 @@ export default function Home() {
   const [bookingLoading, setBookingLoading] = useState(false);
   const [bookingError, setBookingError] = useState<string | null>(null);
   const [bookingSuccessMsg, setBookingSuccessMsg] = useState("");
+  const [bookingCredentials, setBookingCredentials] = useState<{ username?: string; temporary_password?: string } | null>(null);
+  const [copiedBookingField, setCopiedBookingField] = useState<string | null>(null);
+  const [copiedField, setCopiedField] = useState<string | null>(null);
+  const copyText = (text: string, label: string) => {
+    if (typeof navigator !== "undefined" && navigator.clipboard) {
+      navigator.clipboard.writeText(text);
+      setCopiedField(label);
+      setTimeout(() => setCopiedField(null), 2500);
+    }
+  };
+  const [registerModalTab, setRegisterModalTab] = useState<"student" | "tutor">("student");
   const [searchKeyword, setSearchKeyword] = useState("");
   const [searchCategory, setSearchCategory] = useState("");
   const [form, setForm] = useState({
     parentName: "",
     studentName: "",
+    username: "",
     email: "",
     phone: "",
     subjects: ["Mathematics"] as string[],
     level: "Year 1-6",
+    password: "",
+    passwordConfirm: "",
     notes: "",
   });
 
@@ -284,14 +300,17 @@ export default function Home() {
   const [applyLoading, setApplyLoading] = useState(false);
   const [applyError, setApplyError] = useState<string | null>(null);
   const [applySuccessMsg, setApplySuccessMsg] = useState("");
+  const [applyCredentials, setApplyCredentials] = useState<{ email?: string; temporary_password?: string } | null>(null);
   const [applyForm, setApplyForm] = useState({
     name: "",
     email: "",
     phone: "",
-    subjects: [] as string[],
+    subjects: ["Mathematics"] as string[],
     levels: ["Year 1-6"] as string[],
     degree: "",
     experience: "",
+    password: "",
+    passwordConfirm: "",
     notes: "",
   });
 
@@ -374,6 +393,7 @@ export default function Home() {
           Accept: "application/json",
         },
         body: JSON.stringify({
+          login: cleanEmail,
           email: cleanEmail,
           password: cleanPassword,
         }),
@@ -396,7 +416,7 @@ export default function Home() {
           return;
         }
 
-        const msg = data?.message || "Invalid email or password.";
+        const msg = data?.message || "Invalid email, username, or password.";
         setAdminLoginError(msg);
         setAdminLoginLoading(false);
         return;
@@ -412,6 +432,7 @@ export default function Home() {
         }
         if (data?.user) {
           localStorage.setItem("samin_user", JSON.stringify(data.user));
+          if (data.user.role) setUserRole(data.user.role);
         }
 
         // Check if user is required to change their temporary password
@@ -423,6 +444,10 @@ export default function Home() {
           localStorage.removeItem("samin_must_change_password");
           if (data?.user?.role === "tutor") {
             window.location.href = "/tutor/dashboard";
+          } else if (data?.user?.role === "student") {
+            window.location.href = "/student/dashboard";
+          } else if (data?.user?.role === "parent") {
+            window.location.href = "/parent/dashboard";
           } else {
             window.location.href = "/admin/dashboard";
           }
@@ -563,7 +588,7 @@ export default function Home() {
       return;
     }
 
-    const payload = {
+    const payload: any = {
       name: trimmedName,
       email: trimmedEmail,
       phone: applyForm.phone.trim() || undefined,
@@ -573,6 +598,15 @@ export default function Home() {
       years_of_experience: applyForm.experience.trim() || undefined,
       bio: applyForm.notes.trim() || undefined,
     };
+
+    if (applyForm.password) {
+      if (applyForm.password !== applyForm.passwordConfirm) {
+        setApplyError("Passwords do not match.");
+        return;
+      }
+      payload.password = applyForm.password;
+      payload.password_confirmation = applyForm.passwordConfirm;
+    }
 
     setApplyLoading(true);
 
@@ -604,6 +638,10 @@ export default function Home() {
 
       setApplySuccessMsg(data?.message || "Tutor application submitted successfully. Your profile is pending review.");
 
+      if (data?.credentials) {
+        setApplyCredentials(data.credentials);
+      }
+
       // Sync with local applicants list so applicant is visible immediately in the admin dashboard
       const newApp = {
         id: data?.user?.id ? `APP-${data.user.id}` : `APP-${Date.now()}`,
@@ -623,7 +661,11 @@ export default function Home() {
       setApplicantsList((prev) => [newApp, ...prev]);
 
       if (data?.token && typeof window !== "undefined") {
-        localStorage.setItem("samin_tutor_token", data.token);
+        localStorage.setItem("samin_auth_token", data.token);
+        if (data?.user) {
+          localStorage.setItem("samin_user", JSON.stringify(data.user));
+          localStorage.setItem("samin_admin_logged_in", "true");
+        }
       }
 
       setApplySuccess(true);
@@ -708,15 +750,27 @@ export default function Home() {
     setBookingError(null);
     setBookingLoading(true);
 
-    const payload = {
-      parent_name: form.parentName.trim(),
+    if (form.password && form.password !== form.passwordConfirm) {
+      setBookingError("Passwords do not match.");
+      setBookingLoading(false);
+      return;
+    }
+
+    const payload: any = {
+      parent_name: form.parentName.trim() || undefined,
       student_name: form.studentName.trim(),
-      email: form.email.trim(),
-      phone: form.phone.trim() || null,
+      parent_email: form.email.trim() || undefined,
+      email: form.email.trim() || undefined,
+      phone: form.phone.trim() || undefined,
       subjects: form.subjects.length > 0 ? form.subjects : ["Mathematics"],
       level: form.level || "Year 1-6",
-      notes: form.notes.trim() || null,
+      notes: form.notes.trim() || undefined,
     };
+    if (form.username?.trim()) payload.username = form.username.trim();
+    if (form.password) {
+      payload.password = form.password;
+      payload.password_confirmation = form.passwordConfirm;
+    }
 
     try {
       const baseUrl = getBackendApiUrl();
@@ -741,15 +795,32 @@ export default function Home() {
         return;
       }
 
+      if (data?.token && typeof window !== "undefined") {
+        localStorage.setItem("samin_auth_token", data.token);
+        if (data?.user) {
+          localStorage.setItem("samin_user", JSON.stringify(data.user));
+          localStorage.setItem("samin_admin_logged_in", "true");
+        }
+      }
+
+      if (data?.credentials) {
+        setBookingCredentials(data.credentials);
+      } else {
+        setBookingCredentials(null);
+      }
+
       setBookingSuccessMsg(data?.message || "Student registered successfully.");
       setBookingSuccess(true);
       setForm({
         parentName: "",
         studentName: "",
+        username: "",
         email: "",
         phone: "",
         subjects: ["Mathematics"],
         level: "Year 1-6",
+        password: "",
+        passwordConfirm: "",
         notes: "",
       });
     } catch (err: any) {
@@ -788,17 +859,33 @@ export default function Home() {
             {isAdminLoggedIn ? (
               <div style={{ display: "flex", alignItems: "center", gap: "0.6rem", flexWrap: "wrap" }}>
                 <a
-                  href={userRole === "tutor" ? "/tutor/dashboard" : "/admin/dashboard"}
+                  href={
+                    userRole === "tutor"
+                      ? "/tutor/dashboard"
+                      : userRole === "student"
+                      ? "/student/dashboard"
+                      : userRole === "parent"
+                      ? "/parent/dashboard"
+                      : "/admin/dashboard"
+                  }
                   style={{ background: "#ffd56b", color: "#070f2b", border: "none", borderRadius: "4px", padding: "0.22rem 0.65rem", fontSize: "0.78rem", fontWeight: 700, textDecoration: "none", display: "inline-flex", alignItems: "center", gap: "0.3rem" }}
-                  title={userRole === "tutor" ? "Open Tutor Portal" : "Open Admin Dashboard"}
+                  title="Open Portal Dashboard"
                 >
                   <ShieldCheck size={13} />
-                  <span>{userRole === "tutor" ? "Tutor Portal" : "Admin Dashboard"}</span>
+                  <span>
+                    {userRole === "tutor"
+                      ? "Tutor Portal"
+                      : userRole === "student"
+                      ? "Student Portal"
+                      : userRole === "parent"
+                      ? "Guardian Portal"
+                      : "Admin Dashboard"}
+                  </span>
                 </a>
                 <button
                   onClick={handleAdminLogout}
                   style={{ background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.3)", color: "#fff", borderRadius: "4px", padding: "0.2rem 0.5rem", fontSize: "0.75rem", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "0.25rem" }}
-                  title="Sign out of Admin"
+                  title="Sign out"
                 >
                   <LogOut size={12} />
                   <span>Log Out</span>
@@ -817,44 +904,31 @@ export default function Home() {
               </button>
             )}
             {!isAdminLoggedIn && (
-              <>
-                <a
-                  href="/student/dashboard"
-                  style={{
-                    background: "rgba(255,255,255,0.12)",
-                    color: "#fff",
-                    border: "1px solid rgba(255,255,255,0.25)",
-                    borderRadius: "4px",
-                    padding: "0.22rem 0.65rem",
-                    fontSize: "0.78rem",
-                    fontWeight: 600,
-                    textDecoration: "none",
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: "0.3rem",
-                  }}
-                >
-                  Student Portal
-                </a>
-                <a
-                  href="/tutor/dashboard"
-                  style={{
-                    background: "rgba(255,255,255,0.12)",
-                    color: "#fff",
-                    border: "1px solid rgba(255,255,255,0.25)",
-                    borderRadius: "4px",
-                    padding: "0.22rem 0.65rem",
-                    fontSize: "0.78rem",
-                    fontWeight: 600,
-                    textDecoration: "none",
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: "0.3rem",
-                  }}
-                >
-                  Tutor Portal
-                </a>
-              </>
+              <button
+                type="button"
+                onClick={() => {
+                  setRegisterModalTab("student");
+                  setBookingSuccess(false);
+                  setBookingError(null);
+                  setIsModalOpen(true);
+                }}
+                style={{
+                  background: "rgba(32, 178, 164, 0.25)",
+                  border: "1px solid #20b2a4",
+                  color: "#fff",
+                  borderRadius: "4px",
+                  padding: "0.22rem 0.65rem",
+                  fontSize: "0.78rem",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "0.3rem",
+                }}
+                title="Create a student or tutor account"
+              >
+                Register
+              </button>
             )}
             <a href="https://wa.me/2347059655382?text=Hello%20Samin%20Home%20Tutors!%20%F0%9F%8E%93%0A%0AI%20found%20your%20website%20and%20I%E2%80%99m%20interested%20in%20booking%20a%20FREE%20trial%20lesson.%0A%0APlease%20could%20you%20help%20me%20with%20more%20information%20about%3A%0A%E2%80%A2%20Available%20tutors%0A%E2%80%A2%20Subjects%20%26%20levels%20covered%0A%E2%80%A2%20Pricing%20%26%20scheduling%0A%0AThank%20you!" target="_blank" rel="noopener noreferrer">💬 WhatsApp Us</a>
           </div>
@@ -915,8 +989,8 @@ export default function Home() {
                     setApplyError(null);
                     setApplyLoading(false);
                     setApplySuccessMsg("");
-                    setApplyForm({ name: "", email: "", phone: "", subjects: [], levels: ["Year 1-6"], degree: "", experience: "", notes: "" });
-                    setIsApplyOpen(true);
+                    setRegisterModalTab("tutor");
+                    setIsModalOpen(true);
                   }}
                   className="dropdown-item"
                 >
@@ -1100,12 +1174,10 @@ export default function Home() {
                 type="button"
                 onClick={() => {
                   setMobileOpen(false);
+                  setRegisterModalTab("tutor");
                   setApplySuccess(false);
                   setApplyError(null);
-                  setApplyLoading(false);
-                  setApplySuccessMsg("");
-                  setApplyForm({ name: "", email: "", phone: "", subjects: [], levels: ["Year 1-6"], degree: "", experience: "", notes: "" });
-                  setIsApplyOpen(true);
+                  setIsModalOpen(true);
                 }}
                 style={{ padding: "0.75rem 0.5rem", color: "var(--dark)", background: "none", border: "none", borderBottom: "1px solid var(--border)", fontSize: "0.9rem", fontWeight: 500, textAlign: "left", cursor: "pointer" }}
               >
@@ -1492,114 +1564,304 @@ export default function Home() {
         ▲
       </button>
 
-      {/* ── Booking Modal ── */}
+      {/* ── Register Modal (wide, dual-tab: Student & Tutor) ── */}
       {isModalOpen && (
-        <div className="modal-overlay" onClick={() => { setIsModalOpen(false); setBookingError(null); }}>
-          <div className="modal-box" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2>
-                <GraduationCap size={18} style={{ display: "inline", marginRight: "0.5rem" }} />
-                Register as Student
-              </h2>
-              <button className="modal-close" onClick={() => { setIsModalOpen(false); setBookingError(null); }} aria-label="Close modal">
+        <div
+          className="modal-overlay"
+          onClick={() => { setIsModalOpen(false); setBookingError(null); setApplyError(null); }}
+        >
+          <div
+            className="modal-box"
+            onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: "960px", width: "95vw", maxHeight: "92vh", overflowY: "auto" }}
+          >
+            {/* ── Header with tab switcher ── */}
+            <div className="modal-header" style={{ flexWrap: "wrap", gap: "0.75rem", alignItems: "center" }}>
+              <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  onClick={() => { setRegisterModalTab("student"); setBookingSuccess(false); setBookingError(null); }}
+                  style={{
+                    padding: "0.45rem 1.1rem",
+                    borderRadius: "20px",
+                    border: registerModalTab === "student" ? "2px solid #20b2a4" : "1.5px solid #cbd5e1",
+                    background: registerModalTab === "student" ? "#20b2a4" : "#f8fafc",
+                    color: registerModalTab === "student" ? "#fff" : "#475569",
+                    fontWeight: 700,
+                    fontSize: "0.82rem",
+                    cursor: "pointer",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "0.35rem",
+                  }}
+                >
+                  <GraduationCap size={14} />
+                  Student / Parent
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setRegisterModalTab("tutor"); setApplySuccess(false); setApplyError(null); }}
+                  style={{
+                    padding: "0.45rem 1.1rem",
+                    borderRadius: "20px",
+                    border: registerModalTab === "tutor" ? "2px solid #20b2a4" : "1.5px solid #cbd5e1",
+                    background: registerModalTab === "tutor" ? "#20b2a4" : "#f8fafc",
+                    color: registerModalTab === "tutor" ? "#fff" : "#475569",
+                    fontWeight: 700,
+                    fontSize: "0.82rem",
+                    cursor: "pointer",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "0.35rem",
+                  }}
+                >
+                  <UserPlus size={14} />
+                  Become a Tutor
+                </button>
+              </div>
+              <button
+                className="modal-close"
+                onClick={() => { setIsModalOpen(false); setBookingError(null); setApplyError(null); }}
+                aria-label="Close modal"
+                style={{ marginLeft: "auto" }}
+              >
                 <X size={15} />
               </button>
             </div>
 
-            <div className="modal-body">
-              {bookingSuccess ? (
-                <div style={{ textAlign: "center", padding: "2rem 0" }}>
-                  <div style={{ fontSize: "3rem", marginBottom: "1rem" }}>✅</div>
-                  <h3 style={{ color: "var(--teal)", marginBottom: "0.5rem" }}>Registration Received!</h3>
-                  <p style={{ color: "var(--text-muted)" }}>
-                    {bookingSuccessMsg || "Thank you! A member of our team will contact you within 24 hours to confirm your student registration."}
-                  </p>
-                  <button className="btn-enroll" style={{ marginTop: "1.5rem" }} onClick={() => { setIsModalOpen(false); setBookingSuccess(false); setBookingError(null); }}>
-                    Close
-                  </button>
-                </div>
-              ) : (
-                <form onSubmit={handleSubmit}>
-                  {bookingError && (
-                    <div style={{ background: "#fef2f2", border: "1px solid #fecaca", color: "#991b1b", padding: "0.75rem 1rem", borderRadius: "8px", fontSize: "0.85rem", marginBottom: "1rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                      <AlertCircle size={16} style={{ flexShrink: 0 }} />
-                      <span>{bookingError}</span>
-                    </div>
-                  )}
-                  <div className="form-row">
-                    <div className="form-group">
-                      <label htmlFor="parentName">Parent / Guardian Name *</label>
-                      <input id="parentName" className="form-control" required placeholder="Your full name" value={form.parentName} onChange={(e) => setForm({ ...form, parentName: e.target.value })} />
-                    </div>
-                    <div className="form-group">
-                      <label htmlFor="studentName">Student Name *</label>
-                      <input id="studentName" className="form-control" required placeholder="Student's name" value={form.studentName} onChange={(e) => setForm({ ...form, studentName: e.target.value })} />
-                    </div>
-                  </div>
-                  <div className="form-row">
-                    <div className="form-group">
-                      <label htmlFor="email">Email Address *</label>
-                      <input id="email" type="email" className="form-control" required placeholder="you@email.com" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
-                    </div>
-                    <div className="form-group">
-                      <label htmlFor="phone">Phone / WhatsApp</label>
-                      <input id="phone" className="form-control" placeholder="+1 / +44 / +234..." value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
-                    </div>
-                  </div>
-                  {/* Subjects Multi-select */}
-                  <div className="form-group">
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.4rem" }}>
-                      <label style={{ margin: 0 }}>Subjects Required * (Tick to select multiple)</label>
-                      <span style={{ fontSize: "0.75rem", color: "var(--teal)", fontWeight: 700 }}>
-                        {form.subjects.length} selected
-                      </span>
-                    </div>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: "0.45rem", maxHeight: "150px", overflowY: "auto", padding: "0.2rem 0" }}>
-                      {availableSubjects.map((s) => {
-                        const checked = form.subjects.includes(s);
-                        return (
-                          <button
-                            type="button"
-                            key={s}
-                            onClick={() => toggleBookingSubject(s)}
-                            className={`tag-badge ${checked ? "selected" : ""}`}
-                            aria-pressed={checked}
-                          >
-                            <span className="checkbox-indicator">{checked ? "✓" : ""}</span>
-                            <span>{s}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
+            {/* ═══════════════════ STUDENT TAB ═══════════════════ */}
+            {registerModalTab === "student" && (
+              <div className="modal-body">
+                {bookingSuccess ? (
+                  <div style={{ textAlign: "center", padding: "2rem 0" }}>
+                    <div style={{ fontSize: "3rem", marginBottom: "0.5rem" }}>🎉</div>
+                    <h3 style={{ color: "#0f172a", marginBottom: "0.4rem", fontWeight: 800, fontSize: "1.3rem" }}>Student Registered Successfully!</h3>
+                    <p style={{ color: "#64748b", fontSize: "0.88rem", marginBottom: "1.25rem" }}>{bookingSuccessMsg}</p>
 
-                  {/* Level / Grade Single Select Dropdown */}
-                  <div className="form-group">
-                    <label htmlFor="bookingLevel">Level / Grade Classification *</label>
-                    <select
-                      id="bookingLevel"
-                      className="form-control"
-                      required
-                      value={form.level}
-                      onChange={(e) => setForm({ ...form, level: e.target.value })}
-                    >
-                      {availableLevels.map((lvl) => (
-                        <option key={lvl} value={lvl}>
-                          {lvl}
-                        </option>
-                      ))}
-                    </select>
+                    {bookingCredentials && (
+                      <div style={{ background: "#f0fdfa", border: "1.5px solid #20b2a4", borderRadius: "10px", padding: "1rem 1.25rem", textAlign: "left", marginBottom: "1.25rem", maxWidth: "480px", margin: "0 auto 1.25rem" }}>
+                        <div style={{ fontSize: "0.78rem", color: "#0d9488", fontWeight: 700, textTransform: "uppercase", marginBottom: "0.6rem" }}>🔑 Login Credentials</div>
+                        {bookingCredentials.username && (
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.4rem", background: "#fff", padding: "0.45rem 0.7rem", borderRadius: "6px", border: "1px solid #e2e8f0" }}>
+                            <span style={{ fontSize: "0.8rem", color: "#64748b" }}>Username</span>
+                            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                              <strong style={{ fontSize: "0.88rem", color: "#0f172a" }}>{bookingCredentials.username}</strong>
+                              <button type="button" onClick={() => copyText(bookingCredentials!.username!, "user")} style={{ background: "none", border: "none", cursor: "pointer", color: copiedField === "user" ? "#20b2a4" : "#94a3b8", padding: 0 }}>
+                                {copiedField === "user" ? <Check size={14} /> : <Copy size={14} />}
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                        {bookingCredentials.temporary_password && (
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#fff", padding: "0.45rem 0.7rem", borderRadius: "6px", border: "1px solid #e2e8f0" }}>
+                            <span style={{ fontSize: "0.8rem", color: "#64748b" }}>Temp Password</span>
+                            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                              <code style={{ fontSize: "0.9rem", color: "#0d9488", fontWeight: 700 }}>{bookingCredentials.temporary_password}</code>
+                              <button type="button" onClick={() => copyText(bookingCredentials!.temporary_password!, "pass")} style={{ background: "none", border: "none", cursor: "pointer", color: copiedField === "pass" ? "#20b2a4" : "#94a3b8", padding: 0 }}>
+                                {copiedField === "pass" ? <Check size={14} /> : <Copy size={14} />}
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    <div style={{ display: "flex", gap: "0.75rem", justifyContent: "center", flexWrap: "wrap" }}>
+                      <a href="/student/dashboard" className="btn-enroll" style={{ textDecoration: "none", display: "inline-flex", alignItems: "center", gap: "0.4rem" }}>
+                        <GraduationCap size={16} /><span>Enter Student Dashboard</span>
+                      </a>
+                      <button className="btn-enroll" style={{ background: "transparent", color: "var(--dark)", border: "1px solid var(--border)" }} onClick={() => { setIsModalOpen(false); setBookingSuccess(false); setBookingError(null); }}>
+                        Close
+                      </button>
+                    </div>
                   </div>
-                  <div className="form-group">
-                    <label htmlFor="notes">Additional Notes</label>
-                    <textarea id="notes" className="form-control" rows={3} placeholder="Tell us about your child's current level, targets, and any specific concerns..." value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
+                ) : (
+                  <form onSubmit={handleSubmit}>
+                    {bookingError && (
+                      <div style={{ background: "#fef2f2", border: "1px solid #fecaca", color: "#991b1b", padding: "0.65rem 0.9rem", borderRadius: "8px", fontSize: "0.83rem", marginBottom: "1rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                        <AlertCircle size={15} style={{ flexShrink: 0 }} /><span>{bookingError}</span>
+                      </div>
+                    )}
+
+                    {/* 2-column grid */}
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.6rem 1.2rem" }}>
+                      <div className="form-group" style={{ marginBottom: 0 }}>
+                        <label htmlFor="reg-studentName">Student Name *</label>
+                        <input id="reg-studentName" className="form-control" required placeholder="Student's full name" value={form.studentName} onChange={(e) => setForm({ ...form, studentName: e.target.value })} />
+                      </div>
+                      <div className="form-group" style={{ marginBottom: 0 }}>
+                        <label htmlFor="reg-username">Username <span style={{ fontWeight: 400, color: "#94a3b8" }}>(optional)</span></label>
+                        <input id="reg-username" className="form-control" placeholder="Auto-generated if blank" value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} />
+                      </div>
+                      <div className="form-group" style={{ marginBottom: 0 }}>
+                        <label htmlFor="reg-parentName">Parent / Guardian Name</label>
+                        <input id="reg-parentName" className="form-control" placeholder="Guardian's full name" value={form.parentName} onChange={(e) => setForm({ ...form, parentName: e.target.value })} />
+                      </div>
+                      <div className="form-group" style={{ marginBottom: 0 }}>
+                        <label htmlFor="reg-email">Parent Email</label>
+                        <input id="reg-email" type="email" className="form-control" placeholder="parent@email.com" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+                      </div>
+                      <div className="form-group" style={{ marginBottom: 0 }}>
+                        <label htmlFor="reg-phone">Phone / WhatsApp</label>
+                        <input id="reg-phone" className="form-control" placeholder="+1 / +44 / +234..." value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
+                      </div>
+                      <div className="form-group" style={{ marginBottom: 0 }}>
+                        <label htmlFor="reg-level">Level / Grade *</label>
+                        <select id="reg-level" className="form-control" required value={form.level} onChange={(e) => setForm({ ...form, level: e.target.value })}>
+                          {availableLevels.map((lvl) => <option key={lvl} value={lvl}>{lvl}</option>)}
+                        </select>
+                      </div>
+                      <div className="form-group" style={{ marginBottom: 0 }}>
+                        <label htmlFor="reg-password">Password <span style={{ fontWeight: 400, color: "#94a3b8" }}>(optional)</span></label>
+                        <input id="reg-password" type="password" className="form-control" placeholder="Leave blank = auto-generated" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
+                      </div>
+                      <div className="form-group" style={{ marginBottom: 0 }}>
+                        <label htmlFor="reg-passwordConfirm">Confirm Password</label>
+                        <input id="reg-passwordConfirm" type="password" className="form-control" placeholder="Re-enter password" value={form.passwordConfirm} onChange={(e) => setForm({ ...form, passwordConfirm: e.target.value })} />
+                      </div>
+                    </div>
+
+                    {/* Subjects row */}
+                    <div className="form-group" style={{ marginTop: "0.8rem" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.4rem" }}>
+                        <label style={{ margin: 0 }}>Subjects Needed * <span style={{ fontWeight: 400, color: "#94a3b8" }}>(tap to select)</span></label>
+                        <span style={{ fontSize: "0.75rem", color: "#20b2a4", fontWeight: 700 }}>{form.subjects.length} selected</span>
+                      </div>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem" }}>
+                        {availableSubjects.map((s) => {
+                          const checked = form.subjects.includes(s);
+                          return (
+                            <button type="button" key={s} onClick={() => toggleBookingSubject(s)} className={`tag-badge ${checked ? "selected" : ""}`} aria-pressed={checked}>
+                              <span className="checkbox-indicator">{checked ? "✓" : ""}</span><span>{s}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Notes row */}
+                    <div className="form-group">
+                      <label htmlFor="reg-notes">Additional Notes</label>
+                      <textarea id="reg-notes" className="form-control" rows={2} placeholder="Current level, targets, specific concerns..." value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
+                    </div>
+
+                    <button type="submit" className="btn-submit" disabled={bookingLoading} style={{ opacity: bookingLoading ? 0.7 : 1, cursor: bookingLoading ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem" }}>
+                      {bookingLoading ? (
+                        <><span style={{ display: "inline-block", width: "1rem", height: "1rem", border: "2px solid rgba(255,255,255,0.3)", borderTopColor: "#fff", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} /><span>Registering...</span></>
+                      ) : (
+                        <><GraduationCap size={16} /><span>🎓 Register as Student</span></>
+                      )}
+                    </button>
+                  </form>
+                )}
+              </div>
+            )}
+
+            {/* ═══════════════════ TUTOR TAB ═══════════════════ */}
+            {registerModalTab === "tutor" && (
+              <div className="modal-body">
+                {applySuccess ? (
+                  <div style={{ textAlign: "center", padding: "2rem 0" }}>
+                    <div style={{ width: "4.5rem", height: "4.5rem", borderRadius: "50%", background: "#f0fdfa", border: "2px solid #20b2a4", color: "#20b2a4", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 1.2rem" }}>
+                      <CheckCircle2 size={38} />
+                    </div>
+                    <h3 style={{ color: "#0f172a", fontSize: "1.25rem", fontWeight: 800, marginBottom: "0.4rem" }}>Application Submitted! 🎉</h3>
+                    <p style={{ color: "#64748b", fontSize: "0.88rem", maxWidth: "440px", margin: "0 auto 1.5rem", lineHeight: 1.6 }}>
+                      {applySuccessMsg || <>Thank you, <strong>{applyForm.name}</strong>! We will review your application and contact you within 2–3 working days.</>}
+                    </p>
+                    <div style={{ display: "flex", gap: "0.75rem", justifyContent: "center", flexWrap: "wrap" }}>
+                      <a href="/tutor/dashboard" className="btn-enroll" style={{ textDecoration: "none", display: "inline-flex", alignItems: "center", gap: "0.4rem" }}>
+                        <UserPlus size={16} /><span>Go to Tutor Portal</span>
+                      </a>
+                      <button className="btn-enroll" style={{ background: "transparent", color: "var(--dark)", border: "1px solid var(--border)" }} onClick={() => { setIsModalOpen(false); setApplySuccess(false); setApplyError(null); }}>Close</button>
+                    </div>
                   </div>
-                  <button type="submit" className="btn-submit" disabled={bookingLoading} style={{ opacity: bookingLoading ? 0.7 : 1, cursor: bookingLoading ? "not-allowed" : "pointer" }}>
-                    {bookingLoading ? "Registering Student..." : "🎓 Register as Student"}
-                  </button>
-                </form>
-              )}
-            </div>
+                ) : (
+                  <form onSubmit={handleApplySubmit}>
+                    {applyError && (
+                      <div style={{ background: "#fef2f2", border: "1px solid #fca5a5", borderRadius: "8px", padding: "0.65rem 0.9rem", marginBottom: "1rem", fontSize: "0.83rem", color: "#b91c1c", display: "flex", alignItems: "flex-start", gap: "0.5rem" }}>
+                        <span>⚠️</span><span style={{ flex: 1, lineHeight: 1.4 }}>{applyError}</span>
+                      </div>
+                    )}
+
+                    {/* 2-column grid */}
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.6rem 1.2rem" }}>
+                      <div className="form-group" style={{ marginBottom: 0 }}>
+                        <label htmlFor="apply-name">Full Name *</label>
+                        <input id="apply-name" className="form-control" required placeholder="Your full name" value={applyForm.name} onChange={(e) => setApplyForm({ ...applyForm, name: e.target.value })} />
+                      </div>
+                      <div className="form-group" style={{ marginBottom: 0 }}>
+                        <label htmlFor="apply-email">Email Address *</label>
+                        <input id="apply-email" type="email" className="form-control" required placeholder="you@email.com" value={applyForm.email} onChange={(e) => setApplyForm({ ...applyForm, email: e.target.value })} />
+                      </div>
+                      <div className="form-group" style={{ marginBottom: 0 }}>
+                        <label htmlFor="apply-phone">Phone / WhatsApp</label>
+                        <input id="apply-phone" className="form-control" placeholder="+1 / +44 / +234 ..." value={applyForm.phone} onChange={(e) => setApplyForm({ ...applyForm, phone: e.target.value })} />
+                      </div>
+                      <div className="form-group" style={{ marginBottom: 0 }}>
+                        <label htmlFor="apply-degree">Highest Qualification *</label>
+                        <select id="apply-degree" className="form-control" required value={applyForm.degree} onChange={(e) => setApplyForm({ ...applyForm, degree: e.target.value })}>
+                          <option value="">— Select qualification —</option>
+                          {QUALIFICATIONS_LIST.map((q) => <option key={q.code} value={q.code}>{q.code} — {q.name}</option>)}
+                        </select>
+                      </div>
+                      <div className="form-group" style={{ marginBottom: 0 }}>
+                        <label htmlFor="apply-exp">Years of Experience</label>
+                        <input id="apply-exp" type="number" min="0" max="60" step="1" className="form-control" placeholder="e.g. 3" value={applyForm.experience} onChange={(e) => setApplyForm({ ...applyForm, experience: e.target.value.replace(/\D/g, "") })} />
+                      </div>
+                      <div className="form-group" style={{ marginBottom: 0 }}>
+                        <label htmlFor="apply-password">Password <span style={{ fontWeight: 400, color: "#94a3b8" }}>(optional)</span></label>
+                        <input id="apply-password" type="password" className="form-control" placeholder="Leave blank = auto-generated" value={applyForm.password} onChange={(e) => setApplyForm({ ...applyForm, password: e.target.value })} />
+                      </div>
+                      <div className="form-group" style={{ gridColumn: "1 / -1", marginBottom: 0 }}>
+                        <label htmlFor="apply-confirm">Confirm Password</label>
+                        <input id="apply-confirm" type="password" className="form-control" placeholder="Re-enter password" value={applyForm.passwordConfirm} onChange={(e) => setApplyForm({ ...applyForm, passwordConfirm: e.target.value })} />
+                      </div>
+                    </div>
+
+                    {/* Subjects */}
+                    <div className="form-group" style={{ marginTop: "0.8rem" }}>
+                      <label>Subjects You Can Teach <span style={{ fontWeight: 400, color: "#94a3b8" }}>(tap to select)</span></label>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem", marginTop: "0.35rem" }}>
+                        {["Science","English","Mathematics","Physics","Chemistry","Biology","Economics","Geography","Computer Science"].map((sub) => (
+                          <button key={sub} type="button" onClick={() => toggleApplySubject(sub)}
+                            style={{ padding: "0.3rem 0.75rem", borderRadius: "20px", fontSize: "0.78rem", fontWeight: 600, cursor: "pointer", border: applyForm.subjects.includes(sub) ? "2px solid var(--teal)" : "1.5px solid var(--border)", background: applyForm.subjects.includes(sub) ? "var(--teal-light)" : "#fff", color: applyForm.subjects.includes(sub) ? "var(--teal-dark)" : "var(--text-muted)", transition: "all 0.15s" }}>
+                            {applyForm.subjects.includes(sub) ? "✓ " : ""}{sub}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Levels */}
+                    <div className="form-group">
+                      <label>Levels You Can Teach <span style={{ fontWeight: 400, color: "#94a3b8" }}>(tap to select)</span></label>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem", marginTop: "0.35rem" }}>
+                        {availableLevels.map((lvl) => (
+                          <button key={lvl} type="button" onClick={() => toggleApplyLevel(lvl)}
+                            style={{ padding: "0.3rem 0.75rem", borderRadius: "20px", fontSize: "0.78rem", fontWeight: 600, cursor: "pointer", border: applyForm.levels.includes(lvl) ? "2px solid var(--teal)" : "1.5px solid var(--border)", background: applyForm.levels.includes(lvl) ? "var(--teal-light)" : "#fff", color: applyForm.levels.includes(lvl) ? "var(--teal-dark)" : "var(--text-muted)", transition: "all 0.15s" }}>
+                            {applyForm.levels.includes(lvl) ? "✓ " : ""}{lvl}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Bio */}
+                    <div className="form-group">
+                      <label htmlFor="apply-bio">Tell Us About Yourself</label>
+                      <textarea id="apply-bio" className="form-control" rows={2} placeholder="Teaching background, style, achievements, availability..." value={applyForm.notes} onChange={(e) => setApplyForm({ ...applyForm, notes: e.target.value })} />
+                    </div>
+
+                    <button type="submit" className="btn-submit" disabled={applyLoading} style={{ opacity: applyLoading ? 0.75 : 1, cursor: applyLoading ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem" }}>
+                      {applyLoading ? (
+                        <><span style={{ display: "inline-block", width: "1rem", height: "1rem", border: "2px solid rgba(255,255,255,0.3)", borderTopColor: "#fff", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} /><span>Submitting...</span></>
+                      ) : (
+                        <><span>🎓</span><span>Submit My Application</span></>
+                      )}
+                    </button>
+                  </form>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -1653,13 +1915,13 @@ export default function Home() {
 
                   <form onSubmit={handleAdminLoginSubmit}>
                     <div className="form-group">
-                      <label htmlFor="adminEmail">Email</label>
+                      <label htmlFor="adminEmail">Username or Email</label>
                       <div className="password-input-wrap">
                         <input
                           id="adminEmail"
-                          type="email"
+                          type="text"
                           required
-                          placeholder="admin@samin.com"
+                          placeholder="e.g. liam.jenkins or name@example.com"
                           className="form-control"
                           value={adminEmail}
                           onChange={(e) => setAdminEmail(e.target.value)}
@@ -1713,10 +1975,36 @@ export default function Home() {
                       ) : (
                         <>
                           <Lock size={15} />
-                          <span>Log In</span>
+                          <span>Sign In</span>
                         </>
                       )}
                     </button>
+
+                    <div style={{ marginTop: "1rem", textAlign: "center", fontSize: "0.82rem", color: "var(--text-muted)" }}>
+                      <span>New to Samin Tutors? </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsAdminLoginOpen(false);
+                          setRegisterModalTab("student");
+                          setBookingSuccess(false);
+                          setBookingError(null);
+                          setIsModalOpen(true);
+                        }}
+                        style={{
+                          background: "none",
+                          border: "none",
+                          color: "var(--teal)",
+                          fontWeight: 700,
+                          cursor: "pointer",
+                          padding: 0,
+                          fontSize: "inherit",
+                          textDecoration: "underline",
+                        }}
+                      >
+                        Create an Account
+                      </button>
+                    </div>
                   </form>
                 </div>
               )}
@@ -2308,6 +2596,7 @@ export default function Home() {
         .mobile-menu-btn { display: none !important; }
         @media (max-width: 768px) {
           .mobile-menu-btn { display: flex !important; }
+          .reg-grid-2col { grid-template-columns: 1fr !important; }
         }
       `}</style>
     </div>

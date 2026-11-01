@@ -40,6 +40,10 @@ import {
   CalendarClock,
   DollarSign,
   CreditCard,
+  Paperclip,
+  Download,
+  Plus,
+  UserCheck,
 } from "lucide-react";
 import NotificationEnvelope from "@/components/NotificationEnvelope";
 
@@ -209,7 +213,83 @@ type TutorPayoutResponse = {
   sessions: TutorPayoutSession[];
 };
 
-type NavTab = "overview" | "schedule" | "students" | "sessions" | "reports" | "requests" | "payouts" | "profile";
+type NavTab = "overview" | "schedule" | "students" | "sessions" | "reports" | "requests" | "payouts" | "homework" | "chat" | "profile";
+
+type AssignmentSubmission = {
+  id: number;
+  assignment_id: number;
+  student_id: number;
+  content?: string;
+  file_name?: string;
+  file_url?: string;
+  submitted_at: string;
+  student?: { id: number; name?: string; student_name?: string };
+};
+
+type Assignment = {
+  id: number;
+  tutor_id?: number;
+  student_id: number;
+  lesson_session_id?: number;
+  title: string;
+  description: string;
+  due_date: string;
+  due_date_formatted?: string;
+  is_overdue?: boolean;
+  status: "assigned" | "submitted" | "graded" | "overdue" | string;
+  max_points: number;
+  grade?: number | null;
+  feedback?: string | null;
+  graded_at?: string | null;
+  file_name?: string | null;
+  file_url?: string | null;
+  created_at?: string;
+  student?: { id: number; name?: string; student_name?: string; email?: string } | null;
+  tutor?: { id: number; name?: string } | null;
+  latest_submission?: {
+    id: number;
+    submitted_by?: string;
+    submitted_at?: string;
+    file_name?: string | null;
+    file_url?: string | null;
+    content?: string;
+  } | null;
+  submissions?: AssignmentSubmission[];
+};
+
+type ChatParticipant = {
+  id: number;
+  name: string;
+  email?: string;
+  role: string;
+};
+
+type ChatConversation = {
+  id: number;
+  type: string;
+  subject?: string;
+  last_message_at?: string;
+  unread_count: number;
+  other_participants: ChatParticipant[];
+  latest_message?: {
+    id: number;
+    sender_name: string;
+    body?: string;
+    has_attachment: boolean;
+    created_at: string;
+  } | null;
+};
+
+type ChatMessage = {
+  id: number;
+  conversation_id: number;
+  body?: string;
+  attachment_name?: string;
+  attachment_url?: string;
+  created_at: string;
+  created_at_human?: string;
+  sender: { id: number; name: string; role: string };
+};
 
 const statusStyle: Record<string, { bg: string; color: string; border: string; label: string }> = {
   scheduled: { bg: "#eff6ff", color: "#1d4ed8", border: "#bfdbfe", label: "Scheduled" },
@@ -220,6 +300,10 @@ const statusStyle: Record<string, { bg: string; color: string; border: string; l
   pending: { bg: "#fffbeb", color: "#b45309", border: "#fde68a", label: "Pending" },
   approved: { bg: "#ecfdf5", color: "#065f46", border: "#a7f3d0", label: "Approved" },
   rejected: { bg: "#fef2f2", color: "#991b1b", border: "#fecaca", label: "Rejected" },
+  assigned: { bg: "#eff6ff", color: "#1d4ed8", border: "#bfdbfe", label: "Assigned" },
+  submitted: { bg: "#fffbeb", color: "#b45309", border: "#fde68a", label: "Submitted" },
+  graded: { bg: "#ecfdf5", color: "#065f46", border: "#a7f3d0", label: "Graded" },
+  overdue: { bg: "#fef2f2", color: "#991b1b", border: "#fecaca", label: "Overdue" },
 };
 
 export default function TutorDashboard() {
@@ -319,6 +403,49 @@ export default function TutorDashboard() {
   const [payoutData, setPayoutData] = useState<TutorPayoutResponse | null>(null);
   const [loadingPayoutData, setLoadingPayoutData] = useState(false);
 
+  // Homework / Assignments State
+  const [assignments, setAssignments] = useState<Assignment[]>([]);
+  const [loadingAssignments, setLoadingAssignments] = useState(false);
+  const [assignmentFilter, setAssignmentFilter] = useState<string>("all");
+  const [assignmentStudentFilter, setAssignmentStudentFilter] = useState<string>("all");
+  const [assignmentSearch, setAssignmentSearch] = useState<string>("");
+  const [showAssignmentModal, setShowAssignmentModal] = useState(false);
+  const [assignmentForm, setAssignmentForm] = useState({
+    student_id: "",
+    lesson_session_id: "",
+    title: "",
+    description: "",
+    due_date: "",
+    max_points: "100",
+  });
+  const [assignmentFile, setAssignmentFile] = useState<File | null>(null);
+  const [isSubmittingAssignment, setIsSubmittingAssignment] = useState(false);
+  const [assignmentError, setAssignmentError] = useState<string | null>(null);
+  const [gradeModalAssignment, setGradeModalAssignment] = useState<Assignment | null>(null);
+  const [gradeForm, setGradeForm] = useState({ grade: "", feedback: "" });
+  const [isGrading, setIsGrading] = useState(false);
+  const [gradeError, setGradeError] = useState<string | null>(null);
+
+  // Chat / Messaging State
+  const [conversations, setConversations] = useState<ChatConversation[]>([]);
+  const [loadingConversations, setLoadingConversations] = useState(false);
+  const [activeConversation, setActiveConversation] = useState<ChatConversation | null>(null);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [loadingMessages, setLoadingMessages] = useState(false);
+  const [messageBody, setMessageBody] = useState("");
+  const [messageFile, setMessageFile] = useState<File | null>(null);
+  const [isSendingMessage, setIsSendingMessage] = useState(false);
+  const [chatUnreadCount, setChatUnreadCount] = useState(0);
+  const [showNewConvModal, setShowNewConvModal] = useState(false);
+  const [newConvForm, setNewConvForm] = useState({ recipient_id: "", subject: "", initial_message: "" });
+  const [newConvFile, setNewConvFile] = useState<File | null>(null);
+  const [isStartingConv, setIsStartingConv] = useState(false);
+  const [chatSearch, setChatSearch] = useState("");
+
+  // Attendance tracking state: sessionId -> { joined: boolean, joinedAt?: string, leftAt?: string, duration?: number }
+  const [sessionAttendance, setSessionAttendance] = useState<Record<number, { joined: boolean; joinedAt?: string; leftAt?: string; duration?: number }>>({});
+  const [attendanceLoadingId, setAttendanceLoadingId] = useState<number | null>(null);
+
   // Logout confirmation modal
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
@@ -339,6 +466,14 @@ export default function TutorDashboard() {
     const token = typeof window !== "undefined" ? localStorage.getItem("samin_auth_token") : null;
     return {
       "Content-Type": "application/json",
+      Accept: "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    };
+  };
+
+  const getAuthHeadersNoContentType = () => {
+    const token = typeof window !== "undefined" ? localStorage.getItem("samin_auth_token") : null;
+    return {
       Accept: "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     };
@@ -834,6 +969,345 @@ export default function TutorDashboard() {
     setEditNotes(session.notes || "");
   };
 
+  /* ── Fetch Assignments (GET /api/assignments?status=...&student_id=...) ── */
+  const fetchAssignments = async (status?: string, studentId?: string) => {
+    setLoadingAssignments(true);
+    try {
+      const baseUrl = getBackendApiUrl();
+      const currentStatus = status !== undefined ? status : assignmentFilter;
+      const currentStudentId = studentId !== undefined ? studentId : assignmentStudentFilter;
+
+      const params = new URLSearchParams();
+      if (currentStatus && currentStatus !== "all") {
+        params.append("status", currentStatus);
+      }
+      if (currentStudentId && currentStudentId !== "all") {
+        params.append("student_id", currentStudentId);
+      }
+
+      const query = params.toString();
+      const url = query ? `${baseUrl}/api/assignments?${query}` : `${baseUrl}/api/assignments`;
+      const res = await fetch(url, { headers: getAuthHeaders() });
+      if (res.ok) {
+        const data = await res.json();
+        let list: Assignment[] = [];
+        if (Array.isArray(data)) {
+          list = data;
+        } else if (Array.isArray(data?.assignments?.data)) {
+          list = data.assignments.data;
+        } else if (Array.isArray(data?.assignments)) {
+          list = data.assignments;
+        } else if (Array.isArray(data?.data)) {
+          list = data.data;
+        }
+        setAssignments(list);
+      }
+    } catch (err) {
+      console.error("fetchAssignments error:", err);
+    } finally {
+      setLoadingAssignments(false);
+    }
+  };
+
+  /* ── Create Assignment (POST /api/assignments) ── */
+  const handleCreateAssignment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!assignmentForm.student_id || !assignmentForm.title.trim() || !assignmentForm.description.trim() || !assignmentForm.due_date) {
+      setAssignmentError("Please complete all required fields (student, title, description, due date).");
+      return;
+    }
+    setAssignmentError(null);
+    setIsSubmittingAssignment(true);
+    try {
+      const baseUrl = getBackendApiUrl();
+      const formData = new FormData();
+      formData.append("student_id", assignmentForm.student_id);
+      if (assignmentForm.lesson_session_id) {
+        formData.append("lesson_session_id", assignmentForm.lesson_session_id);
+      }
+      formData.append("title", assignmentForm.title.trim());
+      formData.append("description", assignmentForm.description.trim());
+      formData.append("due_date", assignmentForm.due_date);
+      formData.append("max_points", assignmentForm.max_points || "100");
+      if (assignmentFile) {
+        formData.append("attachment", assignmentFile);
+      }
+
+      const res = await fetch(`${baseUrl}/api/assignments`, {
+        method: "POST",
+        headers: getAuthHeadersNoContentType(),
+        body: formData,
+      });
+      const data = await res.json().catch(() => null);
+      if (res.ok) {
+        showToast(data?.message || "Homework assigned successfully!");
+        setShowAssignmentModal(false);
+        setAssignmentForm({ student_id: "", lesson_session_id: "", title: "", description: "", due_date: "", max_points: "100" });
+        setAssignmentFile(null);
+        fetchAssignments();
+      } else {
+        setAssignmentError(data?.message || "Failed to create assignment.");
+      }
+    } catch (err: any) {
+      setAssignmentError(err?.message || "An unexpected error occurred.");
+    } finally {
+      setIsSubmittingAssignment(false);
+    }
+  };
+
+  /* ── Grade Assignment (POST /api/assignments/{id}/grade) ── */
+  const handleGradeAssignment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!gradeModalAssignment) return;
+    if (gradeForm.grade === "" || isNaN(Number(gradeForm.grade))) {
+      setGradeError("Please enter a valid numeric grade.");
+      return;
+    }
+    setGradeError(null);
+    setIsGrading(true);
+    try {
+      const baseUrl = getBackendApiUrl();
+      const res = await fetch(`${baseUrl}/api/assignments/${gradeModalAssignment.id}/grade`, {
+        method: "POST",
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          grade: Number(gradeForm.grade),
+          feedback: gradeForm.feedback.trim() || undefined,
+        }),
+      });
+      const data = await res.json().catch(() => null);
+      if (res.ok) {
+        showToast(data?.message || "Assignment graded successfully!");
+        setGradeModalAssignment(null);
+        setGradeForm({ grade: "", feedback: "" });
+        fetchAssignments();
+      } else {
+        setGradeError(data?.message || "Failed to submit grade.");
+      }
+    } catch (err: any) {
+      setGradeError(err?.message || "An unexpected error occurred while grading.");
+    } finally {
+      setIsGrading(false);
+    }
+  };
+
+  /* ── Fetch Chat Conversations (GET /api/chat/conversations) ── */
+  const fetchConversations = async () => {
+    setLoadingConversations(true);
+    try {
+      const baseUrl = getBackendApiUrl();
+      const res = await fetch(`${baseUrl}/api/chat/conversations`, { headers: getAuthHeaders() });
+      if (res.ok) {
+        const data = await res.json();
+        const list = Array.isArray(data)
+          ? data
+          : Array.isArray(data?.conversations)
+          ? data.conversations
+          : Array.isArray(data?.data)
+          ? data.data
+          : [];
+        setConversations(list);
+      }
+    } catch (err) {
+      console.error("fetchConversations error:", err);
+    } finally {
+      setLoadingConversations(false);
+    }
+  };
+
+  /* ── Fetch Messages for active conversation (GET /api/chat/conversations/{id}/messages) ── */
+  const fetchMessages = async (convId: number) => {
+    setLoadingMessages(true);
+    try {
+      const baseUrl = getBackendApiUrl();
+      const res = await fetch(`${baseUrl}/api/chat/conversations/${convId}/messages`, { headers: getAuthHeaders() });
+      if (res.ok) {
+        const data = await res.json();
+        const list = Array.isArray(data)
+          ? data
+          : Array.isArray(data?.messages?.data)
+          ? data.messages.data
+          : Array.isArray(data?.messages)
+          ? data.messages
+          : Array.isArray(data?.data)
+          ? data.data
+          : [];
+        setMessages(list);
+        // Mark as read
+        fetch(`${baseUrl}/api/chat/conversations/${convId}/read`, {
+          method: "PATCH",
+          headers: getAuthHeaders(),
+        }).then(() => fetchChatUnreadCount()).catch(() => {});
+      }
+    } catch (err) {
+      console.error("fetchMessages error:", err);
+    } finally {
+      setLoadingMessages(false);
+    }
+  };
+
+  /* ── Fetch Chat Unread Count (GET /api/chat/unread-count) ── */
+  const fetchChatUnreadCount = async () => {
+    try {
+      const baseUrl = getBackendApiUrl();
+      const res = await fetch(`${baseUrl}/api/chat/unread-count`, { headers: getAuthHeaders() });
+      if (res.ok) {
+        const data = await res.json();
+        setChatUnreadCount(Number(data?.unread_count ?? data?.count ?? 0));
+      }
+    } catch (err) {
+      console.error("fetchChatUnreadCount error:", err);
+    }
+  };
+
+  /* ── Send Message (POST /api/chat/conversations/{id}/messages) ── */
+  const handleSendMessage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!activeConversation) return;
+    if (!messageBody.trim() && !messageFile) return;
+
+    setIsSendingMessage(true);
+    try {
+      const baseUrl = getBackendApiUrl();
+      const formData = new FormData();
+      if (messageBody.trim()) {
+        formData.append("body", messageBody.trim());
+      }
+      if (messageFile) {
+        formData.append("attachment", messageFile);
+      }
+
+      const res = await fetch(`${baseUrl}/api/chat/conversations/${activeConversation.id}/messages`, {
+        method: "POST",
+        headers: getAuthHeadersNoContentType(),
+        body: formData,
+      });
+      if (res.ok) {
+        setMessageBody("");
+        setMessageFile(null);
+        fetchMessages(activeConversation.id);
+        fetchConversations();
+      } else {
+        const data = await res.json().catch(() => null);
+        showToast(data?.message || "Failed to send message.");
+      }
+    } catch (err) {
+      console.error("handleSendMessage error:", err);
+      showToast("Error sending message.");
+    } finally {
+      setIsSendingMessage(false);
+    }
+  };
+
+  /* ── Start New Conversation (POST /api/chat/conversations) ── */
+  const handleStartConversation = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newConvForm.recipient_id) {
+      showToast("Please choose a student to message.");
+      return;
+    }
+    if (!newConvForm.initial_message.trim() && !newConvFile) {
+      showToast("Please enter an initial message or attach a file.");
+      return;
+    }
+    setIsStartingConv(true);
+    try {
+      const baseUrl = getBackendApiUrl();
+      const formData = new FormData();
+      formData.append("recipient_id", newConvForm.recipient_id);
+      if (newConvForm.subject.trim()) {
+        formData.append("subject", newConvForm.subject.trim());
+      }
+      if (newConvForm.initial_message.trim()) {
+        formData.append("initial_message", newConvForm.initial_message.trim());
+      }
+      if (newConvFile) {
+        formData.append("attachment", newConvFile);
+      }
+
+      const res = await fetch(`${baseUrl}/api/chat/conversations`, {
+        method: "POST",
+        headers: getAuthHeadersNoContentType(),
+        body: formData,
+      });
+      const data = await res.json().catch(() => null);
+      if (res.ok) {
+        showToast("Conversation started!");
+        setShowNewConvModal(false);
+        setNewConvForm({ recipient_id: "", subject: "", initial_message: "" });
+        setNewConvFile(null);
+        fetchConversations();
+        if (data?.conversation?.id) {
+          setActiveConversation(data.conversation);
+          fetchMessages(data.conversation.id);
+        }
+      } else {
+        showToast(data?.message || "Failed to start conversation.");
+      }
+    } catch (err: any) {
+      showToast(err?.message || "Error starting conversation.");
+    } finally {
+      setIsStartingConv(false);
+    }
+  };
+
+  /* ── Attendance Tracking (POST /api/sessions/{sessionId}/join & leave) ── */
+  const handleJoinSession = async (sessionId: number, meetingLink?: string) => {
+    setAttendanceLoadingId(sessionId);
+    try {
+      const baseUrl = getBackendApiUrl();
+      const res = await fetch(`${baseUrl}/api/sessions/${sessionId}/join`, {
+        method: "POST",
+        headers: getAuthHeaders(),
+      });
+      const data = await res.json().catch(() => null);
+      if (res.ok) {
+        const link = data?.meeting_link || meetingLink;
+        setSessionAttendance((prev) => ({
+          ...prev,
+          [sessionId]: { joined: true, joinedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) },
+        }));
+        showToast("Attendance logged! You have checked in to this session.");
+        if (link && typeof window !== "undefined") {
+          window.open(link, "_blank", "noreferrer");
+        }
+      } else {
+        showToast(data?.message || "Unable to join session.");
+      }
+    } catch (err: any) {
+      showToast("Error marking session attendance.");
+    } finally {
+      setAttendanceLoadingId(null);
+    }
+  };
+
+  const handleLeaveSession = async (sessionId: number) => {
+    setAttendanceLoadingId(sessionId);
+    try {
+      const baseUrl = getBackendApiUrl();
+      const res = await fetch(`${baseUrl}/api/sessions/${sessionId}/leave`, {
+        method: "POST",
+        headers: getAuthHeaders(),
+      });
+      const data = await res.json().catch(() => null);
+      if (res.ok) {
+        const duration = data?.attendance?.duration_minutes;
+        setSessionAttendance((prev) => ({
+          ...prev,
+          [sessionId]: { joined: false, leftAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), duration },
+        }));
+        showToast(`Checked out of session.${duration ? ` Duration: ${duration} mins.` : ""}`);
+        fetchSessions(sessionPage);
+      } else {
+        showToast(data?.message || "Unable to record session checkout.");
+      }
+    } catch (err: any) {
+      showToast("Error checking out of session.");
+    } finally {
+      setAttendanceLoadingId(null);
+    }
+  };
+
   /* ── Auth checking & initial load ── */
   useEffect(() => {
     const mustChange = typeof window !== "undefined" ? localStorage.getItem("samin_must_change_password") : null;
@@ -865,7 +1339,14 @@ export default function TutorDashboard() {
         } catch {}
       }
 
-      Promise.all([fetchDashboardData(), fetchStudents(), fetchSessions(1), fetchChangeRequests()]).finally(() => {
+      Promise.all([
+        fetchDashboardData(),
+        fetchStudents(),
+        fetchSessions(1),
+        fetchChangeRequests(),
+        fetchAssignments(),
+        fetchChatUnreadCount(),
+      ]).finally(() => {
         setInitialLoading(false);
       });
     } else {
@@ -912,7 +1393,13 @@ export default function TutorDashboard() {
 
       setIsAuthed(true);
       setInitialLoading(true);
-      await Promise.all([fetchDashboardData(), fetchStudents(), fetchSessions(1)]);
+      await Promise.all([
+        fetchDashboardData(),
+        fetchStudents(),
+        fetchSessions(1),
+        fetchAssignments(),
+        fetchChatUnreadCount(),
+      ]);
       setInitialLoading(false);
       showToast(data?.message || "Welcome back to your Tutor Portal!");
     } catch (err: any) {
@@ -1072,6 +1559,8 @@ export default function TutorDashboard() {
     { tab: "reports", icon: <FileText size={18} />, label: "Lesson Reports" },
     { tab: "requests", icon: <RotateCcw size={18} />, label: "Change Requests", badge: pendingRequestsCount || undefined },
     { tab: "payouts", icon: <CreditCard size={18} />, label: "Payouts & Earnings" },
+    { tab: "homework", icon: <BookOpen size={18} />, label: "Homework", badge: assignments.filter((a) => a.status === "submitted").length || undefined },
+    { tab: "chat", icon: <MessageSquare size={18} />, label: "Messages", badge: chatUnreadCount || undefined },
     { tab: "profile", icon: <Award size={18} />, label: "My Profile" },
   ];
 
@@ -1152,6 +1641,11 @@ export default function TutorDashboard() {
                 if (tab === "students") fetchStudents();
                 if (tab === "requests") fetchChangeRequests();
                 if (tab === "payouts") fetchTutorPayouts(payoutMonth);
+                if (tab === "homework") fetchAssignments();
+                if (tab === "chat") {
+                  fetchConversations();
+                  fetchChatUnreadCount();
+                }
               }}
               className={`nav-btn${activeTab === tab ? " active" : ""}`}
               style={{ color: activeTab === tab ? "#0d9488" : "#4b5563" }}
@@ -1259,6 +1753,8 @@ export default function TutorDashboard() {
                 {activeTab === "reports" && "Lesson Reports & Feedback"}
                 {activeTab === "requests" && "Session Change Requests"}
                 {activeTab === "payouts" && "Payouts & Earnings"}
+                {activeTab === "homework" && "Homework & Assignments"}
+                {activeTab === "chat" && "In-App Student Messages"}
                 {activeTab === "profile" && "Tutor Profile"}
               </h1>
               <p style={{ fontSize: "0.72rem", color: "#94a3b8", margin: 0 }}>
@@ -1274,6 +1770,8 @@ export default function TutorDashboard() {
                 fetchStudents();
                 fetchSessions(sessionPage);
                 fetchChangeRequests();
+                fetchAssignments();
+                fetchChatUnreadCount();
               }}
               title="Sync latest sessions and timetable from server"
               style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem", padding: "0.4rem 0.75rem", borderRadius: "8px", border: "1px solid #e2e8f0", background: "#fff", color: "#475569", fontSize: "0.76rem", fontWeight: 600, cursor: "pointer" }}
@@ -1509,6 +2007,38 @@ export default function TutorDashboard() {
                                 >
                                   <Video size={13} /> Join Meet
                                 </a>
+                              )}
+
+                              {/* Attendance Tracking */}
+                              {session.status !== "cancelled" && (
+                                <>
+                                  {sessionAttendance[session.id]?.joined ? (
+                                    <div style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem" }}>
+                                      <span style={{ fontSize: "0.72rem", fontWeight: 700, padding: "0.2rem 0.5rem", borderRadius: "14px", background: "#ecfdf5", color: "#065f46", border: "1px solid #a7f3d0", display: "inline-flex", alignItems: "center", gap: "0.25rem" }}>
+                                        <CheckCircle2 size={12} color="#059669" /> In Session ({sessionAttendance[session.id].joinedAt})
+                                      </span>
+                                      <button
+                                        onClick={() => handleLeaveSession(session.id)}
+                                        disabled={attendanceLoadingId === session.id}
+                                        className="action-btn"
+                                        style={{ background: "#dc2626", color: "#fff", padding: "0.32rem 0.65rem", fontSize: "0.75rem" }}
+                                        title="Check out of session and record duration"
+                                      >
+                                        <LogOut size={12} /> Leave
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <button
+                                      onClick={() => handleJoinSession(session.id, session.meeting_link)}
+                                      disabled={attendanceLoadingId === session.id || session.status === "completed"}
+                                      className="action-btn"
+                                      style={{ background: "#059669", color: "#fff", padding: "0.32rem 0.7rem", fontSize: "0.75rem", opacity: session.status === "completed" ? 0.6 : 1 }}
+                                      title="Check in to track session attendance"
+                                    >
+                                      <UserCheck size={13} /> {attendanceLoadingId === session.id ? "Checking in…" : "Check In"}
+                                    </button>
+                                  )}
+                                </>
                               )}
 
                               <button
@@ -1793,6 +2323,38 @@ export default function TutorDashboard() {
                                 >
                                   <Video size={13} /> Join Meet
                                 </a>
+                              )}
+
+                              {/* Attendance Tracking */}
+                              {session.status !== "cancelled" && (
+                                <>
+                                  {sessionAttendance[session.id]?.joined ? (
+                                    <div style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem" }}>
+                                      <span style={{ fontSize: "0.72rem", fontWeight: 700, padding: "0.2rem 0.5rem", borderRadius: "14px", background: "#ecfdf5", color: "#065f46", border: "1px solid #a7f3d0", display: "inline-flex", alignItems: "center", gap: "0.25rem" }}>
+                                        <CheckCircle2 size={12} color="#059669" /> In Session ({sessionAttendance[session.id].joinedAt})
+                                      </span>
+                                      <button
+                                        onClick={() => handleLeaveSession(session.id)}
+                                        disabled={attendanceLoadingId === session.id}
+                                        className="action-btn"
+                                        style={{ background: "#dc2626", color: "#fff", padding: "0.32rem 0.65rem", fontSize: "0.75rem" }}
+                                        title="Check out of session and record duration"
+                                      >
+                                        <LogOut size={12} /> Leave
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <button
+                                      onClick={() => handleJoinSession(session.id, session.meeting_link)}
+                                      disabled={attendanceLoadingId === session.id || session.status === "completed"}
+                                      className="action-btn"
+                                      style={{ background: "#059669", color: "#fff", padding: "0.32rem 0.7rem", fontSize: "0.75rem", opacity: session.status === "completed" ? 0.6 : 1 }}
+                                      title="Check in to track session attendance"
+                                    >
+                                      <UserCheck size={13} /> {attendanceLoadingId === session.id ? "Checking in…" : "Check In"}
+                                    </button>
+                                  )}
+                                </>
                               )}
 
                               <button
@@ -2168,18 +2730,42 @@ export default function TutorDashboard() {
                                   )}
                                 </td>
                                 <td style={{ padding: "0.85rem 1rem", whiteSpace: "nowrap" }}>
-                                  {sess.meeting_link ? (
-                                    <a
-                                      href={sess.meeting_link}
-                                      target="_blank"
-                                      rel="noreferrer"
-                                      style={{ display: "inline-flex", alignItems: "center", gap: "0.3rem", background: "#e8f8f7", color: "#0d9488", padding: "0.25rem 0.6rem", borderRadius: "6px", fontWeight: 700, fontSize: "0.74rem", textDecoration: "none" }}
-                                    >
-                                      <Video size={13} /> Join Meet
-                                    </a>
-                                  ) : (
-                                    <span style={{ fontSize: "0.72rem", color: "#94a3b8" }}>—</span>
-                                  )}
+                                  <div style={{ display: "inline-flex", alignItems: "center", gap: "0.4rem" }}>
+                                    {sess.meeting_link && (
+                                      <a
+                                        href={sess.meeting_link}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        style={{ display: "inline-flex", alignItems: "center", gap: "0.3rem", background: "#e8f8f7", color: "#0d9488", padding: "0.25rem 0.6rem", borderRadius: "6px", fontWeight: 700, fontSize: "0.74rem", textDecoration: "none" }}
+                                        title="Open Google Meet"
+                                      >
+                                        <Video size={13} /> Meet
+                                      </a>
+                                    )}
+                                    {sess.status !== "cancelled" && (
+                                      sessionAttendance[sess.id]?.joined ? (
+                                        <button
+                                          onClick={() => handleLeaveSession(sess.id)}
+                                          disabled={attendanceLoadingId === sess.id}
+                                          className="action-btn"
+                                          style={{ background: "#dc2626", color: "#fff", padding: "0.25rem 0.55rem", fontSize: "0.72rem" }}
+                                          title="Check out of session and record duration"
+                                        >
+                                          <LogOut size={12} /> Leave
+                                        </button>
+                                      ) : (
+                                        <button
+                                          onClick={() => handleJoinSession(sess.id, sess.meeting_link)}
+                                          disabled={attendanceLoadingId === sess.id || sess.status === "completed"}
+                                          className="action-btn"
+                                          style={{ background: "#059669", color: "#fff", padding: "0.25rem 0.55rem", fontSize: "0.72rem", opacity: sess.status === "completed" ? 0.6 : 1 }}
+                                          title="Check in to track session attendance"
+                                        >
+                                          <UserCheck size={12} /> In
+                                        </button>
+                                      )
+                                    )}
+                                  </div>
                                 </td>
                                 <td style={{ padding: "0.85rem 1rem", textAlign: "right", whiteSpace: "nowrap" }}>
                                   <div style={{ display: "inline-flex", gap: "0.4rem" }}>
@@ -2852,6 +3438,653 @@ export default function TutorDashboard() {
                         </table>
                       </div>
                     )}
+                  </div>
+                </div>
+              )}
+
+              {/* ══════════════ HOMEWORK TAB ══════════════ */}
+              {activeTab === "homework" && (
+                <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }} className="page-enter">
+                  {/* Top Bar */}
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "1rem" }}>
+                    <div>
+                      <h2 style={{ fontSize: "1.15rem", fontWeight: 800, color: "#0f172a", margin: 0 }}>
+                        Homework &amp; Assignments
+                      </h2>
+                      <p style={{ fontSize: "0.78rem", color: "#64748b", margin: "0.15rem 0 0" }}>
+                        Assign homework tasks to your students, review submissions, and provide scores and feedback
+                      </p>
+                    </div>
+
+                    <button
+                      onClick={() => {
+                        setAssignmentError(null);
+                        setShowAssignmentModal(true);
+                      }}
+                      className="action-btn"
+                      style={{ background: "#20b2a4", color: "#fff", padding: "0.55rem 1.1rem", fontSize: "0.85rem", boxShadow: "0 2px 6px rgba(32,178,164,0.3)" }}
+                    >
+                      <Plus size={16} /> Assign New Homework
+                    </button>
+                  </div>
+
+                  {/* Summary Metric Cards */}
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "1rem" }}>
+                    <div className="dash-card" style={{ padding: "1.1rem 1.25rem" }}>
+                      <span style={{ fontSize: "0.75rem", color: "#64748b", fontWeight: 600 }}>Total Assignments</span>
+                      <div style={{ fontSize: "1.5rem", fontWeight: 800, color: "#0f172a", marginTop: "0.2rem" }}>{assignments.length}</div>
+                    </div>
+                    <div className="dash-card" style={{ padding: "1.1rem 1.25rem" }}>
+                      <span style={{ fontSize: "0.75rem", color: "#b45309", fontWeight: 600 }}>Awaiting Grading</span>
+                      <div style={{ fontSize: "1.5rem", fontWeight: 800, color: "#b45309", marginTop: "0.2rem" }}>
+                        {assignments.filter((a) => a.status === "submitted").length}
+                      </div>
+                    </div>
+                    <div className="dash-card" style={{ padding: "1.1rem 1.25rem" }}>
+                      <span style={{ fontSize: "0.75rem", color: "#065f46", fontWeight: 600 }}>Graded</span>
+                      <div style={{ fontSize: "1.5rem", fontWeight: 800, color: "#065f46", marginTop: "0.2rem" }}>
+                        {assignments.filter((a) => a.status === "graded").length}
+                      </div>
+                    </div>
+                    <div className="dash-card" style={{ padding: "1.1rem 1.25rem" }}>
+                      <span style={{ fontSize: "0.75rem", color: "#1d4ed8", fontWeight: 600 }}>Pending Student Submission</span>
+                      <div style={{ fontSize: "1.5rem", fontWeight: 800, color: "#1d4ed8", marginTop: "0.2rem" }}>
+                        {assignments.filter((a) => a.status === "assigned").length}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Filters Bar */}
+                  <div className="dash-card" style={{ padding: "0.75rem 1rem", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "0.75rem" }}>
+                    <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "center" }}>
+                      {/* Status Pills */}
+                      <div style={{ display: "flex", gap: "0.35rem", flexWrap: "wrap" }}>
+                        {(["all", "assigned", "submitted", "graded", "overdue"] as const).map((st) => (
+                          <button
+                            key={st}
+                            onClick={() => {
+                              setAssignmentFilter(st);
+                              fetchAssignments(st);
+                            }}
+                            style={{
+                              padding: "0.35rem 0.8rem",
+                              borderRadius: "6px",
+                              border: "none",
+                              background: assignmentFilter === st ? "#20b2a4" : "#f1f5f9",
+                              color: assignmentFilter === st ? "#fff" : "#475569",
+                              fontSize: "0.76rem",
+                              fontWeight: 700,
+                              cursor: "pointer",
+                              textTransform: "capitalize",
+                            }}
+                          >
+                            {st === "all" ? "All Assignments" : st}
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* Student Filter Dropdown */}
+                      <select
+                        value={assignmentStudentFilter}
+                        onChange={(e) => {
+                          const sId = e.target.value;
+                          setAssignmentStudentFilter(sId);
+                          fetchAssignments(undefined, sId);
+                        }}
+                        style={{
+                          padding: "0.35rem 0.65rem",
+                          borderRadius: "6px",
+                          border: "1px solid #cbd5e1",
+                          background: "#fff",
+                          color: "#334155",
+                          fontSize: "0.76rem",
+                          fontWeight: 600,
+                          cursor: "pointer",
+                          outline: "none",
+                        }}
+                      >
+                        <option value="all">All Students</option>
+                        {students.map((st) => (
+                          <option key={st.id} value={st.id}>
+                            {st.student_name} (#{st.id})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                      <input
+                        type="text"
+                        placeholder="Search title, student..."
+                        value={assignmentSearch}
+                        onChange={(e) => setAssignmentSearch(e.target.value)}
+                        style={{
+                          padding: "0.35rem 0.65rem",
+                          borderRadius: "6px",
+                          border: "1px solid #cbd5e1",
+                          fontSize: "0.76rem",
+                          outline: "none",
+                          width: "160px",
+                        }}
+                      />
+                      <button
+                        onClick={() => fetchAssignments()}
+                        style={{ background: "none", border: "1px solid #e2e8f0", borderRadius: "6px", padding: "0.35rem 0.75rem", fontSize: "0.76rem", color: "#64748b", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "0.35rem" }}
+                      >
+                        <RefreshCw size={13} /> Refresh
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Assignment Cards List */}
+                  {loadingAssignments ? (
+                    <div className="dash-card" style={{ padding: "3rem", textAlign: "center", color: "#64748b" }}>
+                      <div style={{ width: "24px", height: "24px", border: "3px solid #20b2a4", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.8s linear infinite", margin: "0 auto 0.75rem" }} />
+                      Loading homework assignments…
+                    </div>
+                  ) : assignments.length === 0 ? (
+                    <div className="dash-card" style={{ padding: "3.5rem 1.5rem", textAlign: "center" }}>
+                      <div style={{ width: "56px", height: "56px", borderRadius: "50%", background: "#e8f8f7", color: "#0d9488", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 1rem" }}>
+                        <BookOpen size={26} />
+                      </div>
+                      <h3 style={{ fontSize: "1.05rem", fontWeight: 800, color: "#0f172a", margin: "0 0 0.35rem" }}>
+                        No assignments found
+                      </h3>
+                      <p style={{ fontSize: "0.82rem", color: "#64748b", maxWidth: "420px", margin: "0 auto 1.25rem" }}>
+                        {assignmentFilter !== "all"
+                          ? `No assignments currently in "${assignmentFilter}" status.`
+                          : assignmentStudentFilter !== "all"
+                          ? "No assignments found for the selected student."
+                          : "You haven't assigned any homework yet. Click below to create your first assignment."}
+                      </p>
+                      <button
+                        onClick={() => {
+                          setAssignmentError(null);
+                          setShowAssignmentModal(true);
+                        }}
+                        className="action-btn"
+                        style={{ background: "#20b2a4", color: "#fff", padding: "0.5rem 1.1rem" }}
+                      >
+                        <Plus size={15} /> Assign Homework
+                      </button>
+                    </div>
+                  ) : (
+                    <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+                      {assignments
+                        .filter((item) => {
+                          if (!assignmentSearch.trim()) return true;
+                          const q = assignmentSearch.toLowerCase();
+                          const title = (item.title || "").toLowerCase();
+                          const desc = (item.description || "").toLowerCase();
+                          const stName = (item.student?.student_name || item.student?.name || "").toLowerCase();
+                          return title.includes(q) || desc.includes(q) || stName.includes(q);
+                        })
+                        .map((item) => {
+                        const studentName = item.student?.student_name || item.student?.name || "Student #" + item.student_id;
+                        const isOverdue = item.is_overdue || item.status === "overdue" || (item.status === "assigned" && new Date(item.due_date) < new Date());
+                        const displayStatus = isOverdue && item.status === "assigned" ? "overdue" : item.status;
+                        const submission = item.latest_submission || (item.submissions && item.submissions[0]);
+
+                        return (
+                          <div key={item.id} className="dash-card" style={{ padding: "1.35rem", display: "flex", flexDirection: "column", gap: "0.85rem" }}>
+                            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: "0.75rem" }}>
+                              <div>
+                                <div style={{ display: "flex", alignItems: "center", gap: "0.6rem", flexWrap: "wrap" }}>
+                                  <span style={{ fontSize: "0.72rem", fontWeight: 800, padding: "0.2rem 0.55rem", borderRadius: "14px", ...statusStyle[displayStatus] }}>
+                                    {displayStatus.toUpperCase()}
+                                  </span>
+                                  <span style={{ fontSize: "0.78rem", fontWeight: 700, color: "#0d9488", background: "#e8f8f7", padding: "0.2rem 0.6rem", borderRadius: "12px" }}>
+                                    Student: {studentName}
+                                  </span>
+                                  <span style={{ fontSize: "0.75rem", color: "#64748b" }}>
+                                    Max Points: <strong>{item.max_points}</strong>
+                                  </span>
+                                </div>
+                                <h3 style={{ fontSize: "1.05rem", fontWeight: 800, color: "#0f172a", margin: "0.4rem 0 0.2rem" }}>
+                                  {item.title}
+                                </h3>
+                              </div>
+
+                              <div style={{ textAlign: "right", fontSize: "0.76rem" }}>
+                                <span style={{ color: isOverdue ? "#dc2626" : "#64748b", fontWeight: 600 }}>
+                                  Due: {item.due_date_formatted || new Date(item.due_date).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Description */}
+                            <p style={{ fontSize: "0.84rem", color: "#334155", margin: 0, lineHeight: 1.55, background: "#f8fafc", padding: "0.75rem", borderRadius: "8px", border: "1px solid #f1f5f9" }}>
+                              {item.description}
+                            </p>
+
+                            {/* Tutor Attachment */}
+                            {item.file_url && (
+                              <div style={{ display: "inline-flex", alignItems: "center", gap: "0.5rem" }}>
+                                <a
+                                  href={item.file_url}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  download
+                                  style={{
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: "0.35rem",
+                                    padding: "0.35rem 0.75rem",
+                                    borderRadius: "6px",
+                                    background: "#e2e8f0",
+                                    color: "#0f172a",
+                                    fontSize: "0.76rem",
+                                    fontWeight: 700,
+                                    textDecoration: "none",
+                                  }}
+                                >
+                                  <Download size={13} /> Attached Worksheet ({item.file_name || "Download"})
+                                </a>
+                              </div>
+                            )}
+
+                            {/* Submissions Section */}
+                            {submission && (
+                              <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "8px", padding: "0.85rem", marginTop: "0.2rem" }}>
+                                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "0.5rem", marginBottom: "0.4rem" }}>
+                                  <span style={{ fontSize: "0.78rem", fontWeight: 800, color: "#166534", display: "inline-flex", alignItems: "center", gap: "0.3rem" }}>
+                                    <CheckCircle2 size={14} color="#16a34a" /> Student Submission Received
+                                  </span>
+                                  {submission.submitted_at && (
+                                    <span style={{ fontSize: "0.72rem", color: "#15803d" }}>
+                                      Submitted at: {new Date(submission.submitted_at).toLocaleString("en-GB")}
+                                    </span>
+                                  )}
+                                </div>
+                                {submission.content && (
+                                  <p style={{ fontSize: "0.82rem", color: "#14532d", margin: "0.25rem 0 0.5rem", whiteSpace: "pre-wrap" }}>
+                                    &ldquo;{submission.content}&rdquo;
+                                  </p>
+                                )}
+                                {submission.file_url && (
+                                  <a
+                                    href={submission.file_url}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    download
+                                    style={{
+                                      display: "inline-flex",
+                                      alignItems: "center",
+                                      gap: "0.35rem",
+                                      padding: "0.3rem 0.7rem",
+                                      borderRadius: "6px",
+                                      background: "#16a34a",
+                                      color: "#fff",
+                                      fontSize: "0.75rem",
+                                      fontWeight: 700,
+                                      textDecoration: "none",
+                                    }}
+                                  >
+                                    <Download size={13} /> Download Student Work ({submission.file_name || "Attachment"})
+                                  </a>
+                                )}
+                              </div>
+                            )}
+
+                            {/* Graded Feedback Box */}
+                            {item.status === "graded" && item.grade != null && (
+                              <div style={{ background: "#f8fafc", border: "1.5px solid #cbd5e1", borderRadius: "8px", padding: "0.85rem" }}>
+                                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "0.5rem" }}>
+                                  <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                                    <span style={{ fontSize: "0.82rem", fontWeight: 800, color: "#065f46" }}>
+                                      Score: {item.grade} / {item.max_points}
+                                    </span>
+                                    <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "#0d9488", background: "#e8f8f7", padding: "0.15rem 0.5rem", borderRadius: "10px" }}>
+                                      {Math.round((Number(item.grade) / Number(item.max_points || 100)) * 100)}%
+                                    </span>
+                                  </div>
+                                  {item.graded_at && (
+                                    <span style={{ fontSize: "0.72rem", color: "#64748b" }}>
+                                      Graded on: {new Date(item.graded_at).toLocaleDateString("en-GB")}
+                                    </span>
+                                  )}
+                                </div>
+                                {item.feedback && (
+                                  <p style={{ fontSize: "0.82rem", color: "#475569", margin: "0.4rem 0 0", fontStyle: "italic" }}>
+                                    Feedback: &ldquo;{item.feedback}&rdquo;
+                                  </p>
+                                )}
+                              </div>
+                            )}
+
+                            {/* Action Buttons */}
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: "0.5rem", borderTop: "1px solid #f1f5f9", paddingTop: "0.75rem" }}>
+                              {(item.status === "submitted" || (submission && item.status !== "graded")) && (
+                                <button
+                                  onClick={() => {
+                                    setGradeModalAssignment(item);
+                                    setGradeForm({ grade: String(item.grade ?? ""), feedback: item.feedback || "" });
+                                    setGradeError(null);
+                                  }}
+                                  className="action-btn"
+                                  style={{ background: "#059669", color: "#fff", padding: "0.4rem 0.9rem" }}
+                                >
+                                  <Award size={14} /> Grade Submission
+                                </button>
+                              )}
+                              {item.status === "graded" && (
+                                <button
+                                  onClick={() => {
+                                    setGradeModalAssignment(item);
+                                    setGradeForm({ grade: String(item.grade ?? ""), feedback: item.feedback || "" });
+                                    setGradeError(null);
+                                  }}
+                                  className="action-btn"
+                                  style={{ background: "#fff", color: "#475569", border: "1px solid #cbd5e1", padding: "0.4rem 0.85rem" }}
+                                >
+                                  <Edit3 size={13} /> Update Grade
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ══════════════ CHAT / MESSAGES TAB ══════════════ */}
+              {activeTab === "chat" && (
+                <div style={{ display: "flex", flexDirection: "column", gap: "1rem", height: "calc(100vh - 170px)", minHeight: "560px" }} className="page-enter">
+                  <div className="dash-card" style={{ flex: 1, display: "flex", overflow: "hidden" }}>
+                    {/* Left Column: Conversations List */}
+                    <div style={{ width: "320px", minWidth: "300px", borderRight: "1px solid #e2e8f0", display: "flex", flexDirection: "column", background: "#fff" }}>
+                      {/* Left Header */}
+                      <div style={{ padding: "1rem", borderBottom: "1px solid #f1f5f9", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                        <div>
+                          <h3 style={{ fontSize: "0.95rem", fontWeight: 800, color: "#0f172a", margin: 0 }}>Messages</h3>
+                          <span style={{ fontSize: "0.72rem", color: "#64748b" }}>Direct messaging with students</span>
+                        </div>
+                        <button
+                          onClick={() => {
+                            setShowNewConvModal(true);
+                            setNewConvForm({ recipient_id: "", subject: "", initial_message: "" });
+                            setNewConvFile(null);
+                          }}
+                          className="action-btn"
+                          style={{ background: "#20b2a4", color: "#fff", padding: "0.35rem 0.65rem", fontSize: "0.75rem" }}
+                          title="Start conversation with a student"
+                        >
+                          <Plus size={14} /> New Chat
+                        </button>
+                      </div>
+
+                      {/* Search box */}
+                      <div style={{ padding: "0.65rem 0.85rem", borderBottom: "1px solid #f1f5f9" }}>
+                        <div className="search-box" style={{ padding: "0.35rem 0.65rem" }}>
+                          <Search size={14} color="#94a3b8" />
+                          <input
+                            type="text"
+                            placeholder="Search conversation..."
+                            value={chatSearch}
+                            onChange={(e) => setChatSearch(e.target.value)}
+                            style={{ fontSize: "0.8rem" }}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Conversation list */}
+                      <div style={{ flex: 1, overflowY: "auto" }}>
+                        {loadingConversations ? (
+                          <div style={{ padding: "2rem", textAlign: "center", color: "#64748b", fontSize: "0.8rem" }}>
+                            <div style={{ width: "20px", height: "20px", border: "2px solid #20b2a4", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.8s linear infinite", margin: "0 auto 0.5rem" }} />
+                            Loading chats…
+                          </div>
+                        ) : conversations.length === 0 ? (
+                          <div style={{ padding: "2.5rem 1rem", textAlign: "center", color: "#94a3b8" }}>
+                            <MessageSquare size={28} style={{ margin: "0 auto 0.5rem", opacity: 0.5 }} />
+                            <p style={{ fontSize: "0.82rem", margin: 0 }}>No conversations yet</p>
+                            <span style={{ fontSize: "0.72rem" }}>Click &quot;New Chat&quot; above to message a student</span>
+                          </div>
+                        ) : (
+                          conversations
+                            .filter((c) => {
+                              if (!chatSearch.trim()) return true;
+                              const other = c.other_participants?.[0]?.name || "";
+                              const sub = c.subject || "";
+                              return other.toLowerCase().includes(chatSearch.toLowerCase()) || sub.toLowerCase().includes(chatSearch.toLowerCase());
+                            })
+                            .map((conv) => {
+                              const other = conv.other_participants?.[0] || { name: "Student", role: "student" };
+                              const isSelected = activeConversation?.id === conv.id;
+                              return (
+                                <div
+                                  key={conv.id}
+                                  onClick={() => {
+                                    setActiveConversation(conv);
+                                    fetchMessages(conv.id);
+                                  }}
+                                  style={{
+                                    padding: "0.85rem 1rem",
+                                    borderBottom: "1px solid #f8fafc",
+                                    cursor: "pointer",
+                                    background: isSelected ? "#e8f8f7" : "#fff",
+                                    borderLeft: isSelected ? "3px solid #20b2a4" : "3px solid transparent",
+                                    transition: "background 0.15s",
+                                  }}
+                                >
+                                  <div style={{ display: "flex", alignItems: "center", gap: "0.65rem" }}>
+                                    <div style={{ width: "36px", height: "36px", borderRadius: "50%", background: "linear-gradient(135deg,#20b2a4,#0d9488)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: "0.85rem", flexShrink: 0 }}>
+                                      {other.name?.charAt(0) || "S"}
+                                    </div>
+                                    <div style={{ flex: 1, minWidth: 0 }}>
+                                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                                        <span style={{ fontSize: "0.84rem", fontWeight: 700, color: "#0f172a", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                                          {other.name}
+                                        </span>
+                                        {conv.unread_count > 0 && (
+                                          <span style={{ background: "#20b2a4", color: "#fff", borderRadius: "10px", fontSize: "0.68rem", fontWeight: 800, padding: "0.1rem 0.45rem" }}>
+                                            {conv.unread_count}
+                                          </span>
+                                        )}
+                                      </div>
+                                      <div style={{ fontSize: "0.72rem", color: "#64748b", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", marginTop: "0.15rem" }}>
+                                        {conv.subject ? `[${conv.subject}] ` : ""}
+                                        {conv.latest_message ? conv.latest_message.body || "(Attachment)" : "No messages yet"}
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Right Column: Chat Messages Thread */}
+                    <div style={{ flex: 1, display: "flex", flexDirection: "column", background: "#f8fafc" }}>
+                      {activeConversation ? (
+                        <>
+                          {/* Chat Thread Header */}
+                          <div style={{ padding: "0.85rem 1.25rem", background: "#fff", borderBottom: "1px solid #e2e8f0", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: "0.65rem" }}>
+                              <div style={{ width: "34px", height: "34px", borderRadius: "50%", background: "#e8f8f7", color: "#0d9488", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: "0.85rem" }}>
+                                {activeConversation.other_participants?.[0]?.name?.charAt(0) || "S"}
+                              </div>
+                              <div>
+                                <h4 style={{ fontSize: "0.92rem", fontWeight: 800, color: "#0f172a", margin: 0 }}>
+                                  {activeConversation.other_participants?.[0]?.name || "Student"}
+                                </h4>
+                                <span style={{ fontSize: "0.7rem", color: "#64748b" }}>
+                                  {activeConversation.subject || "Direct Message"} • Student Portal
+                                </span>
+                              </div>
+                            </div>
+
+                            <button
+                              onClick={() => fetchMessages(activeConversation.id)}
+                              style={{ background: "none", border: "1px solid #e2e8f0", borderRadius: "6px", padding: "0.3rem 0.6rem", fontSize: "0.74rem", color: "#64748b", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "0.3rem" }}
+                            >
+                              <RefreshCw size={12} /> Sync
+                            </button>
+                          </div>
+
+                          {/* Messages Thread Body */}
+                          <div style={{ flex: 1, overflowY: "auto", padding: "1.25rem", display: "flex", flexDirection: "column", gap: "0.85rem" }}>
+                            {loadingMessages ? (
+                              <div style={{ textAlign: "center", padding: "2rem", color: "#64748b", fontSize: "0.82rem" }}>
+                                Loading message history…
+                              </div>
+                            ) : messages.length === 0 ? (
+                              <div style={{ textAlign: "center", padding: "3rem 1rem", color: "#94a3b8" }}>
+                                <MessageSquare size={32} style={{ margin: "0 auto 0.5rem", opacity: 0.5 }} />
+                                <p style={{ fontSize: "0.85rem", margin: 0 }}>Start the conversation below</p>
+                              </div>
+                            ) : (
+                              messages.map((msg) => {
+                                const isMe = msg.sender?.role === "tutor" || msg.sender?.id === tutorProfile?.id;
+                                return (
+                                  <div
+                                    key={msg.id}
+                                    style={{
+                                      display: "flex",
+                                      flexDirection: "column",
+                                      alignItems: isMe ? "flex-end" : "flex-start",
+                                    }}
+                                  >
+                                    <span style={{ fontSize: "0.68rem", color: "#94a3b8", marginBottom: "0.2rem" }}>
+                                      {isMe ? "You" : msg.sender?.name} • {msg.created_at_human || new Date(msg.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                                    </span>
+                                    <div
+                                      style={{
+                                        maxWidth: "75%",
+                                        padding: "0.7rem 0.95rem",
+                                        borderRadius: isMe ? "14px 14px 2px 14px" : "14px 14px 14px 2px",
+                                        background: isMe ? "#20b2a4" : "#fff",
+                                        color: isMe ? "#fff" : "#0f172a",
+                                        boxShadow: isMe ? "0 2px 6px rgba(32,178,164,0.25)" : "0 1px 3px rgba(0,0,0,0.06)",
+                                        border: isMe ? "none" : "1px solid #e2e8f0",
+                                        fontSize: "0.85rem",
+                                        lineHeight: 1.5,
+                                        wordBreak: "break-word",
+                                      }}
+                                    >
+                                      {msg.body && <div style={{ whiteSpace: "pre-wrap" }}>{msg.body}</div>}
+                                      {msg.attachment_url && (
+                                        <div style={{ marginTop: msg.body ? "0.5rem" : 0 }}>
+                                          <a
+                                            href={msg.attachment_url}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            download
+                                            style={{
+                                              display: "inline-flex",
+                                              alignItems: "center",
+                                              gap: "0.35rem",
+                                              padding: "0.3rem 0.6rem",
+                                              borderRadius: "6px",
+                                              background: isMe ? "rgba(255,255,255,0.2)" : "#f1f5f9",
+                                              color: isMe ? "#fff" : "#0f172a",
+                                              fontSize: "0.75rem",
+                                              fontWeight: 600,
+                                              textDecoration: "none",
+                                            }}
+                                          >
+                                            <Paperclip size={12} /> {msg.attachment_name || "Download File"}
+                                          </a>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              })
+                            )}
+                          </div>
+
+                          {/* Message Compose Form */}
+                          <form
+                            onSubmit={handleSendMessage}
+                            style={{ padding: "0.85rem 1rem", background: "#fff", borderTop: "1px solid #e2e8f0" }}
+                          >
+                            {messageFile && (
+                              <div style={{ display: "inline-flex", alignItems: "center", gap: "0.4rem", background: "#e8f8f7", color: "#0d9488", padding: "0.25rem 0.6rem", borderRadius: "6px", fontSize: "0.75rem", fontWeight: 700, marginBottom: "0.5rem" }}>
+                                <Paperclip size={12} /> {messageFile.name}
+                                <button
+                                  type="button"
+                                  onClick={() => setMessageFile(null)}
+                                  style={{ background: "none", border: "none", color: "#0d9488", cursor: "pointer", padding: "0 0.15rem" }}
+                                >
+                                  ×
+                                </button>
+                              </div>
+                            )}
+
+                            <div style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>
+                              <label
+                                style={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  width: "36px",
+                                  height: "36px",
+                                  borderRadius: "8px",
+                                  background: "#f1f5f9",
+                                  color: "#64748b",
+                                  cursor: "pointer",
+                                  flexShrink: 0,
+                                }}
+                                title="Attach worksheet or file"
+                              >
+                                <Paperclip size={16} />
+                                <input
+                                  type="file"
+                                  onChange={(e) => setMessageFile(e.target.files?.[0] || null)}
+                                  style={{ display: "none" }}
+                                />
+                              </label>
+
+                              <input
+                                type="text"
+                                placeholder="Write a message to your student… (Press Enter to send)"
+                                value={messageBody}
+                                onChange={(e) => setMessageBody(e.target.value)}
+                                style={{
+                                  flex: 1,
+                                  padding: "0.6rem 0.9rem",
+                                  borderRadius: "8px",
+                                  border: "1.5px solid #e2e8f0",
+                                  outline: "none",
+                                  fontSize: "0.85rem",
+                                }}
+                              />
+
+                              <button
+                                type="submit"
+                                disabled={isSendingMessage || (!messageBody.trim() && !messageFile)}
+                                className="action-btn"
+                                style={{
+                                  background: "#20b2a4",
+                                  color: "#fff",
+                                  padding: "0.6rem 1rem",
+                                  fontSize: "0.85rem",
+                                  opacity: !messageBody.trim() && !messageFile ? 0.6 : 1,
+                                }}
+                              >
+                                <Send size={15} /> {isSendingMessage ? "Sending…" : "Send"}
+                              </button>
+                            </div>
+                          </form>
+                        </>
+                      ) : (
+                        <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "#94a3b8", padding: "2rem" }}>
+                          <div style={{ width: "64px", height: "64px", borderRadius: "50%", background: "#f1f5f9", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: "1rem" }}>
+                            <MessageSquare size={32} color="#cbd5e1" />
+                          </div>
+                          <h4 style={{ fontSize: "1rem", fontWeight: 700, color: "#334155", margin: "0 0 0.35rem" }}>
+                            Select a Conversation
+                          </h4>
+                          <p style={{ fontSize: "0.82rem", color: "#64748b", margin: 0, maxWidth: "340px", textAlign: "center" }}>
+                            Choose an existing chat thread from the left or click New Chat to message one of your students.
+                          </p>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               )}
@@ -3700,6 +4933,412 @@ export default function TutorDashboard() {
                   }}
                 >
                   <Send size={14} /> {isSubmittingChangeRequest ? "Submitting…" : "Submit Request"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── Assign Homework Modal ── */}
+      {showAssignmentModal && (
+        <div
+          onClick={() => setShowAssignmentModal(false)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15,23,42,0.65)",
+            backdropFilter: "blur(4px)",
+            zIndex: 1050,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "1rem",
+            animation: "fadeUp 0.15s ease",
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: "#fff",
+              borderRadius: "16px",
+              width: "100%",
+              maxWidth: "540px",
+              padding: "1.75rem",
+              boxShadow: "0 25px 60px rgba(0,0,0,0.3)",
+              display: "flex",
+              flexDirection: "column",
+              gap: "1rem",
+              maxHeight: "90vh",
+              overflowY: "auto",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid #f1f5f9", paddingBottom: "0.75rem" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                <div style={{ width: "32px", height: "32px", borderRadius: "8px", background: "#e8f8f7", color: "#0d9488", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <BookOpen size={18} />
+                </div>
+                <div>
+                  <h3 style={{ fontSize: "1.05rem", fontWeight: 800, color: "#0f172a", margin: 0 }}>
+                    Assign Homework Task
+                  </h3>
+                  <span style={{ fontSize: "0.72rem", color: "#64748b" }}>Create a task for an assigned student</span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAssignmentModal(false)}
+                style={{ background: "none", border: "none", cursor: "pointer", color: "#64748b" }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {assignmentError && (
+              <div style={{ background: "#fee2e2", border: "1px solid #fecaca", color: "#dc2626", borderRadius: "8px", padding: "0.7rem", fontSize: "0.8rem", display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                <AlertCircle size={15} /> {assignmentError}
+              </div>
+            )}
+
+            <form onSubmit={handleCreateAssignment} style={{ display: "flex", flexDirection: "column", gap: "0.85rem" }}>
+              <div>
+                <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 700, color: "#374151", marginBottom: "0.3rem" }}>
+                  Select Student <span style={{ color: "#dc2626" }}>*</span>
+                </label>
+                <select
+                  value={assignmentForm.student_id}
+                  onChange={(e) => setAssignmentForm({ ...assignmentForm, student_id: e.target.value })}
+                  required
+                  style={{ width: "100%", padding: "0.55rem 0.75rem", borderRadius: "8px", border: "1.5px solid #e2e8f0", fontSize: "0.85rem", background: "#fff", outline: "none" }}
+                >
+                  <option value="">-- Choose Assigned Student --</option>
+                  {students.map((st) => (
+                    <option key={st.id} value={st.id}>
+                      {st.student_name} ({st.email || "No email"})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 700, color: "#374151", marginBottom: "0.3rem" }}>
+                  Assignment Title <span style={{ color: "#dc2626" }}>*</span>
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Quadratic Equations Practice Worksheet 3"
+                  value={assignmentForm.title}
+                  onChange={(e) => setAssignmentForm({ ...assignmentForm, title: e.target.value })}
+                  required
+                  style={{ width: "100%", padding: "0.55rem 0.75rem", borderRadius: "8px", border: "1.5px solid #e2e8f0", fontSize: "0.85rem", outline: "none" }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 700, color: "#374151", marginBottom: "0.3rem" }}>
+                  Task Description &amp; Instructions <span style={{ color: "#dc2626" }}>*</span>
+                </label>
+                <textarea
+                  placeholder="Provide detailed instructions for the student (e.g. Complete questions 1 to 15 on page 42, show full working steps)..."
+                  rows={4}
+                  value={assignmentForm.description}
+                  onChange={(e) => setAssignmentForm({ ...assignmentForm, description: e.target.value })}
+                  required
+                  style={{ width: "100%", padding: "0.55rem 0.75rem", borderRadius: "8px", border: "1.5px solid #e2e8f0", fontSize: "0.85rem", resize: "vertical", outline: "none" }}
+                />
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem" }}>
+                <div>
+                  <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 700, color: "#374151", marginBottom: "0.3rem" }}>
+                    Due Date &amp; Time <span style={{ color: "#dc2626" }}>*</span>
+                  </label>
+                  <input
+                    type="datetime-local"
+                    value={assignmentForm.due_date}
+                    onChange={(e) => setAssignmentForm({ ...assignmentForm, due_date: e.target.value })}
+                    required
+                    style={{ width: "100%", padding: "0.55rem 0.75rem", borderRadius: "8px", border: "1.5px solid #e2e8f0", fontSize: "0.82rem", outline: "none" }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 700, color: "#374151", marginBottom: "0.3rem" }}>
+                    Max Points
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="1000"
+                    value={assignmentForm.max_points}
+                    onChange={(e) => setAssignmentForm({ ...assignmentForm, max_points: e.target.value })}
+                    style={{ width: "100%", padding: "0.55rem 0.75rem", borderRadius: "8px", border: "1.5px solid #e2e8f0", fontSize: "0.85rem", outline: "none" }}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 700, color: "#374151", marginBottom: "0.3rem" }}>
+                  Attach Worksheet or PDF (Optional)
+                </label>
+                <input
+                  type="file"
+                  onChange={(e) => setAssignmentFile(e.target.files?.[0] || null)}
+                  style={{ width: "100%", padding: "0.45rem", borderRadius: "8px", border: "1.5px dashed #cbd5e1", fontSize: "0.8rem", background: "#f8fafc" }}
+                />
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.75rem", marginTop: "0.5rem" }}>
+                <button
+                  type="button"
+                  onClick={() => setShowAssignmentModal(false)}
+                  style={{ padding: "0.55rem 1rem", borderRadius: "8px", border: "1px solid #cbd5e1", background: "#fff", color: "#475569", fontSize: "0.82rem", fontWeight: 600, cursor: "pointer" }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingAssignment}
+                  className="action-btn"
+                  style={{ background: "#20b2a4", color: "#fff", padding: "0.55rem 1.25rem", fontSize: "0.82rem" }}
+                >
+                  {isSubmittingAssignment ? "Assigning…" : "Assign Homework"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── Grade Submission Modal ── */}
+      {gradeModalAssignment && (
+        <div
+          onClick={() => setGradeModalAssignment(null)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15,23,42,0.65)",
+            backdropFilter: "blur(4px)",
+            zIndex: 1050,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "1rem",
+            animation: "fadeUp 0.15s ease",
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: "#fff",
+              borderRadius: "16px",
+              width: "100%",
+              maxWidth: "480px",
+              padding: "1.75rem",
+              boxShadow: "0 25px 60px rgba(0,0,0,0.3)",
+              display: "flex",
+              flexDirection: "column",
+              gap: "1rem",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid #f1f5f9", paddingBottom: "0.75rem" }}>
+              <div>
+                <h3 style={{ fontSize: "1.05rem", fontWeight: 800, color: "#0f172a", margin: 0 }}>
+                  Grade Submission
+                </h3>
+                <span style={{ fontSize: "0.72rem", color: "#64748b" }}>
+                  {gradeModalAssignment.title} (Max: {gradeModalAssignment.max_points} pts)
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setGradeModalAssignment(null)}
+                style={{ background: "none", border: "none", cursor: "pointer", color: "#64748b" }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {gradeError && (
+              <div style={{ background: "#fee2e2", border: "1px solid #fecaca", color: "#dc2626", borderRadius: "8px", padding: "0.65rem", fontSize: "0.8rem", display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                <AlertCircle size={15} /> {gradeError}
+              </div>
+            )}
+
+            <form onSubmit={handleGradeAssignment} style={{ display: "flex", flexDirection: "column", gap: "0.85rem" }}>
+              <div>
+                <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 700, color: "#374151", marginBottom: "0.3rem" }}>
+                  Score Earned (0 - {gradeModalAssignment.max_points}) <span style={{ color: "#dc2626" }}>*</span>
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  max={gradeModalAssignment.max_points}
+                  step="0.5"
+                  placeholder={`Score out of ${gradeModalAssignment.max_points}`}
+                  value={gradeForm.grade}
+                  onChange={(e) => setGradeForm({ ...gradeForm, grade: e.target.value })}
+                  required
+                  style={{ width: "100%", padding: "0.55rem 0.75rem", borderRadius: "8px", border: "1.5px solid #e2e8f0", fontSize: "0.9rem", fontWeight: 700, outline: "none" }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 700, color: "#374151", marginBottom: "0.3rem" }}>
+                  Feedback &amp; Constructive Remarks (Optional)
+                </label>
+                <textarea
+                  placeholder="Provide personalized commentary, areas where the student excelled, and steps for improvement..."
+                  rows={4}
+                  value={gradeForm.feedback}
+                  onChange={(e) => setGradeForm({ ...gradeForm, feedback: e.target.value })}
+                  style={{ width: "100%", padding: "0.55rem 0.75rem", borderRadius: "8px", border: "1.5px solid #e2e8f0", fontSize: "0.85rem", resize: "vertical", outline: "none" }}
+                />
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.75rem", marginTop: "0.5rem" }}>
+                <button
+                  type="button"
+                  onClick={() => setGradeModalAssignment(null)}
+                  style={{ padding: "0.55rem 1rem", borderRadius: "8px", border: "1px solid #cbd5e1", background: "#fff", color: "#475569", fontSize: "0.82rem", fontWeight: 600, cursor: "pointer" }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isGrading}
+                  className="action-btn"
+                  style={{ background: "#059669", color: "#fff", padding: "0.55rem 1.25rem", fontSize: "0.82rem" }}
+                >
+                  {isGrading ? "Saving…" : "Save Grade & Feedback"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── Start New Conversation Modal ── */}
+      {showNewConvModal && (
+        <div
+          onClick={() => setShowNewConvModal(false)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15,23,42,0.65)",
+            backdropFilter: "blur(4px)",
+            zIndex: 1050,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "1rem",
+            animation: "fadeUp 0.15s ease",
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: "#fff",
+              borderRadius: "16px",
+              width: "100%",
+              maxWidth: "480px",
+              padding: "1.75rem",
+              boxShadow: "0 25px 60px rgba(0,0,0,0.3)",
+              display: "flex",
+              flexDirection: "column",
+              gap: "1rem",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid #f1f5f9", paddingBottom: "0.75rem" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                <div style={{ width: "32px", height: "32px", borderRadius: "8px", background: "#e8f8f7", color: "#0d9488", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <MessageSquare size={18} />
+                </div>
+                <h3 style={{ fontSize: "1.05rem", fontWeight: 800, color: "#0f172a", margin: 0 }}>
+                  New Student Message
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowNewConvModal(false)}
+                style={{ background: "none", border: "none", cursor: "pointer", color: "#64748b" }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleStartConversation} style={{ display: "flex", flexDirection: "column", gap: "0.85rem" }}>
+              <div>
+                <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 700, color: "#374151", marginBottom: "0.3rem" }}>
+                  Recipient Student <span style={{ color: "#dc2626" }}>*</span>
+                </label>
+                <select
+                  value={newConvForm.recipient_id}
+                  onChange={(e) => setNewConvForm({ ...newConvForm, recipient_id: e.target.value })}
+                  required
+                  style={{ width: "100%", padding: "0.55rem 0.75rem", borderRadius: "8px", border: "1.5px solid #e2e8f0", fontSize: "0.85rem", background: "#fff", outline: "none" }}
+                >
+                  <option value="">-- Choose Student to Message --</option>
+                  {students.map((st) => (
+                    <option key={st.id} value={st.id}>
+                      {st.student_name} ({st.email || "Student"})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 700, color: "#374151", marginBottom: "0.3rem" }}>
+                  Subject (Optional)
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Next Lesson Prep / Math Questions"
+                  value={newConvForm.subject}
+                  onChange={(e) => setNewConvForm({ ...newConvForm, subject: e.target.value })}
+                  style={{ width: "100%", padding: "0.55rem 0.75rem", borderRadius: "8px", border: "1.5px solid #e2e8f0", fontSize: "0.85rem", outline: "none" }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 700, color: "#374151", marginBottom: "0.3rem" }}>
+                  Initial Message <span style={{ color: "#dc2626" }}>*</span>
+                </label>
+                <textarea
+                  placeholder="Type your message to the student..."
+                  rows={4}
+                  value={newConvForm.initial_message}
+                  onChange={(e) => setNewConvForm({ ...newConvForm, initial_message: e.target.value })}
+                  required
+                  style={{ width: "100%", padding: "0.55rem 0.75rem", borderRadius: "8px", border: "1.5px solid #e2e8f0", fontSize: "0.85rem", resize: "vertical", outline: "none" }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 700, color: "#374151", marginBottom: "0.3rem" }}>
+                  Attach File or Worksheet (Optional)
+                </label>
+                <input
+                  type="file"
+                  onChange={(e) => setNewConvFile(e.target.files?.[0] || null)}
+                  style={{ width: "100%", padding: "0.45rem", borderRadius: "8px", border: "1.5px dashed #cbd5e1", fontSize: "0.8rem", background: "#f8fafc" }}
+                />
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.75rem", marginTop: "0.5rem" }}>
+                <button
+                  type="button"
+                  onClick={() => setShowNewConvModal(false)}
+                  style={{ padding: "0.55rem 1rem", borderRadius: "8px", border: "1px solid #cbd5e1", background: "#fff", color: "#475569", fontSize: "0.82rem", fontWeight: 600, cursor: "pointer" }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isStartingConv}
+                  className="action-btn"
+                  style={{ background: "#20b2a4", color: "#fff", padding: "0.55rem 1.25rem", fontSize: "0.82rem" }}
+                >
+                  <Send size={14} /> {isStartingConv ? "Sending…" : "Send Message"}
                 </button>
               </div>
             </form>

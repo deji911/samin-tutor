@@ -184,6 +184,12 @@ export default function ChangePasswordPage() {
             const u = JSON.parse(localStorage.getItem("samin_user") || "{}");
             if (u?.role === "tutor") {
               dest = "/tutor/dashboard";
+            } else if (u?.role === "student") {
+              dest = "/student/dashboard";
+            } else if (u?.role === "parent") {
+              dest = "/parent/dashboard";
+            } else if (u?.role === "super_admin" || u?.role === "admin") {
+              dest = "/admin/dashboard";
             }
           } catch {}
         }

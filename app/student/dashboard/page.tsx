@@ -29,6 +29,12 @@ import {
   AlertCircle,
   Sparkles,
   Check,
+  MessageSquare,
+  Paperclip,
+  Download,
+  Send,
+  Plus,
+  UserCheck,
 } from "lucide-react";
 import NotificationEnvelope from "@/components/NotificationEnvelope";
 
@@ -158,7 +164,81 @@ type ProgressSummary = {
   }[];
 };
 
-type NavTab = "overview" | "timetable" | "tutors" | "sessions" | "reports" | "progress";
+type NavTab = "overview" | "timetable" | "tutors" | "sessions" | "reports" | "progress" | "homework" | "chat";
+
+type AssignmentSubmission = {
+  id: number;
+  assignment_id: number;
+  student_id: number;
+  content?: string;
+  file_name?: string;
+  file_url?: string;
+  submitted_at: string;
+};
+
+type Assignment = {
+  id: number;
+  tutor_id?: number;
+  student_id?: number;
+  lesson_session_id?: number;
+  title: string;
+  description: string;
+  due_date: string;
+  due_date_formatted?: string;
+  is_overdue?: boolean;
+  status: "assigned" | "submitted" | "graded" | "overdue" | string;
+  max_points: number;
+  grade?: number | null;
+  feedback?: string | null;
+  graded_at?: string | null;
+  file_name?: string | null;
+  file_url?: string | null;
+  created_at?: string;
+  tutor?: { id: number; name?: string; email?: string } | null;
+  latest_submission?: {
+    id: number;
+    submitted_by?: string;
+    submitted_at?: string;
+    file_name?: string | null;
+    file_url?: string | null;
+    content?: string;
+  } | null;
+  submissions?: AssignmentSubmission[];
+};
+
+type ChatParticipant = {
+  id: number;
+  name: string;
+  email?: string;
+  role: string;
+};
+
+type ChatConversation = {
+  id: number;
+  type: string;
+  subject?: string;
+  last_message_at?: string;
+  unread_count: number;
+  other_participants: ChatParticipant[];
+  latest_message?: {
+    id: number;
+    sender_name: string;
+    body?: string;
+    has_attachment: boolean;
+    created_at: string;
+  } | null;
+};
+
+type ChatMessage = {
+  id: number;
+  conversation_id: number;
+  body?: string;
+  attachment_name?: string;
+  attachment_url?: string;
+  created_at: string;
+  created_at_human?: string;
+  sender: { id: number; name: string; role: string };
+};
 
 const statusStyle: Record<string, { bg: string; color: string; border: string }> = {
   scheduled: { bg: "#eff6ff", color: "#1d4ed8", border: "#bfdbfe" },
@@ -166,6 +246,10 @@ const statusStyle: Record<string, { bg: string; color: string; border: string }>
   cancelled: { bg: "#fef2f2", color: "#991b1b", border: "#fecaca" },
   rescheduled: { bg: "#fffbeb", color: "#b45309", border: "#fde68a" },
   active: { bg: "#ecfdf5", color: "#065f46", border: "#a7f3d0" },
+  assigned: { bg: "#eff6ff", color: "#1d4ed8", border: "#bfdbfe" },
+  submitted: { bg: "#fffbeb", color: "#b45309", border: "#fde68a" },
+  graded: { bg: "#ecfdf5", color: "#065f46", border: "#a7f3d0" },
+  overdue: { bg: "#fef2f2", color: "#991b1b", border: "#fecaca" },
 };
 
 /* ── Sample Fallback Data for when backend endpoint is initialising ── */
@@ -257,6 +341,36 @@ export default function StudentPortalDashboard() {
   const [progressData, setProgressData] = useState<ProgressSummary | null>(null);
   const [progressLoading, setProgressLoading] = useState(false);
 
+  // Homework Tab State
+  const [assignments, setAssignments] = useState<Assignment[]>([]);
+  const [loadingAssignments, setLoadingAssignments] = useState(false);
+  const [assignmentFilter, setAssignmentFilter] = useState("all");
+  const [submitModalAssignment, setSubmitModalAssignment] = useState<Assignment | null>(null);
+  const [submitForm, setSubmitForm] = useState({ content: "" });
+  const [submitFile, setSubmitFile] = useState<File | null>(null);
+  const [isSubmittingHomework, setIsSubmittingHomework] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
+  // Chat Tab State
+  const [conversations, setConversations] = useState<ChatConversation[]>([]);
+  const [loadingConversations, setLoadingConversations] = useState(false);
+  const [activeConversation, setActiveConversation] = useState<ChatConversation | null>(null);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [loadingMessages, setLoadingMessages] = useState(false);
+  const [messageBody, setMessageBody] = useState("");
+  const [messageFile, setMessageFile] = useState<File | null>(null);
+  const [isSendingMessage, setIsSendingMessage] = useState(false);
+  const [chatUnreadCount, setChatUnreadCount] = useState(0);
+  const [showNewConvModal, setShowNewConvModal] = useState(false);
+  const [newConvForm, setNewConvForm] = useState({ recipient_id: "", subject: "", initial_message: "" });
+  const [newConvFile, setNewConvFile] = useState<File | null>(null);
+  const [isStartingConv, setIsStartingConv] = useState(false);
+  const [chatSearch, setChatSearch] = useState("");
+
+  // Attendance tracking state
+  const [sessionAttendance, setSessionAttendance] = useState<Record<number, { joined: boolean; joinedAt?: string; leftAt?: string; duration?: number }>>({});
+  const [attendanceLoadingId, setAttendanceLoadingId] = useState<number | null>(null);
+
   // Logout confirmation modal state
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
@@ -277,6 +391,14 @@ export default function StudentPortalDashboard() {
     const token = typeof window !== "undefined" ? localStorage.getItem("samin_auth_token") : null;
     return {
       "Content-Type": "application/json",
+      Accept: "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    };
+  };
+
+  const getAuthHeadersNoContentType = () => {
+    const token = typeof window !== "undefined" ? localStorage.getItem("samin_auth_token") : null;
+    return {
       Accept: "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     };
@@ -409,20 +531,329 @@ export default function StudentPortalDashboard() {
     }
   };
 
+  /* ── 7. Fetch Assignments: GET /api/assignments?status=... ── */
+  const fetchAssignments = async (status?: string) => {
+    setLoadingAssignments(true);
+    try {
+      const baseUrl = getBackendApiUrl();
+      const currentStatus = status !== undefined ? status : assignmentFilter;
+      const url = currentStatus && currentStatus !== "all"
+        ? `${baseUrl}/api/assignments?status=${encodeURIComponent(currentStatus)}`
+        : `${baseUrl}/api/assignments`;
+      const res = await fetch(url, { headers: getAuthHeaders() });
+      if (res.ok) {
+        const data = await res.json();
+        let list: Assignment[] = [];
+        if (Array.isArray(data)) {
+          list = data;
+        } else if (Array.isArray(data?.assignments?.data)) {
+          list = data.assignments.data;
+        } else if (Array.isArray(data?.assignments)) {
+          list = data.assignments;
+        } else if (Array.isArray(data?.data)) {
+          list = data.data;
+        }
+        setAssignments(list);
+      }
+    } catch (err) {
+      console.error("fetchAssignments error:", err);
+    } finally {
+      setLoadingAssignments(false);
+    }
+  };
+
+  /* ── Submit Homework: POST /api/assignments/{id}/submit ── */
+  const handleSubmitAssignment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!submitModalAssignment) return;
+    if (!submitForm.content.trim() && !submitFile) {
+      setSubmitError("Please provide your written answer/notes or attach a completed file.");
+      return;
+    }
+    setSubmitError(null);
+    setIsSubmittingHomework(true);
+    try {
+      const baseUrl = getBackendApiUrl();
+      const formData = new FormData();
+      if (submitForm.content.trim()) {
+        formData.append("content", submitForm.content.trim());
+      }
+      if (submitFile) {
+        formData.append("attachment", submitFile);
+      }
+
+      const res = await fetch(`${baseUrl}/api/assignments/${submitModalAssignment.id}/submit`, {
+        method: "POST",
+        headers: getAuthHeadersNoContentType(),
+        body: formData,
+      });
+      const data = await res.json().catch(() => null);
+      if (res.ok) {
+        showToast(data?.message || "Homework submitted successfully!");
+        setSubmitModalAssignment(null);
+        setSubmitForm({ content: "" });
+        setSubmitFile(null);
+        fetchAssignments();
+      } else {
+        setSubmitError(data?.message || "Failed to submit homework.");
+      }
+    } catch (err: any) {
+      setSubmitError(err?.message || "An unexpected error occurred.");
+    } finally {
+      setIsSubmittingHomework(false);
+    }
+  };
+
+  /* ── Chat Handlers ── */
+  const fetchConversations = async () => {
+    setLoadingConversations(true);
+    try {
+      const baseUrl = getBackendApiUrl();
+      const res = await fetch(`${baseUrl}/api/chat/conversations`, { headers: getAuthHeaders() });
+      if (res.ok) {
+        const data = await res.json();
+        const list = Array.isArray(data)
+          ? data
+          : Array.isArray(data?.conversations)
+          ? data.conversations
+          : Array.isArray(data?.data)
+          ? data.data
+          : [];
+        setConversations(list);
+      }
+    } catch (err) {
+      console.error("fetchConversations error:", err);
+    } finally {
+      setLoadingConversations(false);
+    }
+  };
+
+  const fetchMessages = async (convId: number) => {
+    setLoadingMessages(true);
+    try {
+      const baseUrl = getBackendApiUrl();
+      const res = await fetch(`${baseUrl}/api/chat/conversations/${convId}/messages`, { headers: getAuthHeaders() });
+      if (res.ok) {
+        const data = await res.json();
+        const list = Array.isArray(data)
+          ? data
+          : Array.isArray(data?.messages?.data)
+          ? data.messages.data
+          : Array.isArray(data?.messages)
+          ? data.messages
+          : Array.isArray(data?.data)
+          ? data.data
+          : [];
+        setMessages(list);
+        fetch(`${baseUrl}/api/chat/conversations/${convId}/read`, {
+          method: "PATCH",
+          headers: getAuthHeaders(),
+        }).then(() => fetchChatUnreadCount()).catch(() => {});
+      }
+    } catch (err) {
+      console.error("fetchMessages error:", err);
+    } finally {
+      setLoadingMessages(false);
+    }
+  };
+
+  const fetchChatUnreadCount = async () => {
+    try {
+      const baseUrl = getBackendApiUrl();
+      const res = await fetch(`${baseUrl}/api/chat/unread-count`, { headers: getAuthHeaders() });
+      if (res.ok) {
+        const data = await res.json();
+        setChatUnreadCount(Number(data?.unread_count ?? data?.count ?? 0));
+      }
+    } catch (err) {
+      console.error("fetchChatUnreadCount error:", err);
+    }
+  };
+
+  const handleSendMessage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!activeConversation) return;
+    if (!messageBody.trim() && !messageFile) return;
+
+    setIsSendingMessage(true);
+    try {
+      const baseUrl = getBackendApiUrl();
+      const formData = new FormData();
+      if (messageBody.trim()) {
+        formData.append("body", messageBody.trim());
+      }
+      if (messageFile) {
+        formData.append("attachment", messageFile);
+      }
+
+      const res = await fetch(`${baseUrl}/api/chat/conversations/${activeConversation.id}/messages`, {
+        method: "POST",
+        headers: getAuthHeadersNoContentType(),
+        body: formData,
+      });
+      if (res.ok) {
+        setMessageBody("");
+        setMessageFile(null);
+        fetchMessages(activeConversation.id);
+        fetchConversations();
+      } else {
+        const data = await res.json().catch(() => null);
+        showToast(data?.message || "Failed to send message.");
+      }
+    } catch (err) {
+      console.error("handleSendMessage error:", err);
+      showToast("Error sending message.");
+    } finally {
+      setIsSendingMessage(false);
+    }
+  };
+
+  const handleStartConversation = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newConvForm.recipient_id) {
+      showToast("Please choose a tutor to message.");
+      return;
+    }
+    if (!newConvForm.initial_message.trim() && !newConvFile) {
+      showToast("Please enter a message or attach a file.");
+      return;
+    }
+    setIsStartingConv(true);
+    try {
+      const baseUrl = getBackendApiUrl();
+      const formData = new FormData();
+      formData.append("recipient_id", newConvForm.recipient_id);
+      if (newConvForm.subject.trim()) {
+        formData.append("subject", newConvForm.subject.trim());
+      }
+      if (newConvForm.initial_message.trim()) {
+        formData.append("initial_message", newConvForm.initial_message.trim());
+      }
+      if (newConvFile) {
+        formData.append("attachment", newConvFile);
+      }
+
+      const res = await fetch(`${baseUrl}/api/chat/conversations`, {
+        method: "POST",
+        headers: getAuthHeadersNoContentType(),
+        body: formData,
+      });
+      const data = await res.json().catch(() => null);
+      if (res.ok) {
+        showToast("Conversation started!");
+        setShowNewConvModal(false);
+        setNewConvForm({ recipient_id: "", subject: "", initial_message: "" });
+        setNewConvFile(null);
+        fetchConversations();
+        if (data?.conversation?.id) {
+          setActiveConversation(data.conversation);
+          fetchMessages(data.conversation.id);
+        }
+      } else {
+        showToast(data?.message || "Failed to start conversation.");
+      }
+    } catch (err: any) {
+      showToast(err?.message || "Error starting conversation.");
+    } finally {
+      setIsStartingConv(false);
+    }
+  };
+
+  /* ── Attendance Tracking Handlers ── */
+  const handleJoinSession = async (sessionId: number, meetingLink?: string) => {
+    setAttendanceLoadingId(sessionId);
+    try {
+      const baseUrl = getBackendApiUrl();
+      const res = await fetch(`${baseUrl}/api/sessions/${sessionId}/join`, {
+        method: "POST",
+        headers: getAuthHeaders(),
+      });
+      const data = await res.json().catch(() => null);
+      if (res.ok) {
+        const link = data?.meeting_link || meetingLink;
+        setSessionAttendance((prev) => ({
+          ...prev,
+          [sessionId]: { joined: true, joinedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) },
+        }));
+        showToast("Attendance logged! You have joined this session.");
+        if (link && typeof window !== "undefined") {
+          window.open(link, "_blank", "noreferrer");
+        }
+      } else {
+        showToast(data?.message || "Unable to mark session attendance.");
+      }
+    } catch (err: any) {
+      showToast("Error joining session.");
+    } finally {
+      setAttendanceLoadingId(null);
+    }
+  };
+
+  const handleLeaveSession = async (sessionId: number) => {
+    setAttendanceLoadingId(sessionId);
+    try {
+      const baseUrl = getBackendApiUrl();
+      const res = await fetch(`${baseUrl}/api/sessions/${sessionId}/leave`, {
+        method: "POST",
+        headers: getAuthHeaders(),
+      });
+      const data = await res.json().catch(() => null);
+      if (res.ok) {
+        const duration = data?.attendance?.duration_minutes;
+        setSessionAttendance((prev) => ({
+          ...prev,
+          [sessionId]: { joined: false, leftAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), duration },
+        }));
+        showToast(`Left session.${duration ? ` Attended for ${duration} mins.` : ""}`);
+        fetchSessions(sessionsPage);
+      } else {
+        showToast(data?.message || "Unable to record session departure.");
+      }
+    } catch (err: any) {
+      showToast("Error recording session departure.");
+    } finally {
+      setAttendanceLoadingId(null);
+    }
+  };
+
   /* ── Authentication & Init ── */
   useEffect(() => {
+    const mustChange = typeof window !== "undefined" ? localStorage.getItem("samin_must_change_password") : null;
+    if (mustChange === "true") {
+      window.location.href = "/change-password";
+      return;
+    }
+
     const token = typeof window !== "undefined" ? localStorage.getItem("samin_auth_token") : null;
     const userStr = typeof window !== "undefined" ? localStorage.getItem("samin_user") : null;
 
     if (token) {
       setIsAuthed(true);
-      Promise.all([fetchDashboard(), fetchTimetable(), fetchTutors(), fetchSessions(1), fetchReports(1), fetchProgress()]).finally(() => {
+      Promise.all([
+        fetchDashboard(),
+        fetchTimetable(),
+        fetchTutors(),
+        fetchSessions(1),
+        fetchReports(1),
+        fetchProgress(),
+        fetchAssignments(),
+        fetchChatUnreadCount(),
+      ]).finally(() => {
         setInitialLoading(false);
       });
     } else {
       // Allow preview / authenticated testing
       setIsAuthed(true);
-      Promise.all([fetchDashboard(), fetchTimetable(), fetchTutors(), fetchSessions(1), fetchReports(1), fetchProgress()]).finally(() => {
+      Promise.all([
+        fetchDashboard(),
+        fetchTimetable(),
+        fetchTutors(),
+        fetchSessions(1),
+        fetchReports(1),
+        fetchProgress(),
+        fetchAssignments(),
+        fetchChatUnreadCount(),
+      ]).finally(() => {
         setInitialLoading(false);
       });
     }
@@ -492,6 +923,7 @@ export default function StudentPortalDashboard() {
     showToast("You have been signed out.");
   };
 
+  const pendingAssignmentsCount = assignments.filter((a) => a.status === "assigned").length;
   const navItems: { tab: NavTab; icon: React.ReactNode; label: string; badge?: number }[] = [
     { tab: "overview", icon: <LayoutDashboard size={18} />, label: "Overview" },
     { tab: "timetable", icon: <Calendar size={18} />, label: "Weekly Timetable", badge: stats.upcoming_lessons || undefined },
@@ -499,6 +931,8 @@ export default function StudentPortalDashboard() {
     { tab: "sessions", icon: <CalendarDays size={18} />, label: "Lesson History" },
     { tab: "reports", icon: <FileText size={18} />, label: "Lesson Reports" },
     { tab: "progress", icon: <TrendingUp size={18} />, label: "Academic Progress" },
+    { tab: "homework", icon: <BookOpen size={18} />, label: "Homework", badge: pendingAssignmentsCount || undefined },
+    { tab: "chat", icon: <MessageSquare size={18} />, label: "Messages", badge: chatUnreadCount || undefined },
   ];
 
   /* ── Login Screen ── */
@@ -655,7 +1089,15 @@ export default function StudentPortalDashboard() {
           {navItems.map(({ tab, icon, label, badge }) => (
             <button
               key={tab}
-              onClick={() => { setActiveTab(tab); setSidebarOpen(false); }}
+              onClick={() => {
+                setActiveTab(tab);
+                setSidebarOpen(false);
+                if (tab === "homework") fetchAssignments();
+                if (tab === "chat") {
+                  fetchConversations();
+                  fetchChatUnreadCount();
+                }
+              }}
               className={`nav-btn${activeTab === tab ? " active" : ""}`}
               style={{ color: activeTab === tab ? "#0d9488" : "#4b5563" }}
             >
@@ -744,6 +1186,8 @@ export default function StudentPortalDashboard() {
                 {activeTab === "sessions" && "Lesson Session History"}
                 {activeTab === "reports" && "Academic Lesson Reports"}
                 {activeTab === "progress" && "Academic Progress & Mastery"}
+                {activeTab === "homework" && "My Homework & Assignments"}
+                {activeTab === "chat" && "Tutor Messages & Chat"}
               </h1>
               <p style={{ fontSize: "0.72rem", color: "#94a3b8", margin: 0 }}>
                 {new Date().toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
@@ -759,6 +1203,8 @@ export default function StudentPortalDashboard() {
                 fetchTutors();
                 fetchReports(1);
                 fetchProgress();
+                fetchAssignments();
+                fetchChatUnreadCount();
                 showToast("Portal data refreshed.");
               }}
               style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem", padding: "0.45rem 0.8rem", borderRadius: "8px", border: "1px solid #cbd5e1", background: "#fff", color: "#475569", fontSize: "0.78rem", fontWeight: 600, cursor: "pointer" }}
@@ -852,6 +1298,41 @@ export default function StudentPortalDashboard() {
                         Meeting link will appear before lesson starts
                       </span>
                     )}
+
+                    {/* Attendance Tracking */}
+                    {sessionAttendance[nextSession.id]?.joined ? (
+                      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", justifyContent: "center" }}>
+                        <span style={{ fontSize: "0.75rem", fontWeight: 700, padding: "0.25rem 0.6rem", borderRadius: "14px", background: "#fff", color: "#065f46" }}>
+                          ✓ Joined ({sessionAttendance[nextSession.id].joinedAt})
+                        </span>
+                        <button
+                          onClick={() => handleLeaveSession(nextSession.id)}
+                          disabled={attendanceLoadingId === nextSession.id}
+                          className="action-btn"
+                          style={{ background: "#dc2626", color: "#fff", padding: "0.35rem 0.75rem", fontSize: "0.78rem" }}
+                        >
+                          <LogOut size={13} /> Leave
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => handleJoinSession(nextSession.id, nextSession.meeting_link)}
+                        disabled={attendanceLoadingId === nextSession.id}
+                        className="action-btn"
+                        style={{
+                          background: "rgba(255,255,255,0.2)",
+                          color: "#fff",
+                          border: "1px solid rgba(255,255,255,0.4)",
+                          padding: "0.5rem 1rem",
+                          borderRadius: "8px",
+                          fontWeight: 700,
+                          fontSize: "0.8rem",
+                          justifyContent: "center",
+                        }}
+                      >
+                        <UserCheck size={14} /> {attendanceLoadingId === nextSession.id ? "Checking in…" : "Log Attendance (Check In)"}
+                      </button>
+                    )}
                   </div>
                 </div>
               )}
@@ -944,27 +1425,50 @@ export default function StudentPortalDashboard() {
                               </div>
                             )}
                           </div>
-                          {s.meeting_link && (
-                            <a
-                              href={s.meeting_link}
-                              target="_blank"
-                              rel="noreferrer"
-                              style={{
-                                display: "inline-flex",
-                                alignItems: "center",
-                                gap: "0.25rem",
-                                background: "#e8f8f7",
-                                color: "#0d9488",
-                                padding: "0.3rem 0.65rem",
-                                borderRadius: "6px",
-                                fontSize: "0.74rem",
-                                fontWeight: 700,
-                                textDecoration: "none",
-                              }}
-                            >
-                              <Video size={13} /> Meet
-                            </a>
-                          )}
+                          <div style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem" }}>
+                            {s.meeting_link && (
+                              <a
+                                href={s.meeting_link}
+                                target="_blank"
+                                rel="noreferrer"
+                                style={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: "0.25rem",
+                                  background: "#e8f8f7",
+                                  color: "#0d9488",
+                                  padding: "0.3rem 0.65rem",
+                                  borderRadius: "6px",
+                                  fontSize: "0.74rem",
+                                  fontWeight: 700,
+                                  textDecoration: "none",
+                                }}
+                              >
+                                <Video size={13} /> Meet
+                              </a>
+                            )}
+                            {sessionAttendance[s.id]?.joined ? (
+                              <button
+                                onClick={() => handleLeaveSession(s.id)}
+                                disabled={attendanceLoadingId === s.id}
+                                className="action-btn"
+                                style={{ background: "#dc2626", color: "#fff", padding: "0.25rem 0.55rem", fontSize: "0.72rem" }}
+                                title="Check out / Leave"
+                              >
+                                <LogOut size={12} /> Leave
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => handleJoinSession(s.id, s.meeting_link)}
+                                disabled={attendanceLoadingId === s.id || s.status === "completed"}
+                                className="action-btn"
+                                style={{ background: "#059669", color: "#fff", padding: "0.25rem 0.55rem", fontSize: "0.72rem" }}
+                                title="Join / Check In"
+                              >
+                                <UserCheck size={12} /> In
+                              </button>
+                            )}
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -1244,29 +1748,52 @@ export default function StudentPortalDashboard() {
                                 </div>
                               </td>
                               <td style={{ padding: "0.85rem 1rem", textAlign: "right" }}>
-                                {sess.meeting_link ? (
-                                  <a
-                                    href={sess.meeting_link}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    style={{
-                                      display: "inline-flex",
-                                      alignItems: "center",
-                                      gap: "0.3rem",
-                                      background: "#e8f8f7",
-                                      color: "#0d9488",
-                                      padding: "0.3rem 0.65rem",
-                                      borderRadius: "6px",
-                                      fontWeight: 700,
-                                      fontSize: "0.74rem",
-                                      textDecoration: "none",
-                                    }}
-                                  >
-                                    <Video size={13} /> Join Meet
-                                  </a>
-                                ) : (
-                                  <span style={{ fontSize: "0.72rem", color: "#94a3b8" }}>—</span>
-                                )}
+                                <div style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem", justifyContent: "flex-end" }}>
+                                  {sess.meeting_link && (
+                                    <a
+                                      href={sess.meeting_link}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      style={{
+                                        display: "inline-flex",
+                                        alignItems: "center",
+                                        gap: "0.3rem",
+                                        background: "#e8f8f7",
+                                        color: "#0d9488",
+                                        padding: "0.3rem 0.65rem",
+                                        borderRadius: "6px",
+                                        fontWeight: 700,
+                                        fontSize: "0.74rem",
+                                        textDecoration: "none",
+                                      }}
+                                    >
+                                      <Video size={13} /> Meet
+                                    </a>
+                                  )}
+                                  {sess.status !== "cancelled" && (
+                                    sessionAttendance[sess.id]?.joined ? (
+                                      <button
+                                        onClick={() => handleLeaveSession(sess.id)}
+                                        disabled={attendanceLoadingId === sess.id}
+                                        className="action-btn"
+                                        style={{ background: "#dc2626", color: "#fff", padding: "0.25rem 0.55rem", fontSize: "0.72rem" }}
+                                        title="Check out / Leave"
+                                      >
+                                        <LogOut size={12} /> Leave
+                                      </button>
+                                    ) : (
+                                      <button
+                                        onClick={() => handleJoinSession(sess.id, sess.meeting_link)}
+                                        disabled={attendanceLoadingId === sess.id || sess.status === "completed"}
+                                        className="action-btn"
+                                        style={{ background: "#059669", color: "#fff", padding: "0.25rem 0.55rem", fontSize: "0.72rem", opacity: sess.status === "completed" ? 0.6 : 1 }}
+                                        title="Join / Check In"
+                                      >
+                                        <UserCheck size={12} /> In
+                                      </button>
+                                    )
+                                  )}
+                                </div>
                               </td>
                             </tr>
                           ))}
@@ -1469,6 +1996,576 @@ export default function StudentPortalDashboard() {
               )}
             </div>
           )}
+
+          {/* ══════════════ HOMEWORK TAB ══════════════ */}
+          {activeTab === "homework" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }} className="page-enter">
+              {/* Header bar */}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "1rem" }}>
+                <div>
+                  <h2 style={{ fontSize: "1.15rem", fontWeight: 800, color: "#0f172a", margin: 0 }}>
+                    My Homework &amp; Assignments
+                  </h2>
+                  <p style={{ fontSize: "0.78rem", color: "#64748b", margin: "0.15rem 0 0" }}>
+                    Complete tasks assigned by your tutors, upload your work, and review your feedback and scores
+                  </p>
+                </div>
+              </div>
+
+              {/* Metric summary row */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "1rem" }}>
+                <div className="dash-card" style={{ padding: "1.1rem 1.25rem" }}>
+                  <span style={{ fontSize: "0.75rem", color: "#64748b", fontWeight: 600 }}>Total Assignments</span>
+                  <div style={{ fontSize: "1.5rem", fontWeight: 800, color: "#0f172a", marginTop: "0.2rem" }}>{assignments.length}</div>
+                </div>
+                <div className="dash-card" style={{ padding: "1.1rem 1.25rem" }}>
+                  <span style={{ fontSize: "0.75rem", color: "#1d4ed8", fontWeight: 600 }}>To Do (Pending)</span>
+                  <div style={{ fontSize: "1.5rem", fontWeight: 800, color: "#1d4ed8", marginTop: "0.2rem" }}>
+                    {assignments.filter((a) => a.status === "assigned").length}
+                  </div>
+                </div>
+                <div className="dash-card" style={{ padding: "1.1rem 1.25rem" }}>
+                  <span style={{ fontSize: "0.75rem", color: "#b45309", fontWeight: 600 }}>Submitted (Awaiting Grade)</span>
+                  <div style={{ fontSize: "1.5rem", fontWeight: 800, color: "#b45309", marginTop: "0.2rem" }}>
+                    {assignments.filter((a) => a.status === "submitted").length}
+                  </div>
+                </div>
+                <div className="dash-card" style={{ padding: "1.1rem 1.25rem" }}>
+                  <span style={{ fontSize: "0.75rem", color: "#065f46", fontWeight: 600 }}>Graded</span>
+                  <div style={{ fontSize: "1.5rem", fontWeight: 800, color: "#065f46", marginTop: "0.2rem" }}>
+                    {assignments.filter((a) => a.status === "graded").length}
+                  </div>
+                </div>
+              </div>
+
+              {/* Filter pills */}
+              <div className="dash-card" style={{ padding: "0.75rem 1rem", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "0.75rem" }}>
+                <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap" }}>
+                  {(["all", "assigned", "submitted", "graded", "overdue"] as const).map((st) => (
+                    <button
+                      key={st}
+                      onClick={() => {
+                        setAssignmentFilter(st);
+                        fetchAssignments(st);
+                      }}
+                      style={{
+                        padding: "0.35rem 0.8rem",
+                        borderRadius: "6px",
+                        border: "none",
+                        background: assignmentFilter === st ? "#20b2a4" : "#f1f5f9",
+                        color: assignmentFilter === st ? "#fff" : "#475569",
+                        fontSize: "0.76rem",
+                        fontWeight: 700,
+                        cursor: "pointer",
+                        textTransform: "capitalize",
+                      }}
+                    >
+                      {st === "all" ? "All Assignments" : st === "assigned" ? "To Do" : st}
+                    </button>
+                  ))}
+                </div>
+
+                <button
+                  onClick={() => fetchAssignments()}
+                  style={{ background: "none", border: "1px solid #e2e8f0", borderRadius: "6px", padding: "0.35rem 0.75rem", fontSize: "0.76rem", color: "#64748b", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "0.35rem" }}
+                >
+                  <RefreshCw size={13} /> Refresh List
+                </button>
+              </div>
+
+              {/* Assignment list */}
+              {loadingAssignments ? (
+                <div className="dash-card" style={{ padding: "3rem", textAlign: "center", color: "#64748b" }}>
+                  <div style={{ width: "24px", height: "24px", border: "3px solid #20b2a4", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.8s linear infinite", margin: "0 auto 0.75rem" }} />
+                  Loading homework assignments…
+                </div>
+              ) : assignments.length === 0 ? (
+                <div className="dash-card" style={{ padding: "3.5rem 1.5rem", textAlign: "center" }}>
+                  <div style={{ width: "56px", height: "56px", borderRadius: "50%", background: "#e8f8f7", color: "#0d9488", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 1rem" }}>
+                    <BookOpen size={26} />
+                  </div>
+                  <h3 style={{ fontSize: "1.05rem", fontWeight: 800, color: "#0f172a", margin: "0 0 0.35rem" }}>
+                    No assignments found
+                  </h3>
+                  <p style={{ fontSize: "0.82rem", color: "#64748b", maxWidth: "420px", margin: "0 auto" }}>
+                    {assignmentFilter !== "all"
+                      ? `No homework found in "${assignmentFilter}" status.`
+                      : "You have no homework tasks assigned at the moment. Keep up the good work!"}
+                  </p>
+                </div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+                  {assignments.map((item) => {
+                    const tutorName = item.tutor?.name || "Your Tutor";
+                    const isOverdue = item.is_overdue || item.status === "overdue" || (item.status === "assigned" && new Date(item.due_date) < new Date());
+                    const displayStatus = isOverdue && item.status === "assigned" ? "overdue" : item.status;
+                    const submission = item.latest_submission || (item.submissions && item.submissions[0]);
+
+                    return (
+                      <div key={item.id} className="dash-card" style={{ padding: "1.35rem", display: "flex", flexDirection: "column", gap: "0.85rem" }}>
+                        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: "0.75rem" }}>
+                          <div>
+                            <div style={{ display: "flex", alignItems: "center", gap: "0.6rem", flexWrap: "wrap" }}>
+                              <span style={{ fontSize: "0.72rem", fontWeight: 800, padding: "0.2rem 0.55rem", borderRadius: "14px", ...statusStyle[displayStatus] }}>
+                                {displayStatus === "assigned" ? "TO DO" : displayStatus.toUpperCase()}
+                              </span>
+                              <span style={{ fontSize: "0.78rem", fontWeight: 700, color: "#0d9488", background: "#e8f8f7", padding: "0.2rem 0.6rem", borderRadius: "12px" }}>
+                                Tutor: {tutorName}
+                              </span>
+                              <span style={{ fontSize: "0.75rem", color: "#64748b" }}>
+                                Max Points: <strong>{item.max_points}</strong>
+                              </span>
+                            </div>
+                            <h3 style={{ fontSize: "1.05rem", fontWeight: 800, color: "#0f172a", margin: "0.4rem 0 0.2rem" }}>
+                              {item.title}
+                            </h3>
+                          </div>
+
+                          <div style={{ textAlign: "right", fontSize: "0.76rem" }}>
+                            <span style={{ color: isOverdue ? "#dc2626" : "#64748b", fontWeight: 600 }}>
+                              Due: {item.due_date_formatted || new Date(item.due_date).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Description */}
+                        <p style={{ fontSize: "0.84rem", color: "#334155", margin: 0, lineHeight: 1.55, background: "#f8fafc", padding: "0.75rem", borderRadius: "8px", border: "1px solid #f1f5f9" }}>
+                          {item.description}
+                        </p>
+
+                        {/* Worksheet attachment */}
+                        {item.file_url && (
+                          <div style={{ display: "inline-flex", alignItems: "center", gap: "0.5rem" }}>
+                            <a
+                              href={item.file_url}
+                              target="_blank"
+                              rel="noreferrer"
+                              download
+                              style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "0.35rem",
+                                padding: "0.35rem 0.75rem",
+                                borderRadius: "6px",
+                                background: "#e2e8f0",
+                                color: "#0f172a",
+                                fontSize: "0.76rem",
+                                fontWeight: 700,
+                                textDecoration: "none",
+                              }}
+                            >
+                              <Download size={13} /> Download Tutor Worksheet ({item.file_name || "Attachment"})
+                            </a>
+                          </div>
+                        )}
+
+                        {/* If student submitted */}
+                        {submission && (
+                          <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "8px", padding: "0.85rem" }}>
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "0.5rem", marginBottom: "0.35rem" }}>
+                              <span style={{ fontSize: "0.78rem", fontWeight: 800, color: "#166534", display: "inline-flex", alignItems: "center", gap: "0.3rem" }}>
+                                <CheckCircle2 size={14} color="#16a34a" /> Your Submission
+                              </span>
+                              {submission.submitted_at && (
+                                <span style={{ fontSize: "0.72rem", color: "#15803d" }}>
+                                  {new Date(submission.submitted_at).toLocaleString("en-GB")}
+                                </span>
+                              )}
+                            </div>
+                            {submission.content && (
+                              <p style={{ fontSize: "0.82rem", color: "#14532d", margin: "0.25rem 0 0.4rem", whiteSpace: "pre-wrap" }}>
+                                &ldquo;{submission.content}&rdquo;
+                              </p>
+                            )}
+                            {submission.file_url && (
+                              <a
+                                href={submission.file_url}
+                                target="_blank"
+                                rel="noreferrer"
+                                download
+                                style={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: "0.35rem",
+                                  padding: "0.3rem 0.65rem",
+                                  borderRadius: "6px",
+                                  background: "#16a34a",
+                                  color: "#fff",
+                                  fontSize: "0.75rem",
+                                  fontWeight: 700,
+                                  textDecoration: "none",
+                                }}
+                              >
+                                <Download size={13} /> View Uploaded Work ({submission.file_name || "File"})
+                              </a>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Graded info */}
+                        {item.status === "graded" && item.grade != null && (
+                          <div style={{ background: "#ecfdf5", border: "1.5px solid #a7f3d0", borderRadius: "8px", padding: "0.85rem" }}>
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "0.5rem" }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                                <span style={{ fontSize: "0.85rem", fontWeight: 800, color: "#065f46" }}>
+                                  Score: {item.grade} / {item.max_points}
+                                </span>
+                                <span style={{ fontSize: "0.75rem", fontWeight: 800, color: "#065f46", background: "#d1fae5", padding: "0.15rem 0.5rem", borderRadius: "10px" }}>
+                                  {Math.round((Number(item.grade) / Number(item.max_points || 100)) * 100)}%
+                                </span>
+                              </div>
+                              {item.graded_at && (
+                                <span style={{ fontSize: "0.72rem", color: "#065f46" }}>
+                                  Graded: {new Date(item.graded_at).toLocaleDateString("en-GB")}
+                                </span>
+                              )}
+                            </div>
+                            {item.feedback && (
+                              <p style={{ fontSize: "0.82rem", color: "#065f46", margin: "0.4rem 0 0", fontStyle: "italic" }}>
+                                Tutor Remarks: &ldquo;{item.feedback}&rdquo;
+                              </p>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Submit Action */}
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: "0.5rem", borderTop: "1px solid #f1f5f9", paddingTop: "0.75rem" }}>
+                          {(item.status === "assigned" || isOverdue) && (
+                            <button
+                              onClick={() => {
+                                setSubmitModalAssignment(item);
+                                setSubmitForm({ content: "" });
+                                setSubmitFile(null);
+                                setSubmitError(null);
+                              }}
+                              className="action-btn"
+                              style={{ background: "#20b2a4", color: "#fff", padding: "0.45rem 1rem", fontSize: "0.82rem", boxShadow: "0 2px 6px rgba(32,178,164,0.3)" }}
+                            >
+                              <Send size={13} /> Submit Homework
+                            </button>
+                          )}
+                          {item.status === "submitted" && (
+                            <button
+                              onClick={() => {
+                                setSubmitModalAssignment(item);
+                                setSubmitForm({ content: item.submissions?.[0]?.content || "" });
+                                setSubmitFile(null);
+                                setSubmitError(null);
+                              }}
+                              className="action-btn"
+                              style={{ background: "#fff", color: "#475569", border: "1px solid #cbd5e1", padding: "0.4rem 0.85rem", fontSize: "0.78rem" }}
+                            >
+                              Resubmit / Update
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ══════════════ CHAT / MESSAGES TAB ══════════════ */}
+          {activeTab === "chat" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: "1rem", height: "calc(100vh - 170px)", minHeight: "560px" }} className="page-enter">
+              <div className="dash-card" style={{ flex: 1, display: "flex", overflow: "hidden" }}>
+                {/* Left Column: Conversations List */}
+                <div style={{ width: "320px", minWidth: "300px", borderRight: "1px solid #e2e8f0", display: "flex", flexDirection: "column", background: "#fff" }}>
+                  {/* Left Header */}
+                  <div style={{ padding: "1rem", borderBottom: "1px solid #f1f5f9", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <div>
+                      <h3 style={{ fontSize: "0.95rem", fontWeight: 800, color: "#0f172a", margin: 0 }}>Messages</h3>
+                      <span style={{ fontSize: "0.72rem", color: "#64748b" }}>Chat with your assigned tutors</span>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setShowNewConvModal(true);
+                        setNewConvForm({ recipient_id: "", subject: "", initial_message: "" });
+                        setNewConvFile(null);
+                      }}
+                      className="action-btn"
+                      style={{ background: "#20b2a4", color: "#fff", padding: "0.35rem 0.65rem", fontSize: "0.75rem" }}
+                      title="Start message with a tutor"
+                    >
+                      <Plus size={14} /> New Chat
+                    </button>
+                  </div>
+
+                  {/* Search box */}
+                  <div style={{ padding: "0.65rem 0.85rem", borderBottom: "1px solid #f1f5f9" }}>
+                    <div className="search-box" style={{ padding: "0.35rem 0.65rem" }}>
+                      <Search size={14} color="#94a3b8" />
+                      <input
+                        type="text"
+                        placeholder="Search conversation..."
+                        value={chatSearch}
+                        onChange={(e) => setChatSearch(e.target.value)}
+                        style={{ fontSize: "0.8rem" }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Conversation list */}
+                  <div style={{ flex: 1, overflowY: "auto" }}>
+                    {loadingConversations ? (
+                      <div style={{ padding: "2rem", textAlign: "center", color: "#64748b", fontSize: "0.8rem" }}>
+                        <div style={{ width: "20px", height: "20px", border: "2px solid #20b2a4", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.8s linear infinite", margin: "0 auto 0.5rem" }} />
+                        Loading chats…
+                      </div>
+                    ) : conversations.length === 0 ? (
+                      <div style={{ padding: "2.5rem 1rem", textAlign: "center", color: "#94a3b8" }}>
+                        <MessageSquare size={28} style={{ margin: "0 auto 0.5rem", opacity: 0.5 }} />
+                        <p style={{ fontSize: "0.82rem", margin: 0 }}>No messages yet</p>
+                        <span style={{ fontSize: "0.72rem" }}>Click &quot;New Chat&quot; above to message your tutor</span>
+                      </div>
+                    ) : (
+                      conversations
+                        .filter((c) => {
+                          if (!chatSearch.trim()) return true;
+                          const other = c.other_participants?.[0]?.name || "";
+                          const sub = c.subject || "";
+                          return other.toLowerCase().includes(chatSearch.toLowerCase()) || sub.toLowerCase().includes(chatSearch.toLowerCase());
+                        })
+                        .map((conv) => {
+                          const other = conv.other_participants?.[0] || { name: "Tutor", role: "tutor" };
+                          const isSelected = activeConversation?.id === conv.id;
+                          return (
+                            <div
+                              key={conv.id}
+                              onClick={() => {
+                                setActiveConversation(conv);
+                                fetchMessages(conv.id);
+                              }}
+                              style={{
+                                padding: "0.85rem 1rem",
+                                borderBottom: "1px solid #f8fafc",
+                                cursor: "pointer",
+                                background: isSelected ? "#e8f8f7" : "#fff",
+                                borderLeft: isSelected ? "3px solid #20b2a4" : "3px solid transparent",
+                                transition: "background 0.15s",
+                              }}
+                            >
+                              <div style={{ display: "flex", alignItems: "center", gap: "0.65rem" }}>
+                                <div style={{ width: "36px", height: "36px", borderRadius: "50%", background: "linear-gradient(135deg,#0d9488,#0f766e)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: "0.85rem", flexShrink: 0 }}>
+                                  {other.name?.charAt(0) || "T"}
+                                </div>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                                    <span style={{ fontSize: "0.84rem", fontWeight: 700, color: "#0f172a", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                                      {other.name}
+                                    </span>
+                                    {conv.unread_count > 0 && (
+                                      <span style={{ background: "#20b2a4", color: "#fff", borderRadius: "10px", fontSize: "0.68rem", fontWeight: 800, padding: "0.1rem 0.45rem" }}>
+                                        {conv.unread_count}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div style={{ fontSize: "0.72rem", color: "#64748b", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", marginTop: "0.15rem" }}>
+                                    {conv.subject ? `[${conv.subject}] ` : ""}
+                                    {conv.latest_message ? conv.latest_message.body || "(Attachment)" : "No messages yet"}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })
+                    )}
+                  </div>
+                </div>
+
+                {/* Right Column: Chat Messages Thread */}
+                <div style={{ flex: 1, display: "flex", flexDirection: "column", background: "#f8fafc" }}>
+                  {activeConversation ? (
+                    <>
+                      {/* Chat Thread Header */}
+                      <div style={{ padding: "0.85rem 1.25rem", background: "#fff", borderBottom: "1px solid #e2e8f0", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "0.65rem" }}>
+                          <div style={{ width: "34px", height: "34px", borderRadius: "50%", background: "#e8f8f7", color: "#0d9488", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: "0.85rem" }}>
+                            {activeConversation.other_participants?.[0]?.name?.charAt(0) || "T"}
+                          </div>
+                          <div>
+                            <h4 style={{ fontSize: "0.92rem", fontWeight: 800, color: "#0f172a", margin: 0 }}>
+                              {activeConversation.other_participants?.[0]?.name || "Tutor"}
+                            </h4>
+                            <span style={{ fontSize: "0.7rem", color: "#64748b" }}>
+                              {activeConversation.subject || "Direct Message"} • Assigned Tutor
+                            </span>
+                          </div>
+                        </div>
+
+                        <button
+                          onClick={() => fetchMessages(activeConversation.id)}
+                          style={{ background: "none", border: "1px solid #e2e8f0", borderRadius: "6px", padding: "0.3rem 0.6rem", fontSize: "0.74rem", color: "#64748b", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "0.3rem" }}
+                        >
+                          <RefreshCw size={12} /> Sync
+                        </button>
+                      </div>
+
+                      {/* Messages Thread Body */}
+                      <div style={{ flex: 1, overflowY: "auto", padding: "1.25rem", display: "flex", flexDirection: "column", gap: "0.85rem" }}>
+                        {loadingMessages ? (
+                          <div style={{ textAlign: "center", padding: "2rem", color: "#64748b", fontSize: "0.82rem" }}>
+                            Loading message history…
+                          </div>
+                        ) : messages.length === 0 ? (
+                          <div style={{ textAlign: "center", padding: "3rem 1rem", color: "#94a3b8" }}>
+                            <MessageSquare size={32} style={{ margin: "0 auto 0.5rem", opacity: 0.5 }} />
+                            <p style={{ fontSize: "0.85rem", margin: 0 }}>Start the conversation below</p>
+                          </div>
+                        ) : (
+                          messages.map((msg) => {
+                            const isMe = msg.sender?.role === "student" || msg.sender?.id === student.id;
+                            return (
+                              <div
+                                key={msg.id}
+                                style={{
+                                  display: "flex",
+                                  flexDirection: "column",
+                                  alignItems: isMe ? "flex-end" : "flex-start",
+                                }}
+                              >
+                                <span style={{ fontSize: "0.68rem", color: "#94a3b8", marginBottom: "0.2rem" }}>
+                                  {isMe ? "You" : msg.sender?.name} • {msg.created_at_human || new Date(msg.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                                </span>
+                                <div
+                                  style={{
+                                    maxWidth: "75%",
+                                    padding: "0.7rem 0.95rem",
+                                    borderRadius: isMe ? "14px 14px 2px 14px" : "14px 14px 14px 2px",
+                                    background: isMe ? "#20b2a4" : "#fff",
+                                    color: isMe ? "#fff" : "#0f172a",
+                                    boxShadow: isMe ? "0 2px 6px rgba(32,178,164,0.25)" : "0 1px 3px rgba(0,0,0,0.06)",
+                                    border: isMe ? "none" : "1px solid #e2e8f0",
+                                    fontSize: "0.85rem",
+                                    lineHeight: 1.5,
+                                    wordBreak: "break-word",
+                                  }}
+                                >
+                                  {msg.body && <div style={{ whiteSpace: "pre-wrap" }}>{msg.body}</div>}
+                                  {msg.attachment_url && (
+                                    <div style={{ marginTop: msg.body ? "0.5rem" : 0 }}>
+                                      <a
+                                        href={msg.attachment_url}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        download
+                                        style={{
+                                          display: "inline-flex",
+                                          alignItems: "center",
+                                          gap: "0.35rem",
+                                          padding: "0.3rem 0.6rem",
+                                          borderRadius: "6px",
+                                          background: isMe ? "rgba(255,255,255,0.2)" : "#f1f5f9",
+                                          color: isMe ? "#fff" : "#0f172a",
+                                          fontSize: "0.75rem",
+                                          fontWeight: 600,
+                                          textDecoration: "none",
+                                        }}
+                                      >
+                                        <Paperclip size={12} /> {msg.attachment_name || "Download File"}
+                                      </a>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
+
+                      {/* Message Compose Form */}
+                      <form
+                        onSubmit={handleSendMessage}
+                        style={{ padding: "0.85rem 1rem", background: "#fff", borderTop: "1px solid #e2e8f0" }}
+                      >
+                        {messageFile && (
+                          <div style={{ display: "inline-flex", alignItems: "center", gap: "0.4rem", background: "#e8f8f7", color: "#0d9488", padding: "0.25rem 0.6rem", borderRadius: "6px", fontSize: "0.75rem", fontWeight: 700, marginBottom: "0.5rem" }}>
+                            <Paperclip size={12} /> {messageFile.name}
+                            <button
+                              type="button"
+                              onClick={() => setMessageFile(null)}
+                              style={{ background: "none", border: "none", color: "#0d9488", cursor: "pointer", padding: "0 0.15rem" }}
+                            >
+                              ×
+                            </button>
+                          </div>
+                        )}
+
+                        <div style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>
+                          <label
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              width: "36px",
+                              height: "36px",
+                              borderRadius: "8px",
+                              background: "#f1f5f9",
+                              color: "#64748b",
+                              cursor: "pointer",
+                              flexShrink: 0,
+                            }}
+                            title="Attach homework or file"
+                          >
+                            <Paperclip size={16} />
+                            <input
+                              type="file"
+                              onChange={(e) => setMessageFile(e.target.files?.[0] || null)}
+                              style={{ display: "none" }}
+                            />
+                          </label>
+
+                          <input
+                            type="text"
+                            placeholder="Write a message to your tutor… (Press Enter to send)"
+                            value={messageBody}
+                            onChange={(e) => setMessageBody(e.target.value)}
+                            style={{
+                              flex: 1,
+                              padding: "0.6rem 0.9rem",
+                              borderRadius: "8px",
+                              border: "1.5px solid #e2e8f0",
+                              outline: "none",
+                              fontSize: "0.85rem",
+                            }}
+                          />
+
+                          <button
+                            type="submit"
+                            disabled={isSendingMessage || (!messageBody.trim() && !messageFile)}
+                            className="action-btn"
+                            style={{
+                              background: "#20b2a4",
+                              color: "#fff",
+                              padding: "0.6rem 1rem",
+                              fontSize: "0.85rem",
+                              opacity: !messageBody.trim() && !messageFile ? 0.6 : 1,
+                            }}
+                          >
+                            <Send size={15} /> {isSendingMessage ? "Sending…" : "Send"}
+                          </button>
+                        </div>
+                      </form>
+                    </>
+                  ) : (
+                    <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "#94a3b8", padding: "2rem" }}>
+                      <div style={{ width: "64px", height: "64px", borderRadius: "50%", background: "#f1f5f9", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: "1rem" }}>
+                        <MessageSquare size={32} color="#cbd5e1" />
+                      </div>
+                      <h4 style={{ fontSize: "1rem", fontWeight: 700, color: "#334155", margin: "0 0 0.35rem" }}>
+                        Select a Conversation
+                      </h4>
+                      <p style={{ fontSize: "0.82rem", color: "#64748b", margin: 0, maxWidth: "340px", textAlign: "center" }}>
+                        Choose an existing chat thread from the left or click New Chat to message one of your tutors.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
         </main>
       </div>
 
@@ -1589,6 +2686,247 @@ export default function StudentPortalDashboard() {
           </div>
         </div>
       )}
+      {/* ── Submit Homework Modal (POST /api/assignments/{id}/submit) ── */}
+      {submitModalAssignment && (
+        <div
+          onClick={() => setSubmitModalAssignment(null)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15,23,42,0.65)",
+            backdropFilter: "blur(4px)",
+            zIndex: 1050,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "1rem",
+            animation: "fadeUp 0.15s ease",
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: "#fff",
+              borderRadius: "16px",
+              width: "100%",
+              maxWidth: "520px",
+              padding: "1.75rem",
+              boxShadow: "0 25px 60px rgba(0,0,0,0.3)",
+              display: "flex",
+              flexDirection: "column",
+              gap: "1rem",
+              maxHeight: "90vh",
+              overflowY: "auto",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid #f1f5f9", paddingBottom: "0.75rem" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                <div style={{ width: "32px", height: "32px", borderRadius: "8px", background: "#e8f8f7", color: "#0d9488", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <BookOpen size={18} />
+                </div>
+                <div>
+                  <h3 style={{ fontSize: "1.05rem", fontWeight: 800, color: "#0f172a", margin: 0 }}>
+                    Submit Homework
+                  </h3>
+                  <span style={{ fontSize: "0.72rem", color: "#64748b" }}>
+                    {submitModalAssignment.title} (Max: {submitModalAssignment.max_points} pts)
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSubmitModalAssignment(null)}
+                style={{ background: "none", border: "none", cursor: "pointer", color: "#64748b" }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {submitError && (
+              <div style={{ background: "#fee2e2", border: "1px solid #fecaca", color: "#dc2626", borderRadius: "8px", padding: "0.65rem", fontSize: "0.8rem", display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                <AlertCircle size={15} /> {submitError}
+              </div>
+            )}
+
+            <form onSubmit={handleSubmitAssignment} style={{ display: "flex", flexDirection: "column", gap: "0.85rem" }}>
+              <div>
+                <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 700, color: "#374151", marginBottom: "0.3rem" }}>
+                  Your Written Answers or Comments
+                </label>
+                <textarea
+                  placeholder="Type your answers, solutions, or explanation for your tutor here (optional if you attach a file below)..."
+                  rows={4}
+                  value={submitForm.content}
+                  onChange={(e) => setSubmitForm({ ...submitForm, content: e.target.value })}
+                  style={{ width: "100%", padding: "0.55rem 0.75rem", borderRadius: "8px", border: "1.5px solid #e2e8f0", fontSize: "0.85rem", resize: "vertical", outline: "none" }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 700, color: "#374151", marginBottom: "0.3rem" }}>
+                  Upload Completed File / Photo of Work (PDF, Image, DOCX)
+                </label>
+                <input
+                  type="file"
+                  onChange={(e) => setSubmitFile(e.target.files?.[0] || null)}
+                  style={{ width: "100%", padding: "0.45rem", borderRadius: "8px", border: "1.5px dashed #cbd5e1", fontSize: "0.8rem", background: "#f8fafc" }}
+                />
+                <span style={{ fontSize: "0.7rem", color: "#64748b", marginTop: "0.2rem", display: "block" }}>
+                  You can submit written text, a file attachment, or both.
+                </span>
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.75rem", marginTop: "0.5rem" }}>
+                <button
+                  type="button"
+                  onClick={() => setSubmitModalAssignment(null)}
+                  style={{ padding: "0.55rem 1rem", borderRadius: "8px", border: "1px solid #cbd5e1", background: "#fff", color: "#475569", fontSize: "0.82rem", fontWeight: 600, cursor: "pointer" }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingHomework}
+                  className="action-btn"
+                  style={{ background: "#20b2a4", color: "#fff", padding: "0.55rem 1.25rem", fontSize: "0.82rem" }}
+                >
+                  <Send size={14} /> {isSubmittingHomework ? "Submitting…" : "Turn In Homework"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── Start New Chat with Tutor Modal (POST /api/chat/conversations) ── */}
+      {showNewConvModal && (
+        <div
+          onClick={() => setShowNewConvModal(false)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15,23,42,0.65)",
+            backdropFilter: "blur(4px)",
+            zIndex: 1050,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "1rem",
+            animation: "fadeUp 0.15s ease",
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: "#fff",
+              borderRadius: "16px",
+              width: "100%",
+              maxWidth: "480px",
+              padding: "1.75rem",
+              boxShadow: "0 25px 60px rgba(0,0,0,0.3)",
+              display: "flex",
+              flexDirection: "column",
+              gap: "1rem",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid #f1f5f9", paddingBottom: "0.75rem" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                <div style={{ width: "32px", height: "32px", borderRadius: "8px", background: "#e8f8f7", color: "#0d9488", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <MessageSquare size={18} />
+                </div>
+                <h3 style={{ fontSize: "1.05rem", fontWeight: 800, color: "#0f172a", margin: 0 }}>
+                  Message Your Tutor
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowNewConvModal(false)}
+                style={{ background: "none", border: "none", cursor: "pointer", color: "#64748b" }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleStartConversation} style={{ display: "flex", flexDirection: "column", gap: "0.85rem" }}>
+              <div>
+                <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 700, color: "#374151", marginBottom: "0.3rem" }}>
+                  Select Tutor <span style={{ color: "#dc2626" }}>*</span>
+                </label>
+                <select
+                  value={newConvForm.recipient_id}
+                  onChange={(e) => setNewConvForm({ ...newConvForm, recipient_id: e.target.value })}
+                  required
+                  style={{ width: "100%", padding: "0.55rem 0.75rem", borderRadius: "8px", border: "1.5px solid #e2e8f0", fontSize: "0.85rem", background: "#fff", outline: "none" }}
+                >
+                  <option value="">-- Choose Assigned Tutor --</option>
+                  {assignedTutors.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name} ({t.subject || "Tutor"})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 700, color: "#374151", marginBottom: "0.3rem" }}>
+                  Subject (Optional)
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Question regarding Algebra homework"
+                  value={newConvForm.subject}
+                  onChange={(e) => setNewConvForm({ ...newConvForm, subject: e.target.value })}
+                  style={{ width: "100%", padding: "0.55rem 0.75rem", borderRadius: "8px", border: "1.5px solid #e2e8f0", fontSize: "0.85rem", outline: "none" }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 700, color: "#374151", marginBottom: "0.3rem" }}>
+                  Message <span style={{ color: "#dc2626" }}>*</span>
+                </label>
+                <textarea
+                  placeholder="Type your message to your tutor..."
+                  rows={4}
+                  value={newConvForm.initial_message}
+                  onChange={(e) => setNewConvForm({ ...newConvForm, initial_message: e.target.value })}
+                  required
+                  style={{ width: "100%", padding: "0.55rem 0.75rem", borderRadius: "8px", border: "1.5px solid #e2e8f0", fontSize: "0.85rem", resize: "vertical", outline: "none" }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 700, color: "#374151", marginBottom: "0.3rem" }}>
+                  Attach Document or Image (Optional)
+                </label>
+                <input
+                  type="file"
+                  onChange={(e) => setNewConvFile(e.target.files?.[0] || null)}
+                  style={{ width: "100%", padding: "0.45rem", borderRadius: "8px", border: "1.5px dashed #cbd5e1", fontSize: "0.8rem", background: "#f8fafc" }}
+                />
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.75rem", marginTop: "0.5rem" }}>
+                <button
+                  type="button"
+                  onClick={() => setShowNewConvModal(false)}
+                  style={{ padding: "0.55rem 1rem", borderRadius: "8px", border: "1px solid #cbd5e1", background: "#fff", color: "#475569", fontSize: "0.82rem", fontWeight: 600, cursor: "pointer" }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isStartingConv}
+                  className="action-btn"
+                  style={{ background: "#20b2a4", color: "#fff", padding: "0.55rem 1.25rem", fontSize: "0.82rem" }}
+                >
+                  <Send size={14} /> {isStartingConv ? "Sending…" : "Send Message"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* ── Sign Out Confirmation Dialog ── */}
       {showLogoutConfirm && (
         <div

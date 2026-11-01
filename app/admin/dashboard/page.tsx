@@ -514,6 +514,27 @@ export default function AdminDashboard() {
     temporary_password?: string;
   } | null>(null);
 
+  // Guardian Onboarding state (POST /api/admin/students/{id}/onboard-guardian)
+  const [isOnboardGuardianOpen, setIsOnboardGuardianOpen] = useState(false);
+  const [onboardGuardianStudent, setOnboardGuardianStudent] = useState<any | null>(null);
+  const [guardianForm, setGuardianForm] = useState({
+    guardian_name: "",
+    guardian_email: "",
+    guardian_phone: "",
+    relationship: "Mother",
+    ward_username: "",
+    reset_ward_password: true,
+    send_email: true,
+  });
+  const [isOnboardingGuardianLoading, setIsOnboardingGuardianLoading] = useState(false);
+  const [onboardGuardianError, setOnboardGuardianError] = useState<string | null>(null);
+  const [onboardGuardianFieldErrors, setOnboardGuardianFieldErrors] = useState<Record<string, string[]>>({});
+  const [onboardGuardianResult, setOnboardGuardianResult] = useState<{
+    parent?: { name: string; email: string; temporary_password?: string; must_change_password?: boolean };
+    ward?: { name: string; username: string; temporary_password?: string; must_change_password?: boolean };
+  } | null>(null);
+  const [guardianCopiedKey, setGuardianCopiedKey] = useState<string | null>(null);
+
   // Change Requests State (GET /api/admin/change-requests, PATCH /api/admin/change-requests/{id})
   const [adminChangeRequests, setAdminChangeRequests] = useState<AdminChangeRequest[]>([]);
   const [changeRequestsLoading, setChangeRequestsLoading] = useState(false);
@@ -1337,6 +1358,88 @@ export default function AdminDashboard() {
     } catch (err: any) {
       console.error("Update student status error:", err);
       showToast(`⚠️ ${err.message || "Failed to update student status."}`);
+    }
+  };
+
+  const openOnboardGuardianModal = (student: any) => {
+    setOnboardGuardianStudent(student);
+    setGuardianForm({
+      guardian_name: student.parent_name || student.parent || "",
+      guardian_email: student.email || "",
+      guardian_phone: student.phone || "",
+      relationship: "Mother",
+      ward_username: student.username || (student.student_name ? student.student_name.toLowerCase().replace(/\s+/g, ".") : ""),
+      reset_ward_password: true,
+      send_email: true,
+    });
+    setOnboardGuardianError(null);
+    setOnboardGuardianFieldErrors({});
+    setOnboardGuardianResult(null);
+    setIsOnboardGuardianOpen(true);
+  };
+
+  const handleOnboardGuardianSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (isOnboardingGuardianLoading || !onboardGuardianStudent) return;
+
+    setOnboardGuardianError(null);
+    setOnboardGuardianFieldErrors({});
+
+    const studentId = resolveStudentId(onboardGuardianStudent.student_id || onboardGuardianStudent.id);
+    if (!studentId) {
+      setOnboardGuardianError("Invalid student ID.");
+      return;
+    }
+
+    const token = typeof window !== "undefined" ? localStorage.getItem("samin_auth_token") : null;
+    const baseUrl = getBackendApiUrl();
+
+    setIsOnboardingGuardianLoading(true);
+
+    try {
+      const res = await fetch(`${baseUrl}/api/admin/students/${studentId}/onboard-guardian`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          guardian_name: guardianForm.guardian_name.trim(),
+          guardian_email: guardianForm.guardian_email.trim(),
+          guardian_phone: guardianForm.guardian_phone.trim() || undefined,
+          relationship: guardianForm.relationship.trim() || "Parent / Guardian",
+          ward_username: guardianForm.ward_username.trim() || undefined,
+          reset_ward_password: guardianForm.reset_ward_password,
+          send_email: guardianForm.send_email,
+        }),
+      });
+
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        if (res.status === 422 && data?.errors) {
+          setOnboardGuardianFieldErrors(data.errors);
+          setOnboardGuardianError(data?.message || "Please correct the errors in the form.");
+        } else {
+          setOnboardGuardianError(data?.message || `Failed to onboard guardian (HTTP ${res.status})`);
+        }
+        return;
+      }
+
+      showToast(data?.message || "Guardian onboarded and linked to student!");
+      if (data?.credentials) {
+        setOnboardGuardianResult(data.credentials);
+      } else {
+        setIsOnboardGuardianOpen(false);
+      }
+
+      fetchStudentsFromApi();
+    } catch (err: any) {
+      console.error("Error onboarding guardian:", err);
+      setOnboardGuardianError(err?.message || "An unexpected error occurred.");
+    } finally {
+      setIsOnboardingGuardianLoading(false);
     }
   };
 
@@ -4971,6 +5074,27 @@ export default function AdminDashboard() {
                   <UserPlus size={14} /> Assign Tutor(s)
                 </button>
                 <button
+                  onClick={() => {
+                    openOnboardGuardianModal(selectedStudent);
+                  }}
+                  style={{
+                    padding: "0.5rem 1rem",
+                    background: "linear-gradient(135deg,#6366f1,#4f46e5)",
+                    color: "#fff",
+                    border: "none",
+                    borderRadius: "8px",
+                    fontWeight: 700,
+                    fontSize: "0.8rem",
+                    cursor: "pointer",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "0.35rem",
+                    boxShadow: "0 2px 8px rgba(99,102,241,0.3)",
+                  }}
+                >
+                  <ShieldCheck size={14} /> Onboard Guardian
+                </button>
+                <button
                   onClick={() => setIsStudentDetailOpen(false)}
                   style={{ padding: "0.5rem 1.1rem", background: "#fff", border: "1.5px solid #cbd5e1", borderRadius: "8px", fontWeight: 600, fontSize: "0.8rem", color: "#475569", cursor: "pointer" }}
                 >
@@ -6885,6 +7009,495 @@ export default function AdminDashboard() {
               >
                 <LogOut size={15} /> Yes, Sign Out
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* ── Guardian Onboarding Modal (POST /api/admin/students/{id}/onboard-guardian) ── */}
+      {isOnboardGuardianOpen && onboardGuardianStudent && (
+        <div
+          className="modal-overlay"
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15, 23, 42, 0.75)",
+            backdropFilter: "blur(6px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000,
+            padding: "1rem",
+          }}
+          onClick={() => {
+            if (!isOnboardingGuardianLoading) setIsOnboardGuardianOpen(false);
+          }}
+        >
+          <div
+            style={{
+              background: "#ffffff",
+              borderRadius: "16px",
+              width: "100%",
+              maxWidth: "560px",
+              maxHeight: "90vh",
+              overflowY: "auto",
+              boxShadow: "0 25px 60px rgba(0,0,0,0.3)",
+              border: "1px solid #e2e8f0",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div
+              style={{
+                padding: "1.25rem 1.5rem",
+                borderBottom: "1px solid #e2e8f0",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                background: "linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)",
+                borderRadius: "16px 16px 0 0",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>
+                <div
+                  style={{
+                    width: "2.2rem",
+                    height: "2.2rem",
+                    borderRadius: "8px",
+                    background: "rgba(99, 102, 241, 0.12)",
+                    color: "#4f46e5",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <ShieldCheck size={20} />
+                </div>
+                <div>
+                  <h3 style={{ fontSize: "1.1rem", fontWeight: 800, color: "#0f172a", margin: 0 }}>
+                    Onboard Guardian
+                  </h3>
+                  <p style={{ fontSize: "0.78rem", color: "#64748b", margin: 0 }}>
+                    Student: <strong>{onboardGuardianStudent.student_name || onboardGuardianStudent.student || "Student"}</strong>
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsOnboardGuardianOpen(false)}
+                style={{
+                  background: "none",
+                  border: "none",
+                  color: "#94a3b8",
+                  cursor: "pointer",
+                  padding: "0.25rem",
+                }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div style={{ padding: "1.5rem" }}>
+              {onboardGuardianResult ? (
+                /* Generated Credentials View */
+                <div>
+                  <div
+                    style={{
+                      textAlign: "center",
+                      marginBottom: "1.25rem",
+                      padding: "1rem",
+                      background: "#f0fdf4",
+                      border: "1px solid #bbf7d0",
+                      borderRadius: "10px",
+                    }}
+                  >
+                    <CheckCircle2 size={32} color="#16a34a" style={{ margin: "0 auto 0.4rem" }} />
+                    <h4 style={{ fontSize: "1.05rem", fontWeight: 800, color: "#166534", margin: "0 0 0.2rem" }}>
+                      Guardian Linked Successfully!
+                    </h4>
+                    <p style={{ fontSize: "0.82rem", color: "#15803d", margin: 0 }}>
+                      Temporary login credentials have been generated and optionally emailed.
+                    </p>
+                  </div>
+
+                  {/* Parent Credentials */}
+                  {onboardGuardianResult.parent && (
+                    <div
+                      style={{
+                        background: "#f8fafc",
+                        border: "1.5px solid #cbd5e1",
+                        borderRadius: "10px",
+                        padding: "1rem",
+                        marginBottom: "1rem",
+                      }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}>
+                        <span style={{ fontSize: "0.8rem", fontWeight: 800, color: "#4f46e5", textTransform: "uppercase" }}>
+                          Parent / Guardian Credentials
+                        </span>
+                        <span style={{ fontSize: "0.72rem", background: "#e0e7ff", color: "#3730a3", padding: "0.15rem 0.45rem", borderRadius: "4px", fontWeight: 700 }}>
+                          Role: Parent
+                        </span>
+                      </div>
+                      <div style={{ fontSize: "0.85rem", color: "#334155", marginBottom: "0.25rem" }}>
+                        <strong>Name:</strong> {onboardGuardianResult.parent.name}
+                      </div>
+                      <div style={{ fontSize: "0.85rem", color: "#334155", marginBottom: "0.5rem" }}>
+                        <strong>Login Email:</strong> <code>{onboardGuardianResult.parent.email}</code>
+                      </div>
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          padding: "0.5rem 0.75rem",
+                          background: "#ffffff",
+                          border: "1px solid #e2e8f0",
+                          borderRadius: "6px",
+                        }}
+                      >
+                        <div>
+                          <span style={{ fontSize: "0.72rem", color: "#64748b", display: "block" }}>Temporary Password</span>
+                          <code style={{ fontSize: "0.95rem", fontWeight: 800, color: "#d97706" }}>
+                            {onboardGuardianResult.parent.temporary_password || "••••••••"}
+                          </code>
+                        </div>
+                        {onboardGuardianResult.parent.temporary_password && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              navigator.clipboard.writeText(onboardGuardianResult.parent?.temporary_password || "");
+                              setGuardianCopiedKey("parent_pw");
+                              setTimeout(() => setGuardianCopiedKey(null), 2000);
+                            }}
+                            style={{
+                              padding: "0.3rem 0.6rem",
+                              background: guardianCopiedKey === "parent_pw" ? "#dcfce7" : "#f1f5f9",
+                              color: guardianCopiedKey === "parent_pw" ? "#166534" : "#475569",
+                              border: "1px solid #cbd5e1",
+                              borderRadius: "6px",
+                              cursor: "pointer",
+                              fontSize: "0.75rem",
+                              fontWeight: 700,
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "0.3rem",
+                            }}
+                          >
+                            {guardianCopiedKey === "parent_pw" ? <Check size={12} /> : <Copy size={12} />}
+                            <span>{guardianCopiedKey === "parent_pw" ? "Copied" : "Copy"}</span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Ward Credentials */}
+                  {onboardGuardianResult.ward && (
+                    <div
+                      style={{
+                        background: "#f8fafc",
+                        border: "1.5px solid #cbd5e1",
+                        borderRadius: "10px",
+                        padding: "1rem",
+                        marginBottom: "1.25rem",
+                      }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}>
+                        <span style={{ fontSize: "0.8rem", fontWeight: 800, color: "#0d9488", textTransform: "uppercase" }}>
+                          Student / Ward Credentials
+                        </span>
+                        <span style={{ fontSize: "0.72rem", background: "#ccfbf1", color: "#115e59", padding: "0.15rem 0.45rem", borderRadius: "4px", fontWeight: 700 }}>
+                          Role: Student
+                        </span>
+                      </div>
+                      <div style={{ fontSize: "0.85rem", color: "#334155", marginBottom: "0.25rem" }}>
+                        <strong>Name:</strong> {onboardGuardianResult.ward.name}
+                      </div>
+                      <div style={{ fontSize: "0.85rem", color: "#334155", marginBottom: "0.5rem" }}>
+                        <strong>Username:</strong> <code>{onboardGuardianResult.ward.username}</code>
+                      </div>
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          padding: "0.5rem 0.75rem",
+                          background: "#ffffff",
+                          border: "1px solid #e2e8f0",
+                          borderRadius: "6px",
+                        }}
+                      >
+                        <div>
+                          <span style={{ fontSize: "0.72rem", color: "#64748b", display: "block" }}>Temporary Password</span>
+                          <code style={{ fontSize: "0.95rem", fontWeight: 800, color: "#d97706" }}>
+                            {onboardGuardianResult.ward.temporary_password || "••••••••"}
+                          </code>
+                        </div>
+                        {onboardGuardianResult.ward.temporary_password && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              navigator.clipboard.writeText(onboardGuardianResult.ward?.temporary_password || "");
+                              setGuardianCopiedKey("ward_pw");
+                              setTimeout(() => setGuardianCopiedKey(null), 2000);
+                            }}
+                            style={{
+                              padding: "0.3rem 0.6rem",
+                              background: guardianCopiedKey === "ward_pw" ? "#dcfce7" : "#f1f5f9",
+                              color: guardianCopiedKey === "ward_pw" ? "#166534" : "#475569",
+                              border: "1px solid #cbd5e1",
+                              borderRadius: "6px",
+                              cursor: "pointer",
+                              fontSize: "0.75rem",
+                              fontWeight: 700,
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "0.3rem",
+                            }}
+                          >
+                            {guardianCopiedKey === "ward_pw" ? <Check size={12} /> : <Copy size={12} />}
+                            <span>{guardianCopiedKey === "ward_pw" ? "Copied" : "Copy"}</span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.75rem" }}>
+                    <button
+                      type="button"
+                      onClick={() => setIsOnboardGuardianOpen(false)}
+                      style={{
+                        padding: "0.6rem 1.25rem",
+                        background: "#0f172a",
+                        color: "#fff",
+                        border: "none",
+                        borderRadius: "8px",
+                        fontWeight: 700,
+                        fontSize: "0.85rem",
+                        cursor: "pointer",
+                      }}
+                    >
+                      Done
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                /* Onboarding Form */
+                <form onSubmit={handleOnboardGuardianSubmit}>
+                  {onboardGuardianError && (
+                    <div
+                      style={{
+                        padding: "0.65rem 0.85rem",
+                        background: "#fef2f2",
+                        border: "1px solid #fca5a5",
+                        borderRadius: "8px",
+                        color: "#b91c1c",
+                        fontSize: "0.82rem",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "0.5rem",
+                        marginBottom: "1rem",
+                      }}
+                    >
+                      <AlertCircle size={15} style={{ flexShrink: 0 }} />
+                      <span>{onboardGuardianError}</span>
+                    </div>
+                  )}
+
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.85rem", marginBottom: "0.85rem" }}>
+                    <div>
+                      <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 700, color: "#334155", marginBottom: "0.3rem" }}>
+                        Guardian Full Name *
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="e.g. Sarah Jenkins"
+                        value={guardianForm.guardian_name}
+                        onChange={(e) => setGuardianForm({ ...guardianForm, guardian_name: e.target.value })}
+                        style={{
+                          width: "100%",
+                          padding: "0.55rem 0.75rem",
+                          borderRadius: "6px",
+                          border: onboardGuardianFieldErrors.guardian_name ? "1px solid #ef4444" : "1px solid #cbd5e1",
+                          fontSize: "0.85rem",
+                          outline: "none",
+                        }}
+                      />
+                      {onboardGuardianFieldErrors.guardian_name && (
+                        <p style={{ color: "#ef4444", fontSize: "0.75rem", marginTop: "0.2rem" }}>
+                          {onboardGuardianFieldErrors.guardian_name[0]}
+                        </p>
+                      )}
+                    </div>
+
+                    <div>
+                      <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 700, color: "#334155", marginBottom: "0.3rem" }}>
+                        Guardian Email *
+                      </label>
+                      <input
+                        type="email"
+                        required
+                        placeholder="sarah.jenkins@example.com"
+                        value={guardianForm.guardian_email}
+                        onChange={(e) => setGuardianForm({ ...guardianForm, guardian_email: e.target.value })}
+                        style={{
+                          width: "100%",
+                          padding: "0.55rem 0.75rem",
+                          borderRadius: "6px",
+                          border: onboardGuardianFieldErrors.guardian_email ? "1px solid #ef4444" : "1px solid #cbd5e1",
+                          fontSize: "0.85rem",
+                          outline: "none",
+                        }}
+                      />
+                      {onboardGuardianFieldErrors.guardian_email && (
+                        <p style={{ color: "#ef4444", fontSize: "0.75rem", marginTop: "0.2rem" }}>
+                          {onboardGuardianFieldErrors.guardian_email[0]}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.85rem", marginBottom: "0.85rem" }}>
+                    <div>
+                      <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 700, color: "#334155", marginBottom: "0.3rem" }}>
+                        Guardian Phone
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="+44 7911 123456"
+                        value={guardianForm.guardian_phone}
+                        onChange={(e) => setGuardianForm({ ...guardianForm, guardian_phone: e.target.value })}
+                        style={{
+                          width: "100%",
+                          padding: "0.55rem 0.75rem",
+                          borderRadius: "6px",
+                          border: "1px solid #cbd5e1",
+                          fontSize: "0.85rem",
+                          outline: "none",
+                        }}
+                      />
+                    </div>
+
+                    <div>
+                      <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 700, color: "#334155", marginBottom: "0.3rem" }}>
+                        Relationship
+                      </label>
+                      <select
+                        value={guardianForm.relationship}
+                        onChange={(e) => setGuardianForm({ ...guardianForm, relationship: e.target.value })}
+                        style={{
+                          width: "100%",
+                          padding: "0.55rem 0.75rem",
+                          borderRadius: "6px",
+                          border: "1px solid #cbd5e1",
+                          fontSize: "0.85rem",
+                          outline: "none",
+                          background: "#fff",
+                        }}
+                      >
+                        <option value="Mother">Mother</option>
+                        <option value="Father">Father</option>
+                        <option value="Legal Guardian">Legal Guardian</option>
+                        <option value="Aunt / Uncle">Aunt / Uncle</option>
+                        <option value="Other">Other</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div style={{ marginBottom: "1rem" }}>
+                    <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 700, color: "#334155", marginBottom: "0.3rem" }}>
+                      Ward Username (Student Login Identifier)
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. liam.jenkins"
+                      value={guardianForm.ward_username}
+                      onChange={(e) => setGuardianForm({ ...guardianForm, ward_username: e.target.value })}
+                      style={{
+                        width: "100%",
+                        padding: "0.55rem 0.75rem",
+                        borderRadius: "6px",
+                        border: "1px solid #cbd5e1",
+                        fontSize: "0.85rem",
+                        outline: "none",
+                      }}
+                    />
+                  </div>
+
+                  <div style={{ padding: "0.75rem", background: "#f8fafc", borderRadius: "8px", border: "1px solid #e2e8f0", marginBottom: "1.25rem" }}>
+                    <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.82rem", color: "#334155", cursor: "pointer", marginBottom: "0.4rem" }}>
+                      <input
+                        type="checkbox"
+                        checked={guardianForm.reset_ward_password}
+                        onChange={(e) => setGuardianForm({ ...guardianForm, reset_ward_password: e.target.checked })}
+                      />
+                      <span>Reset student temporary password and require change on next login</span>
+                    </label>
+                    <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.82rem", color: "#334155", cursor: "pointer" }}>
+                      <input
+                        type="checkbox"
+                        checked={guardianForm.send_email}
+                        onChange={(e) => setGuardianForm({ ...guardianForm, send_email: e.target.checked })}
+                      />
+                      <span>Send onboarding notification emails with portal link to guardian</span>
+                    </label>
+                  </div>
+
+                  <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.75rem" }}>
+                    <button
+                      type="button"
+                      onClick={() => setIsOnboardGuardianOpen(false)}
+                      disabled={isOnboardingGuardianLoading}
+                      style={{
+                        padding: "0.55rem 1rem",
+                        background: "#fff",
+                        border: "1.5px solid #cbd5e1",
+                        borderRadius: "8px",
+                        color: "#475569",
+                        fontWeight: 600,
+                        fontSize: "0.85rem",
+                        cursor: "pointer",
+                      }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={isOnboardingGuardianLoading}
+                      style={{
+                        padding: "0.55rem 1.25rem",
+                        background: "linear-gradient(135deg,#6366f1,#4f46e5)",
+                        border: "none",
+                        borderRadius: "8px",
+                        color: "#fff",
+                        fontWeight: 700,
+                        fontSize: "0.85rem",
+                        cursor: isOnboardingGuardianLoading ? "not-allowed" : "pointer",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "0.4rem",
+                        boxShadow: "0 2px 8px rgba(99,102,241,0.3)",
+                        opacity: isOnboardingGuardianLoading ? 0.75 : 1,
+                      }}
+                    >
+                      {isOnboardingGuardianLoading ? (
+                        <>
+                          <RefreshCw size={14} className="spin" />
+                          <span>Onboarding...</span>
+                        </>
+                      ) : (
+                        <>
+                          <ShieldCheck size={15} />
+                          <span>Complete Guardian Onboarding</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </form>
+              )}
             </div>
           </div>
         </div>
