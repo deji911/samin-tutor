@@ -848,6 +848,15 @@ export default function Home() {
     </span>
   );
 
+  const openStudentRegisterModal = () => {
+    setRegisterModalTab("student");
+    setBookingSuccess(false);
+    setBookingError(null);
+    setApplySuccess(false);
+    setApplyError(null);
+    setIsModalOpen(true);
+  };
+
   return (
     <div style={{ minHeight: "100vh", backgroundColor: "#fff" }}>
 
@@ -906,12 +915,7 @@ export default function Home() {
             {!isAdminLoggedIn && (
               <button
                 type="button"
-                onClick={() => {
-                  setRegisterModalTab("student");
-                  setBookingSuccess(false);
-                  setBookingError(null);
-                  setIsModalOpen(true);
-                }}
+                onClick={openStudentRegisterModal}
                 style={{
                   background: "rgba(32, 178, 164, 0.25)",
                   border: "1px solid #20b2a4",
@@ -1007,7 +1011,7 @@ export default function Home() {
               </a>
               <div className="smart-dropdown">
                 <a href="#faqs" className="dropdown-item">How Lessons Work</a>
-                <button type="button" onClick={() => setIsModalOpen(true)} className="dropdown-item">Register as Student</button>
+                <button type="button" onClick={openStudentRegisterModal} className="dropdown-item">Create Account</button>
                 <a href="#faqs" className="dropdown-item">Tutor Matching</a>
                 <a href="#faqs" className="dropdown-item">Flexible Scheduling</a>
               </div>
@@ -1026,7 +1030,7 @@ export default function Home() {
                 <a href="mailto:saminhometutors@gmail.com" className="dropdown-item">
                   Email Inquiries
                 </a>
-                <button type="button" onClick={() => setIsModalOpen(true)} className="dropdown-item">
+                <button type="button" onClick={openStudentRegisterModal} className="dropdown-item">
                   Request Diagnostic Call
                 </button>
               </div>
@@ -1035,8 +1039,8 @@ export default function Home() {
 
           {/* CTA + hamburger */}
           <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-            <button className="btn-enroll" onClick={() => setIsModalOpen(true)}>
-              Register as Student
+            <button className="btn-enroll" onClick={openStudentRegisterModal}>
+              Get Started
             </button>
             <button
               className="btn-enroll"
@@ -1192,8 +1196,8 @@ export default function Home() {
                 Contact
               </a>
             </nav>
-            <button className="btn-enroll" style={{ width: "100%", marginTop: "0.8rem", justifyContent: "center" }} onClick={() => { setMobileOpen(false); setIsModalOpen(true); }}>
-              Register as Student
+            <button className="btn-enroll" style={{ width: "100%", marginTop: "0.8rem", justifyContent: "center" }} onClick={() => { setMobileOpen(false); openStudentRegisterModal(); }}>
+              Get Started
             </button>
           </div>
         </div>
@@ -1207,7 +1211,7 @@ export default function Home() {
             <div className="hero-content">
               <h1>{slide.title}</h1>
               <p>{slide.sub}</p>
-              <button className="hero-btn" onClick={() => setIsModalOpen(true)}>
+              <button className="hero-btn" onClick={openStudentRegisterModal}>
                 Start A Course &nbsp; ›
               </button>
             </div>
@@ -1286,8 +1290,8 @@ export default function Home() {
             ))}
           </div>
           <div style={{ textAlign: "center" }}>
-            <button className="btn-enroll" onClick={() => setIsModalOpen(true)}>
-              Register as Student
+            <button className="btn-enroll" onClick={openStudentRegisterModal}>
+              Get Started
             </button>
           </div>
         </div>
@@ -1576,57 +1580,247 @@ export default function Home() {
             style={{ maxWidth: "960px", width: "95vw", maxHeight: "92vh", overflowY: "auto" }}
           >
             {/* ── Header with tab switcher ── */}
-            <div className="modal-header" style={{ flexWrap: "wrap", gap: "0.75rem", alignItems: "center" }}>
-              <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-                <button
-                  type="button"
-                  onClick={() => { setRegisterModalTab("student"); setBookingSuccess(false); setBookingError(null); }}
+            <div
+              className="modal-header"
+              style={{
+                background: "#ffffff",
+                color: "#0f172a",
+                borderBottom: "1.5px solid #e2e8f0",
+                padding: "1.1rem 1.6rem",
+                display: "flex",
+                flexWrap: "wrap",
+                gap: "1rem",
+                alignItems: "center",
+                justifyContent: "space-between",
+                borderRadius: "8px 8px 0 0",
+              }}
+            >
+              {/* Title & Description */}
+              <div style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>
+                <div
                   style={{
-                    padding: "0.45rem 1.1rem",
-                    borderRadius: "20px",
-                    border: registerModalTab === "student" ? "2px solid #20b2a4" : "1.5px solid #cbd5e1",
-                    background: registerModalTab === "student" ? "#20b2a4" : "#f8fafc",
-                    color: registerModalTab === "student" ? "#fff" : "#475569",
-                    fontWeight: 700,
-                    fontSize: "0.82rem",
-                    cursor: "pointer",
-                    display: "inline-flex",
+                    width: "36px",
+                    height: "36px",
+                    borderRadius: "8px",
+                    background: "rgba(32, 178, 164, 0.12)",
+                    color: "#0d9488",
+                    display: "flex",
                     alignItems: "center",
-                    gap: "0.35rem",
+                    justifyContent: "center",
+                    flexShrink: 0,
                   }}
                 >
-                  <GraduationCap size={14} />
-                  Student / Parent
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setRegisterModalTab("tutor"); setApplySuccess(false); setApplyError(null); }}
+                  <Sparkles size={18} />
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: "1.05rem", fontWeight: 800, color: "#0f172a" }}>
+                    {registerModalTab === "student" ? "Register as Student / Parent" : "Apply to Become a Tutor"}
+                  </h3>
+                  <p style={{ margin: "0.15rem 0 0", fontSize: "0.78rem", color: "#64748b" }}>
+                    {registerModalTab === "student"
+                      ? "Book your 1-on-1 trial lesson with top university specialists"
+                      : "Join our distinguished faculty of expert online tutors"}
+                  </p>
+                </div>
+              </div>
+
+              {/* Segmented Pill Control Track */}
+              <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
+                <div
                   style={{
-                    padding: "0.45rem 1.1rem",
-                    borderRadius: "20px",
-                    border: registerModalTab === "tutor" ? "2px solid #20b2a4" : "1.5px solid #cbd5e1",
-                    background: registerModalTab === "tutor" ? "#20b2a4" : "#f8fafc",
-                    color: registerModalTab === "tutor" ? "#fff" : "#475569",
-                    fontWeight: 700,
-                    fontSize: "0.82rem",
-                    cursor: "pointer",
                     display: "inline-flex",
                     alignItems: "center",
-                    gap: "0.35rem",
+                    background: "#f1f5f9",
+                    padding: "4px",
+                    borderRadius: "32px",
+                    border: "1.5px solid #cbd5e1",
+                    gap: "4px",
+                    boxShadow: "inset 0 1px 3px rgba(0,0,0,0.06)",
                   }}
                 >
-                  <UserPlus size={14} />
-                  Become a Tutor
+                  {/* Tab 1: Student / Parent */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRegisterModalTab("student");
+                      setBookingSuccess(false);
+                      setBookingError(null);
+                    }}
+                    style={{
+                      padding: registerModalTab === "student" ? "0.52rem 1.35rem" : "0.52rem 1.1rem",
+                      borderRadius: "28px",
+                      border: registerModalTab === "student" ? "none" : "1px solid #cbd5e1",
+                      background:
+                        registerModalTab === "student"
+                          ? "linear-gradient(135deg, #0d9488 0%, #14b8a6 100%)"
+                          : "#ffffff",
+                      color: registerModalTab === "student" ? "#ffffff" : "#334155",
+                      fontWeight: 700,
+                      fontSize: "0.84rem",
+                      cursor: "pointer",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "0.45rem",
+                      boxShadow:
+                        registerModalTab === "student"
+                          ? "0 3px 10px rgba(13, 148, 136, 0.35)"
+                          : "0 1px 2px rgba(0,0,0,0.06)",
+                      transition: "all 0.2s ease",
+                    }}
+                    onMouseEnter={(e) => {
+                      if (registerModalTab !== "student") {
+                        e.currentTarget.style.borderColor = "#0d9488";
+                        e.currentTarget.style.color = "#0d9488";
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (registerModalTab !== "student") {
+                        e.currentTarget.style.borderColor = "#cbd5e1";
+                        e.currentTarget.style.color = "#334155";
+                      }
+                    }}
+                  >
+                    <GraduationCap size={15} />
+                    <span>Student / Parent</span>
+                    {registerModalTab === "student" ? (
+                      <span
+                        style={{
+                          fontSize: "0.68rem",
+                          background: "rgba(255, 255, 255, 0.25)",
+                          padding: "0.12rem 0.45rem",
+                          borderRadius: "10px",
+                          fontWeight: 700,
+                          letterSpacing: "0.02em",
+                        }}
+                      >
+                        Active
+                      </span>
+                    ) : (
+                      <span
+                        style={{
+                          fontSize: "0.68rem",
+                          background: "#f0fdfa",
+                          color: "#0d9488",
+                          border: "1px solid #99f6e4",
+                          padding: "0.12rem 0.45rem",
+                          borderRadius: "10px",
+                          fontWeight: 700,
+                        }}
+                      >
+                        Switch ⇄
+                      </span>
+                    )}
+                  </button>
+
+                  {/* Tab 2: Become a Tutor */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRegisterModalTab("tutor");
+                      setApplySuccess(false);
+                      setApplyError(null);
+                    }}
+                    style={{
+                      padding: registerModalTab === "tutor" ? "0.52rem 1.35rem" : "0.52rem 1.1rem",
+                      borderRadius: "28px",
+                      border: registerModalTab === "tutor" ? "none" : "1px solid #cbd5e1",
+                      background:
+                        registerModalTab === "tutor"
+                          ? "linear-gradient(135deg, #0d9488 0%, #14b8a6 100%)"
+                          : "#ffffff",
+                      color: registerModalTab === "tutor" ? "#ffffff" : "#334155",
+                      fontWeight: 700,
+                      fontSize: "0.84rem",
+                      cursor: "pointer",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "0.45rem",
+                      boxShadow:
+                        registerModalTab === "tutor"
+                          ? "0 3px 10px rgba(13, 148, 136, 0.35)"
+                          : "0 1px 2px rgba(0,0,0,0.06)",
+                      transition: "all 0.2s ease",
+                    }}
+                    onMouseEnter={(e) => {
+                      if (registerModalTab !== "tutor") {
+                        e.currentTarget.style.borderColor = "#0d9488";
+                        e.currentTarget.style.color = "#0d9488";
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (registerModalTab !== "tutor") {
+                        e.currentTarget.style.borderColor = "#cbd5e1";
+                        e.currentTarget.style.color = "#334155";
+                      }
+                    }}
+                  >
+                    <UserPlus size={15} />
+                    <span>Become a Tutor</span>
+                    {registerModalTab === "tutor" ? (
+                      <span
+                        style={{
+                          fontSize: "0.68rem",
+                          background: "rgba(255, 255, 255, 0.25)",
+                          padding: "0.12rem 0.45rem",
+                          borderRadius: "10px",
+                          fontWeight: 700,
+                          letterSpacing: "0.02em",
+                        }}
+                      >
+                        Active
+                      </span>
+                    ) : (
+                      <span
+                        style={{
+                          fontSize: "0.68rem",
+                          background: "#f0fdfa",
+                          color: "#0d9488",
+                          border: "1px solid #99f6e4",
+                          padding: "0.12rem 0.45rem",
+                          borderRadius: "10px",
+                          fontWeight: 700,
+                        }}
+                      >
+                        Switch ⇄
+                      </span>
+                    )}
+                  </button>
+                </div>
+
+                {/* Close modal X button */}
+                <button
+                  className="modal-close"
+                  onClick={() => {
+                    setIsModalOpen(false);
+                    setBookingError(null);
+                    setApplyError(null);
+                  }}
+                  aria-label="Close modal"
+                  style={{
+                    background: "#f1f5f9",
+                    border: "1px solid #cbd5e1",
+                    color: "#475569",
+                    borderRadius: "50%",
+                    width: "32px",
+                    height: "32px",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    cursor: "pointer",
+                    transition: "all 0.2s ease",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = "#e2e8f0";
+                    e.currentTarget.style.color = "#0f172a";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = "#f1f5f9";
+                    e.currentTarget.style.color = "#475569";
+                  }}
+                >
+                  <X size={16} />
                 </button>
               </div>
-              <button
-                className="modal-close"
-                onClick={() => { setIsModalOpen(false); setBookingError(null); setApplyError(null); }}
-                aria-label="Close modal"
-                style={{ marginLeft: "auto" }}
-              >
-                <X size={15} />
-              </button>
             </div>
 
             {/* ═══════════════════ STUDENT TAB ═══════════════════ */}
@@ -1986,10 +2180,7 @@ export default function Home() {
                         type="button"
                         onClick={() => {
                           setIsAdminLoginOpen(false);
-                          setRegisterModalTab("student");
-                          setBookingSuccess(false);
-                          setBookingError(null);
-                          setIsModalOpen(true);
+                          openStudentRegisterModal();
                         }}
                         style={{
                           background: "none",
