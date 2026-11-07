@@ -277,13 +277,10 @@ export default function Home() {
   const [form, setForm] = useState({
     parentName: "",
     studentName: "",
-    username: "",
     email: "",
     phone: "",
     subjects: ["Mathematics"] as string[],
     level: "Year 1-6",
-    password: "",
-    passwordConfirm: "",
     notes: "",
   });
 
@@ -309,8 +306,6 @@ export default function Home() {
     levels: ["Year 1-6"] as string[],
     degree: "",
     experience: "",
-    password: "",
-    passwordConfirm: "",
     notes: "",
   });
 
@@ -599,15 +594,6 @@ export default function Home() {
       bio: applyForm.notes.trim() || undefined,
     };
 
-    if (applyForm.password) {
-      if (applyForm.password !== applyForm.passwordConfirm) {
-        setApplyError("Passwords do not match.");
-        return;
-      }
-      payload.password = applyForm.password;
-      payload.password_confirmation = applyForm.passwordConfirm;
-    }
-
     setApplyLoading(true);
 
     try {
@@ -636,11 +622,7 @@ export default function Home() {
         return;
       }
 
-      setApplySuccessMsg(data?.message || "Tutor application submitted successfully. Your profile is pending review.");
-
-      if (data?.credentials) {
-        setApplyCredentials(data.credentials);
-      }
+      setApplySuccessMsg(data?.message || "Tutor application submitted successfully. If your application is accepted, our admin team will reach out to you with your login details.");
 
       // Sync with local applicants list so applicant is visible immediately in the admin dashboard
       const newApp = {
@@ -660,14 +642,8 @@ export default function Home() {
       };
       setApplicantsList((prev) => [newApp, ...prev]);
 
-      if (data?.token && typeof window !== "undefined") {
-        localStorage.setItem("samin_auth_token", data.token);
-        if (data?.user) {
-          localStorage.setItem("samin_user", JSON.stringify(data.user));
-          localStorage.setItem("samin_admin_logged_in", "true");
-        }
-      }
-
+      // Note: We do NOT store tokens or log in applicants upon registration.
+      // Tutor applications are pending review until approved and onboarded by admin.
       setApplySuccess(true);
     } catch (err: any) {
       console.error("Tutor registration error:", err);
@@ -750,27 +726,15 @@ export default function Home() {
     setBookingError(null);
     setBookingLoading(true);
 
-    if (form.password && form.password !== form.passwordConfirm) {
-      setBookingError("Passwords do not match.");
-      setBookingLoading(false);
-      return;
-    }
-
     const payload: any = {
-      parent_name: form.parentName.trim() || undefined,
       student_name: form.studentName.trim(),
-      parent_email: form.email.trim() || undefined,
-      email: form.email.trim() || undefined,
-      phone: form.phone.trim() || undefined,
+      parent_name: form.parentName.trim(),
+      parent_email: form.email.trim(),
+      phone: form.phone.trim(),
       subjects: form.subjects.length > 0 ? form.subjects : ["Mathematics"],
-      level: form.level || "Year 1-6",
+      level: form.level || "GCSE preparation",
       notes: form.notes.trim() || undefined,
     };
-    if (form.username?.trim()) payload.username = form.username.trim();
-    if (form.password) {
-      payload.password = form.password;
-      payload.password_confirmation = form.passwordConfirm;
-    }
 
     try {
       const baseUrl = getBackendApiUrl();
@@ -795,32 +759,17 @@ export default function Home() {
         return;
       }
 
-      if (data?.token && typeof window !== "undefined") {
-        localStorage.setItem("samin_auth_token", data.token);
-        if (data?.user) {
-          localStorage.setItem("samin_user", JSON.stringify(data.user));
-          localStorage.setItem("samin_admin_logged_in", "true");
-        }
-      }
-
-      if (data?.credentials) {
-        setBookingCredentials(data.credentials);
-      } else {
-        setBookingCredentials(null);
-      }
-
-      setBookingSuccessMsg(data?.message || "Student registered successfully.");
+      // Clear any credentials and do not store student session on public registration
+      setBookingCredentials(null);
+      setBookingSuccessMsg("Registration successful! Our admin will contact you on the progress of your registration.");
       setBookingSuccess(true);
       setForm({
         parentName: "",
         studentName: "",
-        username: "",
         email: "",
         phone: "",
         subjects: ["Mathematics"],
         level: "Year 1-6",
-        password: "",
-        passwordConfirm: "",
         notes: "",
       });
     } catch (err: any) {
@@ -1827,44 +1776,23 @@ export default function Home() {
             {registerModalTab === "student" && (
               <div className="modal-body">
                 {bookingSuccess ? (
-                  <div style={{ textAlign: "center", padding: "2rem 0" }}>
+                  <div style={{ textAlign: "center", padding: "2.5rem 1rem" }}>
                     <div style={{ fontSize: "3rem", marginBottom: "0.5rem" }}>🎉</div>
-                    <h3 style={{ color: "#0f172a", marginBottom: "0.4rem", fontWeight: 800, fontSize: "1.3rem" }}>Student Registered Successfully!</h3>
-                    <p style={{ color: "#64748b", fontSize: "0.88rem", marginBottom: "1.25rem" }}>{bookingSuccessMsg}</p>
+                    <h3 style={{ color: "#0f172a", marginBottom: "0.5rem", fontWeight: 800, fontSize: "1.35rem" }}>Registration Successful!</h3>
+                    <p style={{ color: "#64748b", fontSize: "0.95rem", lineHeight: 1.6, maxWidth: "480px", margin: "0 auto 1.75rem" }}>
+                      Thank you for registering with Samin Home Tutors! Your application has been received, and our admissions team will contact you shortly regarding the progress of your registration and tutor matching.
+                    </p>
 
-                    {bookingCredentials && (
-                      <div style={{ background: "#f0fdfa", border: "1.5px solid #20b2a4", borderRadius: "10px", padding: "1rem 1.25rem", textAlign: "left", marginBottom: "1.25rem", maxWidth: "480px", margin: "0 auto 1.25rem" }}>
-                        <div style={{ fontSize: "0.78rem", color: "#0d9488", fontWeight: 700, textTransform: "uppercase", marginBottom: "0.6rem" }}>🔑 Login Credentials</div>
-                        {bookingCredentials.username && (
-                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.4rem", background: "#fff", padding: "0.45rem 0.7rem", borderRadius: "6px", border: "1px solid #e2e8f0" }}>
-                            <span style={{ fontSize: "0.8rem", color: "#64748b" }}>Username</span>
-                            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                              <strong style={{ fontSize: "0.88rem", color: "#0f172a" }}>{bookingCredentials.username}</strong>
-                              <button type="button" onClick={() => copyText(bookingCredentials!.username!, "user")} style={{ background: "none", border: "none", cursor: "pointer", color: copiedField === "user" ? "#20b2a4" : "#94a3b8", padding: 0 }}>
-                                {copiedField === "user" ? <Check size={14} /> : <Copy size={14} />}
-                              </button>
-                            </div>
-                          </div>
-                        )}
-                        {bookingCredentials.temporary_password && (
-                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#fff", padding: "0.45rem 0.7rem", borderRadius: "6px", border: "1px solid #e2e8f0" }}>
-                            <span style={{ fontSize: "0.8rem", color: "#64748b" }}>Temp Password</span>
-                            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                              <code style={{ fontSize: "0.9rem", color: "#0d9488", fontWeight: 700 }}>{bookingCredentials.temporary_password}</code>
-                              <button type="button" onClick={() => copyText(bookingCredentials!.temporary_password!, "pass")} style={{ background: "none", border: "none", cursor: "pointer", color: copiedField === "pass" ? "#20b2a4" : "#94a3b8", padding: 0 }}>
-                                {copiedField === "pass" ? <Check size={14} /> : <Copy size={14} />}
-                              </button>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    <div style={{ display: "flex", gap: "0.75rem", justifyContent: "center", flexWrap: "wrap" }}>
-                      <a href="/student/dashboard" className="btn-enroll" style={{ textDecoration: "none", display: "inline-flex", alignItems: "center", gap: "0.4rem" }}>
-                        <GraduationCap size={16} /><span>Enter Student Dashboard</span>
-                      </a>
-                      <button className="btn-enroll" style={{ background: "transparent", color: "var(--dark)", border: "1px solid var(--border)" }} onClick={() => { setIsModalOpen(false); setBookingSuccess(false); setBookingError(null); }}>
+                    <div style={{ display: "flex", gap: "0.75rem", justifyContent: "center" }}>
+                      <button
+                        className="btn-enroll"
+                        style={{ padding: "0.65rem 2rem", fontSize: "0.95rem", fontWeight: 700 }}
+                        onClick={() => {
+                          setIsModalOpen(false);
+                          setBookingSuccess(false);
+                          setBookingError(null);
+                        }}
+                      >
                         Close
                       </button>
                     </div>
@@ -1878,14 +1806,10 @@ export default function Home() {
                     )}
 
                     {/* 2-column grid */}
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.6rem 1.2rem" }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.8rem 1.2rem" }}>
                       <div className="form-group" style={{ marginBottom: 0 }}>
                         <label htmlFor="reg-studentName">Student Name *</label>
                         <input id="reg-studentName" className="form-control" required placeholder="Student's full name" value={form.studentName} onChange={(e) => setForm({ ...form, studentName: e.target.value })} />
-                      </div>
-                      <div className="form-group" style={{ marginBottom: 0 }}>
-                        <label htmlFor="reg-username">Username <span style={{ fontWeight: 400, color: "#94a3b8" }}>(optional)</span></label>
-                        <input id="reg-username" className="form-control" placeholder="Auto-generated if blank" value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} />
                       </div>
                       <div className="form-group" style={{ marginBottom: 0 }}>
                         <label htmlFor="reg-parentName">Parent / Guardian Name</label>
@@ -1899,19 +1823,11 @@ export default function Home() {
                         <label htmlFor="reg-phone">Phone / WhatsApp</label>
                         <input id="reg-phone" className="form-control" placeholder="+1 / +44 / +234..." value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
                       </div>
-                      <div className="form-group" style={{ marginBottom: 0 }}>
+                      <div className="form-group" style={{ gridColumn: "span 2", marginBottom: 0 }}>
                         <label htmlFor="reg-level">Level / Grade *</label>
                         <select id="reg-level" className="form-control" required value={form.level} onChange={(e) => setForm({ ...form, level: e.target.value })}>
                           {availableLevels.map((lvl) => <option key={lvl} value={lvl}>{lvl}</option>)}
                         </select>
-                      </div>
-                      <div className="form-group" style={{ marginBottom: 0 }}>
-                        <label htmlFor="reg-password">Password <span style={{ fontWeight: 400, color: "#94a3b8" }}>(optional)</span></label>
-                        <input id="reg-password" type="password" className="form-control" placeholder="Leave blank = auto-generated" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
-                      </div>
-                      <div className="form-group" style={{ marginBottom: 0 }}>
-                        <label htmlFor="reg-passwordConfirm">Confirm Password</label>
-                        <input id="reg-passwordConfirm" type="password" className="form-control" placeholder="Re-enter password" value={form.passwordConfirm} onChange={(e) => setForm({ ...form, passwordConfirm: e.target.value })} />
                       </div>
                     </div>
 
@@ -1961,13 +1877,10 @@ export default function Home() {
                     </div>
                     <h3 style={{ color: "#0f172a", fontSize: "1.25rem", fontWeight: 800, marginBottom: "0.4rem" }}>Application Submitted! 🎉</h3>
                     <p style={{ color: "#64748b", fontSize: "0.88rem", maxWidth: "440px", margin: "0 auto 1.5rem", lineHeight: 1.6 }}>
-                      {applySuccessMsg || <>Thank you, <strong>{applyForm.name}</strong>! We will review your application and contact you within 2–3 working days.</>}
+                      {applySuccessMsg || "Tutor application submitted successfully. If your application is accepted, our admin team will reach out to you with your login details."}
                     </p>
                     <div style={{ display: "flex", gap: "0.75rem", justifyContent: "center", flexWrap: "wrap" }}>
-                      <a href="/tutor/dashboard" className="btn-enroll" style={{ textDecoration: "none", display: "inline-flex", alignItems: "center", gap: "0.4rem" }}>
-                        <UserPlus size={16} /><span>Go to Tutor Portal</span>
-                      </a>
-                      <button className="btn-enroll" style={{ background: "transparent", color: "var(--dark)", border: "1px solid var(--border)" }} onClick={() => { setIsModalOpen(false); setApplySuccess(false); setApplyError(null); }}>Close</button>
+                      <button className="btn-enroll" style={{ background: "var(--teal)", color: "#fff", border: "none" }} onClick={() => { setIsModalOpen(false); setApplySuccess(false); setApplyError(null); }}>Done</button>
                     </div>
                   </div>
                 ) : (
@@ -2002,14 +1915,6 @@ export default function Home() {
                       <div className="form-group" style={{ marginBottom: 0 }}>
                         <label htmlFor="apply-exp">Years of Experience</label>
                         <input id="apply-exp" type="number" min="0" max="60" step="1" className="form-control" placeholder="e.g. 3" value={applyForm.experience} onChange={(e) => setApplyForm({ ...applyForm, experience: e.target.value.replace(/\D/g, "") })} />
-                      </div>
-                      <div className="form-group" style={{ marginBottom: 0 }}>
-                        <label htmlFor="apply-password">Password <span style={{ fontWeight: 400, color: "#94a3b8" }}>(optional)</span></label>
-                        <input id="apply-password" type="password" className="form-control" placeholder="Leave blank = auto-generated" value={applyForm.password} onChange={(e) => setApplyForm({ ...applyForm, password: e.target.value })} />
-                      </div>
-                      <div className="form-group" style={{ gridColumn: "1 / -1", marginBottom: 0 }}>
-                        <label htmlFor="apply-confirm">Confirm Password</label>
-                        <input id="apply-confirm" type="password" className="form-control" placeholder="Re-enter password" value={applyForm.passwordConfirm} onChange={(e) => setApplyForm({ ...applyForm, passwordConfirm: e.target.value })} />
                       </div>
                     </div>
 
@@ -2574,17 +2479,7 @@ export default function Home() {
                   </div>
                   <h3 style={{ color: "var(--dark)", fontSize: "1.3rem", fontWeight: 800, marginBottom: "0.4rem" }}>Application Submitted! 🎉</h3>
                   <p style={{ color: "var(--text-muted)", fontSize: "0.9rem", maxWidth: "440px", margin: "0 auto 1.5rem", lineHeight: 1.6 }}>
-                    {applySuccessMsg ? (
-                      <>
-                        <span style={{ fontWeight: 600, color: "var(--dark)" }}>{applySuccessMsg}</span>
-                        <br />
-                        <span style={{ fontSize: "0.83rem", color: "var(--text-muted)", marginTop: "0.35rem", display: "inline-block" }}>
-                          Thank you, <strong>{applyForm.name}</strong>! We will review your application and contact you within 2–3 working days.
-                        </span>
-                      </>
-                    ) : (
-                      <>Thank you, <strong>{applyForm.name}</strong>! Your application has been received and is under review by the Samin Tutors team. We will be in touch within 2–3 working days.</>
-                    )}
+                    {applySuccessMsg || "Tutor application submitted successfully. If your application is accepted, our admin team will reach out to you with your login details."}
                   </p>
                   <button
                     onClick={() => { setIsApplyOpen(false); setApplyError(null); }}

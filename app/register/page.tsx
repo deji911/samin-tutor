@@ -55,16 +55,12 @@ export default function RegisterPage() {
 
   /* ─── Student Form State ─── */
   const [studentName, setStudentName] = useState("");
-  const [studentUsername, setStudentUsername] = useState("");
   const [parentName, setParentName] = useState("");
   const [parentEmail, setParentEmail] = useState("");
   const [studentPhone, setStudentPhone] = useState("");
   const [selectedSubjects, setSelectedSubjects] = useState<string[]>(["Mathematics"]);
   const [selectedLevel, setSelectedLevel] = useState<string>("GCSE preparation");
   const [studentNotes, setStudentNotes] = useState("");
-  const [studentPassword, setStudentPassword] = useState("");
-  const [studentPasswordConfirm, setStudentPasswordConfirm] = useState("");
-  const [showStudentPassword, setShowStudentPassword] = useState(false);
 
   /* ─── Tutor Form State ─── */
   const [tutorName, setTutorName] = useState("");
@@ -75,9 +71,6 @@ export default function RegisterPage() {
   const [tutorLevels, setTutorLevels] = useState<string[]>(["GCSE preparation"]);
   const [tutorExperience, setTutorExperience] = useState("");
   const [tutorBio, setTutorBio] = useState("");
-  const [tutorPassword, setTutorPassword] = useState("");
-  const [tutorPasswordConfirm, setTutorPasswordConfirm] = useState("");
-  const [showTutorPassword, setShowTutorPassword] = useState(false);
 
   /* ─── Common UI State ─── */
   const [loading, setLoading] = useState(false);
@@ -133,28 +126,18 @@ export default function RegisterPage() {
       setErrorMsg("Please select at least one subject.");
       return;
     }
-    if (studentPassword && studentPassword !== studentPasswordConfirm) {
-      setErrorMsg("Passwords do not match.");
-      return;
-    }
 
     setLoading(true);
 
     const payload: any = {
       student_name: studentName.trim(),
+      parent_name: parentName.trim(),
+      parent_email: parentEmail.trim(),
+      phone: studentPhone.trim() || undefined,
       subjects: selectedSubjects,
       level: selectedLevel,
+      notes: studentNotes.trim() || undefined,
     };
-
-    if (studentUsername.trim()) payload.username = studentUsername.trim();
-    if (parentName.trim()) payload.parent_name = parentName.trim();
-    if (parentEmail.trim()) payload.parent_email = parentEmail.trim();
-    if (studentPhone.trim()) payload.phone = studentPhone.trim();
-    if (studentNotes.trim()) payload.notes = studentNotes.trim();
-    if (studentPassword) {
-      payload.password = studentPassword;
-      payload.password_confirmation = studentPasswordConfirm;
-    }
 
     try {
       const baseUrl = getBackendApiUrl();
@@ -179,21 +162,11 @@ export default function RegisterPage() {
         return;
       }
 
-      // Save token and session
-      if (data?.token) {
-        saveAuthSession({
-          token: data.token,
-          user: data.user,
-          must_change_password: Boolean(data?.credentials?.temporary_password),
-        });
-      }
-
+      // Do not auto-login or store student session on public registration
       setRegistrationResult({
         type: "student",
-        message: data?.message || "Student registered successfully.",
+        message: "Thank you for registering with Samin Home Tutors! Your application has been received, and our admissions team will contact you shortly regarding the progress of your registration and tutor matching.",
         user: data?.user,
-        credentials: data?.credentials,
-        token: data?.token,
       });
     } catch (err: any) {
       console.error("Student registration error:", err);
@@ -223,10 +196,6 @@ export default function RegisterPage() {
       setErrorMsg("Please select at least one level.");
       return;
     }
-    if (tutorPassword && tutorPassword !== tutorPasswordConfirm) {
-      setErrorMsg("Passwords do not match.");
-      return;
-    }
 
     setLoading(true);
 
@@ -241,10 +210,6 @@ export default function RegisterPage() {
     if (tutorPhone.trim()) payload.phone = tutorPhone.trim();
     if (tutorExperience.trim()) payload.years_of_experience = parseInt(tutorExperience.trim(), 10) || tutorExperience.trim();
     if (tutorBio.trim()) payload.bio = tutorBio.trim();
-    if (tutorPassword) {
-      payload.password = tutorPassword;
-      payload.password_confirmation = tutorPasswordConfirm;
-    }
 
     try {
       const baseUrl = getBackendApiUrl();
@@ -269,20 +234,10 @@ export default function RegisterPage() {
         return;
       }
 
-      if (data?.token) {
-        saveAuthSession({
-          token: data.token,
-          user: data.user,
-          must_change_password: Boolean(data?.credentials?.temporary_password),
-        });
-      }
 
       setRegistrationResult({
         type: "tutor",
-        message: data?.message || "Tutor registered successfully. Account is pending review.",
-        user: data?.user,
-        credentials: data?.credentials,
-        token: data?.token,
+        message: data?.message || "Tutor application submitted successfully. If your application is accepted, our admin team will reach out to you with your login details.",
       });
     } catch (err: any) {
       console.error("Tutor registration error:", err);
@@ -389,143 +344,59 @@ export default function RegisterPage() {
             </div>
 
             <h2 style={{ fontSize: "1.5rem", fontWeight: 800, color: "#0f172a", marginBottom: "0.5rem" }}>
-              {registrationResult.type === "student" ? "Student Registration Complete! 🎓" : "Tutor Application Submitted! 🚀"}
+              {registrationResult.type === "student" ? "Registration Successful! 🎉" : "Tutor Application Submitted! 🚀"}
             </h2>
             <p style={{ color: "#64748b", fontSize: "0.92rem", maxWidth: "520px", margin: "0 auto 1.5rem", lineHeight: 1.5 }}>
               {registrationResult.message}
             </p>
 
-            {/* Generated Credentials Card */}
-            {registrationResult.credentials && (
-              <div
-                style={{
-                  background: "#f0fdfa",
-                  border: "1.5px solid #99f6e4",
-                  borderRadius: "12px",
-                  padding: "1.25rem 1.5rem",
-                  textAlign: "left",
-                  marginBottom: "1.75rem",
-                  boxShadow: "0 4px 12px rgba(32, 178, 164, 0.08)",
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", color: "#0d9488", fontWeight: 700, fontSize: "0.9rem", marginBottom: "0.5rem" }}>
-                  <Sparkles size={16} />
-                  <span>Your Generated Login Credentials</span>
-                </div>
-                <p style={{ fontSize: "0.82rem", color: "#475569", marginBottom: "1rem" }}>
-                  Please save or copy these credentials. You can use them to sign in to your dashboard anytime.
-                </p>
 
-                {registrationResult.credentials.username && (
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      padding: "0.6rem 0.8rem",
-                      background: "#ffffff",
-                      border: "1px solid #ccfbf1",
-                      borderRadius: "6px",
-                      marginBottom: "0.5rem",
-                    }}
-                  >
-                    <div>
-                      <span style={{ fontSize: "0.72rem", color: "#64748b", textTransform: "uppercase", display: "block", fontWeight: 700 }}>Username</span>
-                      <strong style={{ fontSize: "0.95rem", color: "#0f172a" }}>{registrationResult.credentials.username}</strong>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => copyToClipboard(registrationResult.credentials.username, "user")}
-                      style={{
-                        background: copiedField === "user" ? "#dcfce7" : "#f1f5f9",
-                        border: "1px solid #cbd5e1",
-                        borderRadius: "6px",
-                        color: copiedField === "user" ? "#166534" : "#475569",
-                        padding: "0.35rem 0.7rem",
-                        cursor: "pointer",
-                        fontSize: "0.78rem",
-                        fontWeight: 700,
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "0.3rem",
-                      }}
-                    >
-                      {copiedField === "user" ? <Check size={13} /> : <Copy size={13} />}
-                      <span>{copiedField === "user" ? "Copied" : "Copy"}</span>
-                    </button>
-                  </div>
-                )}
-
-                {registrationResult.credentials.temporary_password && (
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      padding: "0.6rem 0.8rem",
-                      background: "#ffffff",
-                      border: "1px solid #ccfbf1",
-                      borderRadius: "6px",
-                    }}
-                  >
-                    <div>
-                      <span style={{ fontSize: "0.72rem", color: "#64748b", textTransform: "uppercase", display: "block", fontWeight: 700 }}>Temporary Password</span>
-                      <code style={{ fontSize: "0.95rem", color: "#b45309", fontFamily: "monospace", fontWeight: 700 }}>{registrationResult.credentials.temporary_password}</code>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => copyToClipboard(registrationResult.credentials.temporary_password, "pw")}
-                      style={{
-                        background: copiedField === "pw" ? "#dcfce7" : "#f1f5f9",
-                        border: "1px solid #cbd5e1",
-                        borderRadius: "6px",
-                        color: copiedField === "pw" ? "#166534" : "#475569",
-                        padding: "0.35rem 0.7rem",
-                        cursor: "pointer",
-                        fontSize: "0.78rem",
-                        fontWeight: 700,
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "0.3rem",
-                      }}
-                    >
-                      {copiedField === "pw" ? <Check size={13} /> : <Copy size={13} />}
-                      <span>{copiedField === "pw" ? "Copied" : "Copy"}</span>
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
 
             {/* Direct Action Buttons */}
             <div style={{ display: "flex", gap: "1rem", justifyContent: "center", flexWrap: "wrap" }}>
-              <button
-                type="button"
-                onClick={() => {
-                  if (registrationResult.type === "student") {
-                    router.push("/student/dashboard");
-                  } else {
-                    router.push("/tutor/dashboard");
-                  }
-                }}
-                style={{
-                  padding: "0.85rem 1.6rem",
-                  background: "linear-gradient(135deg, #20b2a4 0%, #0d9488 100%)",
-                  border: "none",
-                  borderRadius: "8px",
-                  color: "#fff",
-                  fontSize: "0.95rem",
-                  fontWeight: 700,
-                  cursor: "pointer",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: "0.5rem",
-                  boxShadow: "0 4px 14px rgba(32, 178, 164, 0.3)",
-                }}
-              >
-                <span>Enter {registrationResult.type === "student" ? "Student Dashboard" : "Tutor Portal"}</span>
-                <ArrowRight size={16} />
-              </button>
+              {registrationResult.type === "student" ? (
+                <Link
+                  href="/"
+                  style={{
+                    padding: "0.85rem 1.8rem",
+                    background: "linear-gradient(135deg, #20b2a4 0%, #0d9488 100%)",
+                    border: "none",
+                    borderRadius: "8px",
+                    color: "#fff",
+                    fontSize: "0.95rem",
+                    fontWeight: 700,
+                    textDecoration: "none",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "0.5rem",
+                    boxShadow: "0 4px 14px rgba(32, 178, 164, 0.3)",
+                  }}
+                >
+                  <span>Return to Home</span>
+                  <ArrowRight size={16} />
+                </Link>
+              ) : (
+                <Link
+                  href="/"
+                  style={{
+                    padding: "0.85rem 1.8rem",
+                    background: "linear-gradient(135deg, #20b2a4 0%, #0d9488 100%)",
+                    border: "none",
+                    borderRadius: "8px",
+                    color: "#fff",
+                    fontSize: "0.95rem",
+                    fontWeight: 700,
+                    textDecoration: "none",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "0.5rem",
+                    boxShadow: "0 4px 14px rgba(32, 178, 164, 0.3)",
+                  }}
+                >
+                  <span>Return to Home</span>
+                  <ArrowRight size={16} />
+                </Link>
+              )}
 
               <Link
                 href="/login"
@@ -651,63 +522,32 @@ export default function RegisterPage() {
             {/* ── STUDENT REGISTRATION FORM ── */}
             {activeTab === "student" && (
               <form onSubmit={handleStudentSubmit}>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem", marginBottom: "1rem" }}>
-                  <div>
-                    <label style={{ display: "block", fontSize: "0.82rem", fontWeight: 700, color: "#334155", marginBottom: "0.35rem" }}>
-                      Student Name *
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="e.g. Liam Jenkins"
-                      value={studentName}
-                      onChange={(e) => setStudentName(e.target.value)}
-                      style={{
-                        width: "100%",
-                        padding: "0.7rem 0.85rem",
-                        background: "#ffffff",
-                        border: fieldErrors.student_name ? "1.5px solid #ef4444" : "1.5px solid #cbd5e1",
-                        borderRadius: "8px",
-                        color: "#0f172a",
-                        fontSize: "0.9rem",
-                        outline: "none",
-                      }}
-                    />
-                    {fieldErrors.student_name && (
-                      <p style={{ color: "#ef4444", fontSize: "0.76rem", marginTop: "0.25rem" }}>
-                        {fieldErrors.student_name[0]}
-                      </p>
-                    )}
-                  </div>
-
-                  <div>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.35rem" }}>
-                      <label style={{ fontSize: "0.82rem", fontWeight: 700, color: "#334155" }}>
-                        Username <span style={{ color: "#94a3b8", fontWeight: 400 }}>(optional)</span>
-                      </label>
-                    </div>
-                    <input
-                      type="text"
-                      placeholder="e.g. liam.jenkins"
-                      value={studentUsername}
-                      onChange={(e) => setStudentUsername(e.target.value)}
-                      style={{
-                        width: "100%",
-                        padding: "0.7rem 0.85rem",
-                        background: "#ffffff",
-                        border: fieldErrors.username ? "1.5px solid #ef4444" : "1.5px solid #cbd5e1",
-                        borderRadius: "8px",
-                        color: "#0f172a",
-                        fontSize: "0.9rem",
-                        outline: "none",
-                      }}
-                    />
-                    {fieldErrors.username && (
-                      <p style={{ color: "#ef4444", fontSize: "0.76rem", marginTop: "0.25rem" }}>
-                        {fieldErrors.username[0]}
-                      </p>
-                    )}
-                  </div>
+                <div style={{ marginBottom: "1rem" }}>
+                  <label style={{ display: "block", fontSize: "0.82rem", fontWeight: 700, color: "#334155", marginBottom: "0.35rem" }}>
+                    Student Name *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Liam Jenkins"
+                    value={studentName}
+                    onChange={(e) => setStudentName(e.target.value)}
+                    style={{
+                      width: "100%",
+                      padding: "0.7rem 0.85rem",
+                      background: "#ffffff",
+                      border: fieldErrors.student_name ? "1.5px solid #ef4444" : "1.5px solid #cbd5e1",
+                      borderRadius: "8px",
+                      color: "#0f172a",
+                      fontSize: "0.9rem",
+                      outline: "none",
+                    }}
+                  />
+                  {fieldErrors.student_name && (
+                    <p style={{ color: "#ef4444", fontSize: "0.76rem", marginTop: "0.25rem" }}>
+                      {fieldErrors.student_name[0]}
+                    </p>
+                  )}
                 </div>
 
                 {/* Parent Information Section */}
@@ -871,71 +711,6 @@ export default function RegisterPage() {
                   )}
                 </div>
 
-                {/* Optional Password */}
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem", marginBottom: "1rem" }}>
-                  <div>
-                    <label style={{ display: "block", fontSize: "0.82rem", fontWeight: 700, color: "#334155", marginBottom: "0.35rem" }}>
-                      Create Password <span style={{ color: "#94a3b8", fontWeight: 400 }}>(optional)</span>
-                    </label>
-                    <div style={{ position: "relative" }}>
-                      <input
-                        type={showStudentPassword ? "text" : "password"}
-                        placeholder="Leave empty to auto-generate"
-                        value={studentPassword}
-                        onChange={(e) => setStudentPassword(e.target.value)}
-                        style={{
-                          width: "100%",
-                          padding: "0.7rem 2.2rem 0.7rem 0.85rem",
-                          background: "#ffffff",
-                          border: fieldErrors.password ? "1.5px solid #ef4444" : "1.5px solid #cbd5e1",
-                          borderRadius: "8px",
-                          color: "#0f172a",
-                          fontSize: "0.9rem",
-                          outline: "none",
-                        }}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowStudentPassword(!showStudentPassword)}
-                        style={{
-                          position: "absolute",
-                          right: "0.7rem",
-                          top: "50%",
-                          transform: "translateY(-50%)",
-                          background: "none",
-                          border: "none",
-                          color: "#94a3b8",
-                          cursor: "pointer",
-                          padding: 0,
-                        }}
-                      >
-                        {showStudentPassword ? <EyeOff size={15} /> : <Eye size={15} />}
-                      </button>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label style={{ display: "block", fontSize: "0.82rem", fontWeight: 700, color: "#334155", marginBottom: "0.35rem" }}>
-                      Confirm Password
-                    </label>
-                    <input
-                      type={showStudentPassword ? "text" : "password"}
-                      placeholder="Repeat password"
-                      value={studentPasswordConfirm}
-                      onChange={(e) => setStudentPasswordConfirm(e.target.value)}
-                      style={{
-                        width: "100%",
-                        padding: "0.7rem 0.85rem",
-                        background: "#ffffff",
-                        border: "1.5px solid #cbd5e1",
-                        borderRadius: "8px",
-                        color: "#0f172a",
-                        fontSize: "0.9rem",
-                        outline: "none",
-                      }}
-                    />
-                  </div>
-                </div>
 
                 {/* Additional Notes */}
                 <div style={{ marginBottom: "1.5rem" }}>
@@ -1258,71 +1033,6 @@ export default function RegisterPage() {
                   />
                 </div>
 
-                {/* Optional Tutor Password */}
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem", marginBottom: "1.5rem" }}>
-                  <div>
-                    <label style={{ display: "block", fontSize: "0.82rem", fontWeight: 700, color: "#334155", marginBottom: "0.35rem" }}>
-                      Set Password <span style={{ color: "#94a3b8", fontWeight: 400 }}>(optional)</span>
-                    </label>
-                    <div style={{ position: "relative" }}>
-                      <input
-                        type={showTutorPassword ? "text" : "password"}
-                        placeholder="Leave empty to auto-generate"
-                        value={tutorPassword}
-                        onChange={(e) => setTutorPassword(e.target.value)}
-                        style={{
-                          width: "100%",
-                          padding: "0.7rem 2.2rem 0.7rem 0.85rem",
-                          background: "#ffffff",
-                          border: fieldErrors.password ? "1.5px solid #ef4444" : "1.5px solid #cbd5e1",
-                          borderRadius: "8px",
-                          color: "#0f172a",
-                          fontSize: "0.9rem",
-                          outline: "none",
-                        }}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowTutorPassword(!showTutorPassword)}
-                        style={{
-                          position: "absolute",
-                          right: "0.7rem",
-                          top: "50%",
-                          transform: "translateY(-50%)",
-                          background: "none",
-                          border: "none",
-                          color: "#94a3b8",
-                          cursor: "pointer",
-                          padding: 0,
-                        }}
-                      >
-                        {showTutorPassword ? <EyeOff size={15} /> : <Eye size={15} />}
-                      </button>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label style={{ display: "block", fontSize: "0.82rem", fontWeight: 700, color: "#334155", marginBottom: "0.35rem" }}>
-                      Confirm Password
-                    </label>
-                    <input
-                      type={showTutorPassword ? "text" : "password"}
-                      placeholder="Repeat password"
-                      value={tutorPasswordConfirm}
-                      onChange={(e) => setTutorPasswordConfirm(e.target.value)}
-                      style={{
-                        width: "100%",
-                        padding: "0.7rem 0.85rem",
-                        background: "#ffffff",
-                        border: "1.5px solid #cbd5e1",
-                        borderRadius: "8px",
-                        color: "#0f172a",
-                        fontSize: "0.9rem",
-                        outline: "none",
-                      }}
-                    />
-                  </div>
-                </div>
 
                 {/* Submit Tutor Button */}
                 <button

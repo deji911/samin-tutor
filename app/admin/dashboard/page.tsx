@@ -1385,11 +1385,13 @@ export default function AdminDashboard() {
     setOnboardGuardianError(null);
     setOnboardGuardianFieldErrors({});
 
-    const studentId = resolveStudentId(onboardGuardianStudent.student_id || onboardGuardianStudent.id);
-    if (!studentId) {
+    const rawStudentId = onboardGuardianStudent.student_id ?? onboardGuardianStudent.id;
+    const resolvedId = resolveStudentId(rawStudentId);
+    if (!resolvedId && !rawStudentId) {
       setOnboardGuardianError("Invalid student ID.");
       return;
     }
+    const numericStudentId = Number(resolvedId) || Number(rawStudentId) || rawStudentId;
 
     const token = typeof window !== "undefined" ? localStorage.getItem("samin_auth_token") : null;
     const baseUrl = getBackendApiUrl();
@@ -1397,23 +1399,46 @@ export default function AdminDashboard() {
     setIsOnboardingGuardianLoading(true);
 
     try {
-      const res = await fetch(`${baseUrl}/api/admin/students/${studentId}/onboard-guardian`, {
+      const payload = {
+        name: guardianForm.guardian_name.trim(),
+        email: guardianForm.guardian_email.trim(),
+        phone: guardianForm.guardian_phone.trim() || null,
+        password: null,
+        password_confirmation: null,
+        student_ids: [numericStudentId],
+      };
+
+      // Primary endpoint: POST /api/parents/register (Admin only)
+      let res = await fetch(`${baseUrl}/api/parents/register`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Accept: "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({
-          guardian_name: guardianForm.guardian_name.trim(),
-          guardian_email: guardianForm.guardian_email.trim(),
-          guardian_phone: guardianForm.guardian_phone.trim() || undefined,
-          relationship: guardianForm.relationship.trim() || "Parent / Guardian",
-          ward_username: guardianForm.ward_username.trim() || undefined,
-          reset_ward_password: guardianForm.reset_ward_password,
-          send_email: guardianForm.send_email,
-        }),
+        body: JSON.stringify(payload),
       });
+
+      // Fallback to legacy endpoint if 404 or 405
+      if (res.status === 404 || res.status === 405) {
+        res = await fetch(`${baseUrl}/api/admin/students/${numericStudentId}/onboard-guardian`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            guardian_name: guardianForm.guardian_name.trim(),
+            guardian_email: guardianForm.guardian_email.trim(),
+            guardian_phone: guardianForm.guardian_phone.trim() || undefined,
+            relationship: guardianForm.relationship.trim() || "Parent / Guardian",
+            ward_username: guardianForm.ward_username.trim() || undefined,
+            reset_ward_password: guardianForm.reset_ward_password,
+            send_email: guardianForm.send_email,
+          }),
+        });
+      }
 
       const data = await res.json().catch(() => null);
 
@@ -1428,8 +1453,28 @@ export default function AdminDashboard() {
       }
 
       showToast(data?.message || "Guardian onboarded and linked to student!");
-      if (data?.credentials) {
-        setOnboardGuardianResult(data.credentials);
+      if (data?.credentials && (data.credentials.parent || data.credentials.ward || Object.keys(data.credentials).length > 0)) {
+        const parsedCreds: any = {};
+        if (data.credentials.parent) {
+          parsedCreds.parent = data.credentials.parent;
+        } else if (data.credentials.temporary_password || data.credentials.password) {
+          parsedCreds.parent = {
+            name: guardianForm.guardian_name.trim(),
+            email: guardianForm.guardian_email.trim(),
+            temporary_password: data.credentials.temporary_password || data.credentials.password,
+          };
+        }
+        if (data.credentials.ward) {
+          parsedCreds.ward = data.credentials.ward;
+        } else if (data.credentials.student || data.student) {
+          const s = data.credentials.student || data.student;
+          parsedCreds.ward = {
+            name: s.student_name || onboardGuardianStudent.student_name || "Student",
+            username: s.username || onboardGuardianStudent.username,
+            temporary_password: s.temporary_password,
+          };
+        }
+        setOnboardGuardianResult(parsedCreds.parent || parsedCreds.ward ? parsedCreds : data.credentials);
       } else {
         setIsOnboardGuardianOpen(false);
       }
@@ -1887,14 +1932,35 @@ export default function AdminDashboard() {
       const targetId = String(id).replace(/^(APP-|TUT-)/, "");
 
       if (token) {
-        const res = await fetch(`${baseUrl}/api/admin/tutors/${targetId}/status`, {
-          method: "PATCH",
+        // Try the dedicated onboard endpoint first: POST /api/admin/tutors/{id}/onboard
+        // This generates credentials, emails the welcome letter, and marks status approved
+        let onboardRes = await fetch(`${baseUrl}/api/admin/tutors/${targetId}/onboard`, {
+          method: "POST",
           headers: getAuthHeaders(),
-          body: JSON.stringify({ status: "approved" }),
+          body: JSON.stringify({}),
         });
-        if (!res.ok) {
-          const errData = await res.json().catch(() => null);
-          throw new Error(errData?.message || `Failed to update status on server (HTTP ${res.status})`);
+
+        if (onboardRes.status === 404 || onboardRes.status === 405) {
+          // Fallback to PATCH status if onboard endpoint is not available
+          onboardRes = await fetch(`${baseUrl}/api/admin/tutors/${targetId}/status`, {
+            method: "PATCH",
+            headers: getAuthHeaders(),
+            body: JSON.stringify({ status: "approved" }),
+          });
+        }
+
+        if (!onboardRes.ok) {
+          const errData = await onboardRes.json().catch(() => null);
+          throw new Error(errData?.message || `Failed to onboard tutor on server (HTTP ${onboardRes.status})`);
+        }
+
+        const onboardData = await onboardRes.json().catch(() => null);
+        if (onboardData?.credentials?.temporary_password || onboardData?.temporary_password) {
+          setTemporaryCredentialsModal({
+            name: app.name,
+            email: app.email,
+            temporary_password: onboardData?.credentials?.temporary_password || onboardData?.temporary_password,
+          });
         }
       }
 
@@ -7019,7 +7085,7 @@ export default function AdminDashboard() {
           </div>
         </div>
       )}
-      {/* ── Guardian Onboarding Modal (POST /api/admin/students/{id}/onboard-guardian) ── */}
+      {/* ── Guardian Onboarding Modal (POST /api/parents/register) ── */}
       {isOnboardGuardianOpen && onboardGuardianStudent && (
         <div
           className="modal-overlay"
@@ -7292,6 +7358,24 @@ export default function AdminDashboard() {
               ) : (
                 /* Onboarding Form */
                 <form onSubmit={handleOnboardGuardianSubmit}>
+                  <div
+                    style={{
+                      padding: "0.75rem 0.9rem",
+                      background: "#f0fdfa",
+                      borderRadius: "8px",
+                      border: "1px solid #99f6e4",
+                      marginBottom: "1rem",
+                      display: "flex",
+                      alignItems: "flex-start",
+                      gap: "0.5rem",
+                    }}
+                  >
+                    <Sparkles size={16} color="#0d9488" style={{ flexShrink: 0, marginTop: "2px" }} />
+                    <p style={{ margin: 0, fontSize: "0.8rem", color: "#115e59", lineHeight: 1.45 }}>
+                      <strong>Auto-Generated Credentials:</strong> You do not need to provide passwords. Secure temporary credentials for the parent and ward will be automatically generated and emailed to the guardian upon onboarding.
+                    </p>
+                  </div>
+
                   {onboardGuardianError && (
                     <div
                       style={{
@@ -7414,20 +7498,29 @@ export default function AdminDashboard() {
                   </div>
 
                   <div style={{ marginBottom: "1rem" }}>
-                    <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 700, color: "#334155", marginBottom: "0.3rem" }}>
-                      Ward Username (Student Login Identifier)
-                    </label>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.3rem" }}>
+                      <label style={{ fontSize: "0.8rem", fontWeight: 700, color: "#334155", margin: 0 }}>
+                        Ward Username (Student Login Identifier)
+                      </label>
+                      <span style={{ fontSize: "0.72rem", color: "#64748b", background: "#f1f5f9", padding: "0.1rem 0.45rem", borderRadius: "4px", fontWeight: 600 }}>
+                        Auto-generated • Read-only
+                      </span>
+                    </div>
                     <input
                       type="text"
+                      readOnly
                       placeholder="e.g. liam.jenkins"
                       value={guardianForm.ward_username}
-                      onChange={(e) => setGuardianForm({ ...guardianForm, ward_username: e.target.value })}
                       style={{
                         width: "100%",
                         padding: "0.55rem 0.75rem",
                         borderRadius: "6px",
-                        border: "1px solid #cbd5e1",
+                        border: "1px solid #e2e8f0",
+                        background: "#f8fafc",
+                        color: "#475569",
                         fontSize: "0.85rem",
+                        fontWeight: 600,
+                        cursor: "not-allowed",
                         outline: "none",
                       }}
                     />
