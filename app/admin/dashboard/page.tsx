@@ -2043,15 +2043,15 @@ export default function AdminDashboard() {
         bio: enrollTutorForm.bio.trim() || undefined,
       };
 
-      // Try standard enrollment endpoint first, fallback to legacy
-      let res = await fetch(`${baseUrl}/api/admin/tutors/enroll`, {
+      // Standard admin tutor creation endpoint: POST /api/admin/tutors
+      let res = await fetch(`${baseUrl}/api/admin/tutors`, {
         method: "POST",
         headers: getAuthHeaders(),
         body: JSON.stringify(payload),
       });
 
-      if (res.status === 404) {
-        res = await fetch(`${baseUrl}/api/admin/tutors`, {
+      if (res.status === 404 || res.status === 405) {
+        res = await fetch(`${baseUrl}/api/admin/tutors/enroll`, {
           method: "POST",
           headers: getAuthHeaders(),
           body: JSON.stringify(payload),
@@ -2085,11 +2085,17 @@ export default function AdminDashboard() {
         bio: "",
       });
 
-      if (data?.temporary_credentials) {
+      const tempPw =
+        data?.temporary_credentials?.temporary_password ||
+        data?.temporary_password ||
+        data?.password ||
+        data?.tutor?.temporary_password;
+
+      if (tempPw) {
         setTemporaryCredentialsModal({
           name: trimmedName,
-          email: data.temporary_credentials.email || trimmedEmail,
-          temporary_password: data.temporary_credentials.temporary_password,
+          email: data?.temporary_credentials?.email || data?.email || trimmedEmail,
+          temporary_password: tempPw,
         });
       } else {
         showToast(data?.message || "Tutor enrolled successfully. Login details have been emailed.");
