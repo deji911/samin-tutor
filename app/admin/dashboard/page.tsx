@@ -1955,13 +1955,10 @@ export default function AdminDashboard() {
         }
 
         const onboardData = await onboardRes.json().catch(() => null);
-        if (onboardData?.credentials?.temporary_password || onboardData?.temporary_password) {
-          setTemporaryCredentialsModal({
-            name: app.name,
-            email: app.email,
-            temporary_password: onboardData?.credentials?.temporary_password || onboardData?.temporary_password,
-          });
-        }
+        showToast(
+          onboardData?.message ||
+            `✅ ${app.name} approved and onboarded! Their temporary login details have been sent to their email.`
+        );
       }
 
       const newTutorId = id.startsWith("TUT-") ? id : `TUT-${id}`;
@@ -1985,7 +1982,7 @@ export default function AdminDashboard() {
         pending: Math.max(0, prev.pending - 1),
         approved: prev.approved + 1,
       }));
-      showToast(`✅ ${app.name} approved and onboarded to active tutors!`);
+      showToast(`✅ ${app.name} onboarded to active tutors! Temporary login details have been emailed.`);
     } catch (err: any) {
       console.error("Approve error:", err);
       showToast(`⚠️ ${err.message || "Failed to update tutor status."}`);
@@ -2151,21 +2148,10 @@ export default function AdminDashboard() {
         bio: "",
       });
 
-      const tempPw =
-        data?.temporary_credentials?.temporary_password ||
-        data?.temporary_password ||
-        data?.password ||
-        data?.tutor?.temporary_password;
-
-      if (tempPw) {
-        setTemporaryCredentialsModal({
-          name: trimmedName,
-          email: data?.temporary_credentials?.email || data?.email || trimmedEmail,
-          temporary_password: tempPw,
-        });
-      } else {
-        showToast(data?.message || "Tutor enrolled successfully. Login details have been emailed.");
-      }
+      showToast(
+        data?.message ||
+          `✅ Tutor ${trimmedName} enrolled successfully! Temporary login details have been sent to their email.`
+      );
       await fetchTutorsFromApi();
     } catch (err: any) {
       console.error("Enroll tutor error:", err);
