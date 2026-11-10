@@ -44,6 +44,9 @@ import {
   RotateCcw,
   DollarSign,
   CreditCard,
+  Activity,
+  Paperclip,
+  ChevronDown,
 } from "lucide-react";
 import { QUALIFICATIONS_LIST } from "../../constants/qualifications";
 import NotificationEnvelope from "@/components/NotificationEnvelope";
@@ -366,6 +369,58 @@ type TutorPayoutData = {
   sessions: TutorPayoutSession[];
 };
 
+export type AdminStudentAssignment = {
+  id: number;
+  title: string;
+  description?: string;
+  due_date?: string;
+  due_date_formatted?: string;
+  is_overdue?: boolean;
+  status: "assigned" | "submitted" | "graded" | "overdue" | string;
+  max_points?: number;
+  grade?: number | null;
+  feedback?: string | null;
+  graded_at?: string | null;
+  file_name?: string | null;
+  file_url?: string | null;
+  tutor?: {
+    id: number;
+    name: string;
+    email?: string;
+  } | null;
+  session?: any | null;
+  latest_submission?: {
+    id: number;
+    submitted_at: string;
+    file_name?: string | null;
+    file_url?: string | null;
+    notes?: string | null;
+  } | null;
+  submissions?: any[];
+};
+
+export type AdminStudentActivityItem = {
+  id: string | number;
+  type: "session" | "assignment" | "report" | "attendance" | "account" | string;
+  action: string;
+  title: string;
+  description: string;
+  timestamp: string;
+  date_formatted?: string;
+  meta?: Record<string, any>;
+};
+
+export type AdminStudentActivitySummary = {
+  total_activities?: number;
+  total_sessions?: number;
+  completed_sessions?: number;
+  total_assignments?: number;
+  completed_assignments?: number;
+  average_assignment_grade?: number | null;
+  total_reports?: number;
+  attendance_rate_percentage?: number | null;
+};
+
 type NavTab = "overview" | "applicants" | "tutors" | "bookings" | "sessions" | "reports" | "changes";
 
 const statusStyle: Record<string, { bg: string; color: string; label?: string }> = {
@@ -506,6 +561,21 @@ export default function AdminDashboard() {
   const [selectedReportDetail, setSelectedReportDetail] = useState<LessonReport | null>(null);
   const [studentReports, setStudentReports] = useState<LessonReport[]>([]);
   const [studentReportsLoading, setStudentReportsLoading] = useState(false);
+
+  // Student Dossier Sub-tabs: "overview" | "assignments" | "activity"
+  const [studentModalTab, setStudentModalTab] = useState<"overview" | "assignments" | "activity">("overview");
+  
+  // Student Assignments state (GET /api/admin/students/{id}/assignments)
+  const [studentAssignments, setStudentAssignments] = useState<AdminStudentAssignment[]>([]);
+  const [studentAssignmentsSummary, setStudentAssignmentsSummary] = useState<any>(null);
+  const [studentAssignmentsLoading, setStudentAssignmentsLoading] = useState(false);
+  const [studentAssignmentStatusFilter, setStudentAssignmentStatusFilter] = useState<string>("all");
+
+  // Student Activity Timeline state (GET /api/admin/students/{id}/activity)
+  const [studentActivities, setStudentActivities] = useState<AdminStudentActivityItem[]>([]);
+  const [studentActivitySummary, setStudentActivitySummary] = useState<AdminStudentActivitySummary | null>(null);
+  const [studentActivitiesLoading, setStudentActivitiesLoading] = useState(false);
+  const [studentActivityTypeFilter, setStudentActivityTypeFilter] = useState<string>("all");
 
   // Temporary credentials modal from enroll response
   const [temporaryCredentialsModal, setTemporaryCredentialsModal] = useState<{
@@ -1250,9 +1320,78 @@ export default function AdminDashboard() {
     }
   };
 
+  const fetchStudentAssignments = async (studentId: string | number, status?: string) => {
+    const targetId = resolveStudentId(studentId);
+    if (!targetId) return;
+    setStudentAssignmentsLoading(true);
+    const baseUrl = getBackendApiUrl();
+    const token = typeof window !== "undefined" ? localStorage.getItem("samin_auth_token") : null;
+    if (token) {
+      try {
+        const queryParams = new URLSearchParams();
+        queryParams.set("per_page", "50");
+        if (status && status !== "all") {
+          queryParams.set("status", status);
+        }
+        const res = await fetch(`${baseUrl}/api/admin/students/${targetId}/assignments?${queryParams.toString()}`, {
+          headers: getAuthHeaders(),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setStudentAssignments(data.assignments?.data || []);
+          setStudentAssignmentsSummary(data.summary || null);
+        } else {
+          setStudentAssignments([]);
+          setStudentAssignmentsSummary(null);
+        }
+      } catch (err) {
+        console.error("Error fetching student assignments:", err);
+        setStudentAssignments([]);
+      } finally {
+        setStudentAssignmentsLoading(false);
+      }
+    }
+  };
+
+  const fetchStudentActivity = async (studentId: string | number, typeFilter?: string) => {
+    const targetId = resolveStudentId(studentId);
+    if (!targetId) return;
+    setStudentActivitiesLoading(true);
+    const baseUrl = getBackendApiUrl();
+    const token = typeof window !== "undefined" ? localStorage.getItem("samin_auth_token") : null;
+    if (token) {
+      try {
+        const queryParams = new URLSearchParams();
+        queryParams.set("limit", "100");
+        if (typeFilter && typeFilter !== "all") {
+          queryParams.set("type", typeFilter);
+        }
+        const res = await fetch(`${baseUrl}/api/admin/students/${targetId}/activity?${queryParams.toString()}`, {
+          headers: getAuthHeaders(),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setStudentActivities(data.activities || []);
+          setStudentActivitySummary(data.summary || null);
+        } else {
+          setStudentActivities([]);
+          setStudentActivitySummary(null);
+        }
+      } catch (err) {
+        console.error("Error fetching student activity timeline:", err);
+        setStudentActivities([]);
+      } finally {
+        setStudentActivitiesLoading(false);
+      }
+    }
+  };
+
   const openStudentDetail = async (id: string | number, fallbackData?: any) => {
     setIsStudentDetailOpen(true);
     setLoadingStudentDetail(true);
+    setStudentModalTab("overview");
+    setStudentAssignmentStatusFilter("all");
+    setStudentActivityTypeFilter("all");
 
     const targetId = resolveStudentId(id);
 
@@ -1322,6 +1461,10 @@ export default function AdminDashboard() {
       } finally {
         setStudentReportsLoading(false);
       }
+
+      // Fetch assignments and activity for this student in parallel
+      fetchStudentAssignments(targetId, "all");
+      fetchStudentActivity(targetId, "all");
     }
 
     setLoadingStudentDetail(false);
@@ -4824,7 +4967,7 @@ export default function AdminDashboard() {
               background: "#fff",
               borderRadius: "16px",
               width: "100%",
-              maxWidth: "600px",
+              maxWidth: "750px",
               maxHeight: "90vh",
               overflowY: "auto",
               boxShadow: "0 25px 50px -12px rgba(0,0,0,0.25)",
@@ -4858,7 +5001,66 @@ export default function AdminDashboard() {
               </button>
             </div>
 
+            {/* Sub-tab Navigation */}
+            <div style={{ display: "flex", borderBottom: "1px solid #e2e8f0", background: "#f8fafc", padding: "0 1.5rem" }}>
+              {[
+                { id: "overview", label: "Dossier & Profile", icon: <Users size={15} /> },
+                { id: "assignments", label: "Assignments", icon: <BookOpen size={15} />, count: studentAssignments.length },
+                { id: "activity", label: "Activity Timeline", icon: <Activity size={15} />, count: studentActivities.length },
+              ].map((tab) => {
+                const isActive = studentModalTab === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => {
+                      setStudentModalTab(tab.id as any);
+                      if (tab.id === "assignments" && studentAssignments.length === 0) {
+                        fetchStudentAssignments(selectedStudent.id, studentAssignmentStatusFilter);
+                      }
+                      if (tab.id === "activity" && studentActivities.length === 0) {
+                        fetchStudentActivity(selectedStudent.id, studentActivityTypeFilter);
+                      }
+                    }}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.45rem",
+                      padding: "0.85rem 1rem",
+                      background: "transparent",
+                      border: "none",
+                      borderBottom: isActive ? "2.5px solid #20b2a4" : "2.5px solid transparent",
+                      color: isActive ? "#0f172a" : "#64748b",
+                      fontWeight: isActive ? 700 : 600,
+                      fontSize: "0.82rem",
+                      cursor: "pointer",
+                      transition: "all 0.15s",
+                      position: "relative",
+                      bottom: "-1px",
+                    }}
+                  >
+                    <span style={{ color: isActive ? "#0d9488" : "#94a3b8" }}>{tab.icon}</span>
+                    <span>{tab.label}</span>
+                    {typeof tab.count === "number" && tab.count > 0 && (
+                      <span
+                        style={{
+                          fontSize: "0.68rem",
+                          fontWeight: 700,
+                          padding: "0.1rem 0.45rem",
+                          borderRadius: "10px",
+                          background: isActive ? "#ccfbf1" : "#e2e8f0",
+                          color: isActive ? "#0f766e" : "#475569",
+                        }}
+                      >
+                        {tab.count}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+
             {/* Modal Body */}
+            {studentModalTab === "overview" && (
             <div style={{ padding: "1.5rem", display: "flex", flexDirection: "column", gap: "1.2rem" }}>
               {/* Status Header */}
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "#f8fafc", padding: "0.75rem 1rem", borderRadius: "10px", border: "1px solid #e2e8f0" }}>
@@ -5091,6 +5293,480 @@ export default function AdminDashboard() {
                 </div>
               </div>
             </div>
+            )}
+
+            {/* Assignments Tab */}
+            {studentModalTab === "assignments" && (
+              <div style={{ padding: "1.5rem", display: "flex", flexDirection: "column", gap: "1.2rem" }}>
+                {/* Summary Cards */}
+                {studentAssignmentsSummary && (
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))", gap: "0.6rem" }}>
+                    <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "10px", padding: "0.75rem 0.85rem", textAlign: "center" }}>
+                      <div style={{ fontSize: "0.65rem", fontWeight: 700, color: "#64748b", textTransform: "uppercase" }}>Total</div>
+                      <div style={{ fontSize: "1.25rem", fontWeight: 800, color: "#0f172a", marginTop: "0.15rem" }}>
+                        {studentAssignmentsSummary.total ?? 0}
+                      </div>
+                    </div>
+                    <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: "10px", padding: "0.75rem 0.85rem", textAlign: "center" }}>
+                      <div style={{ fontSize: "0.65rem", fontWeight: 700, color: "#2563eb", textTransform: "uppercase" }}>Assigned</div>
+                      <div style={{ fontSize: "1.25rem", fontWeight: 800, color: "#1d4ed8", marginTop: "0.15rem" }}>
+                        {studentAssignmentsSummary.assigned ?? 0}
+                      </div>
+                    </div>
+                    <div style={{ background: "#fef3c7", border: "1px solid #fde68a", borderRadius: "10px", padding: "0.75rem 0.85rem", textAlign: "center" }}>
+                      <div style={{ fontSize: "0.65rem", fontWeight: 700, color: "#b45309", textTransform: "uppercase" }}>Submitted</div>
+                      <div style={{ fontSize: "1.25rem", fontWeight: 800, color: "#92400e", marginTop: "0.15rem" }}>
+                        {studentAssignmentsSummary.submitted ?? 0}
+                      </div>
+                    </div>
+                    <div style={{ background: "#ecfdf5", border: "1px solid #a7f3d0", borderRadius: "10px", padding: "0.75rem 0.85rem", textAlign: "center" }}>
+                      <div style={{ fontSize: "0.65rem", fontWeight: 700, color: "#047857", textTransform: "uppercase" }}>Graded</div>
+                      <div style={{ fontSize: "1.25rem", fontWeight: 800, color: "#065f46", marginTop: "0.15rem" }}>
+                        {studentAssignmentsSummary.graded ?? 0}
+                      </div>
+                    </div>
+                    <div style={{ background: "#fee2e2", border: "1px solid #fca5a5", borderRadius: "10px", padding: "0.75rem 0.85rem", textAlign: "center" }}>
+                      <div style={{ fontSize: "0.65rem", fontWeight: 700, color: "#b91c1c", textTransform: "uppercase" }}>Overdue</div>
+                      <div style={{ fontSize: "1.25rem", fontWeight: 800, color: "#991b1b", marginTop: "0.15rem" }}>
+                        {studentAssignmentsSummary.overdue ?? 0}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Filter & Refresh Bar */}
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "0.6rem" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                    <span style={{ fontSize: "0.76rem", fontWeight: 700, color: "#475569" }}>Status:</span>
+                    <select
+                      value={studentAssignmentStatusFilter}
+                      onChange={(e) => {
+                        const s = e.target.value;
+                        setStudentAssignmentStatusFilter(s);
+                        fetchStudentAssignments(selectedStudent.id, s);
+                      }}
+                      style={{
+                        padding: "0.35rem 0.65rem",
+                        borderRadius: "8px",
+                        border: "1px solid #cbd5e1",
+                        fontSize: "0.78rem",
+                        fontWeight: 600,
+                        color: "#0f172a",
+                        outline: "none",
+                        background: "#fff",
+                      }}
+                    >
+                      <option value="all">All Statuses</option>
+                      <option value="assigned">Assigned</option>
+                      <option value="submitted">Submitted</option>
+                      <option value="graded">Graded</option>
+                      <option value="overdue">Overdue</option>
+                    </select>
+                  </div>
+
+                  <button
+                    onClick={() => fetchStudentAssignments(selectedStudent.id, studentAssignmentStatusFilter)}
+                    disabled={studentAssignmentsLoading}
+                    style={{
+                      background: "#f1f5f9",
+                      border: "1px solid #e2e8f0",
+                      borderRadius: "6px",
+                      padding: "0.35rem 0.65rem",
+                      fontSize: "0.74rem",
+                      fontWeight: 600,
+                      color: "#475569",
+                      cursor: studentAssignmentsLoading ? "not-allowed" : "pointer",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "0.3rem",
+                    }}
+                  >
+                    <RefreshCw size={12} className={studentAssignmentsLoading ? "spin" : ""} /> Refresh
+                  </button>
+                </div>
+
+                {/* Assignments List */}
+                {studentAssignmentsLoading ? (
+                  <div style={{ padding: "3rem 1.5rem", textAlign: "center", color: "#64748b" }}>
+                    <div style={{ width: "24px", height: "24px", border: "2.5px solid #20b2a4", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.7s linear infinite", margin: "0 auto 0.6rem" }} />
+                    <span style={{ fontSize: "0.82rem" }}>Loading homework assignments…</span>
+                  </div>
+                ) : studentAssignments.length === 0 ? (
+                  <div style={{ background: "#f8fafc", border: "1px dashed #cbd5e1", borderRadius: "10px", padding: "2.5rem 1.5rem", textAlign: "center" }}>
+                    <BookOpen size={34} color="#cbd5e1" style={{ margin: "0 auto 0.6rem", display: "block" }} />
+                    <div style={{ fontSize: "0.88rem", fontWeight: 700, color: "#475569" }}>No homework assignments found</div>
+                    <div style={{ fontSize: "0.76rem", color: "#94a3b8", marginTop: "0.25rem" }}>
+                      Assignments given by tutors to this student will appear here.
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+                    {studentAssignments.map((a) => {
+                      const isOverdue = a.is_overdue || a.status === "overdue";
+                      const statusColor =
+                        a.status === "graded"
+                          ? { bg: "#dcfce7", color: "#15803d", border: "#bbf7d0" }
+                          : a.status === "submitted"
+                          ? { bg: "#fef3c7", color: "#b45309", border: "#fde68a" }
+                          : isOverdue
+                          ? { bg: "#fee2e2", color: "#dc2626", border: "#fca5a5" }
+                          : { bg: "#eff6ff", color: "#2563eb", border: "#bfdbfe" };
+
+                      return (
+                        <div
+                          key={a.id}
+                          style={{
+                            background: "#fff",
+                            border: "1px solid #e2e8f0",
+                            borderRadius: "10px",
+                            padding: "0.9rem 1rem",
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: "0.55rem",
+                          }}
+                        >
+                          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "0.75rem" }}>
+                            <div>
+                              <div style={{ display: "flex", alignItems: "center", gap: "0.45rem", flexWrap: "wrap" }}>
+                                <span style={{ fontWeight: 800, fontSize: "0.9rem", color: "#0f172a" }}>{a.title}</span>
+                                <span
+                                  style={{
+                                    fontSize: "0.68rem",
+                                    fontWeight: 700,
+                                    padding: "0.15rem 0.5rem",
+                                    borderRadius: "12px",
+                                    background: statusColor.bg,
+                                    color: statusColor.color,
+                                    border: `1px solid ${statusColor.border}`,
+                                    textTransform: "capitalize",
+                                  }}
+                                >
+                                  {isOverdue && a.status !== "graded" ? "Overdue" : a.status}
+                                </span>
+                              </div>
+                              {a.tutor?.name && (
+                                <div style={{ fontSize: "0.74rem", color: "#64748b", marginTop: "0.2rem" }}>
+                                  Assigned by <strong style={{ color: "#0d9488" }}>{a.tutor.name}</strong>
+                                </div>
+                              )}
+                            </div>
+
+                            {a.grade !== null && a.grade !== undefined && (
+                              <div style={{ textAlign: "right" }}>
+                                <div style={{ fontSize: "1.05rem", fontWeight: 800, color: "#059669" }}>
+                                  {a.grade} <span style={{ fontSize: "0.72rem", color: "#64748b", fontWeight: 600 }}>/ {a.max_points || 100}</span>
+                                </div>
+                                <div style={{ fontSize: "0.65rem", color: "#059669", fontWeight: 700, textTransform: "uppercase" }}>Graded</div>
+                              </div>
+                            )}
+                          </div>
+
+                          {a.description && (
+                            <p style={{ margin: 0, fontSize: "0.78rem", color: "#334155", lineHeight: 1.5, background: "#f8fafc", padding: "0.45rem 0.65rem", borderRadius: "6px" }}>
+                              {a.description}
+                            </p>
+                          )}
+
+                          {/* Meta line: Due date & files */}
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "0.5rem", paddingTop: "0.3rem", borderTop: "1px solid #f1f5f9" }}>
+                            <div style={{ fontSize: "0.72rem", color: isOverdue ? "#dc2626" : "#64748b", display: "flex", alignItems: "center", gap: "0.3rem" }}>
+                              <Clock size={12} />
+                              <span>Due: {a.due_date_formatted || a.due_date || "No deadline"}</span>
+                            </div>
+
+                            <div style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>
+                              {a.file_url && (
+                                <a
+                                  href={a.file_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  style={{
+                                    fontSize: "0.72rem",
+                                    color: "#0d9488",
+                                    fontWeight: 700,
+                                    textDecoration: "none",
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: "0.25rem",
+                                    background: "#f0fdf9",
+                                    padding: "0.2rem 0.5rem",
+                                    borderRadius: "4px",
+                                    border: "1px solid #99f6e4",
+                                  }}
+                                >
+                                  <Paperclip size={11} /> {a.file_name || "Attachment"}
+                                </a>
+                              )}
+                              {a.latest_submission?.file_url && (
+                                <a
+                                  href={a.latest_submission.file_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  style={{
+                                    fontSize: "0.72rem",
+                                    color: "#2563eb",
+                                    fontWeight: 700,
+                                    textDecoration: "none",
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: "0.25rem",
+                                    background: "#eff6ff",
+                                    padding: "0.2rem 0.5rem",
+                                    borderRadius: "4px",
+                                    border: "1px solid #bfdbfe",
+                                  }}
+                                >
+                                  <ExternalLink size={11} /> Submission File
+                                </a>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Feedback if graded */}
+                          {a.feedback && (
+                            <div style={{ fontSize: "0.74rem", color: "#065f46", background: "#f0fdf4", borderLeft: "2.5px solid #10b981", padding: "0.35rem 0.6rem", borderRadius: "4px" }}>
+                              <strong>Feedback:</strong> {a.feedback}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Activity Timeline Tab */}
+            {studentModalTab === "activity" && (
+              <div style={{ padding: "1.5rem", display: "flex", flexDirection: "column", gap: "1.2rem" }}>
+                {/* Activity Summary Metrics */}
+                {studentActivitySummary && (
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: "0.6rem" }}>
+                    <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "10px", padding: "0.75rem 0.85rem", textAlign: "center" }}>
+                      <div style={{ fontSize: "0.65rem", fontWeight: 700, color: "#64748b", textTransform: "uppercase" }}>Total Events</div>
+                      <div style={{ fontSize: "1.25rem", fontWeight: 800, color: "#0f172a", marginTop: "0.15rem" }}>
+                        {studentActivitySummary.total_activities ?? 0}
+                      </div>
+                    </div>
+                    <div style={{ background: "#f0fdf9", border: "1px solid #a7f3d0", borderRadius: "10px", padding: "0.75rem 0.85rem", textAlign: "center" }}>
+                      <div style={{ fontSize: "0.65rem", fontWeight: 700, color: "#0d9488", textTransform: "uppercase" }}>Sessions</div>
+                      <div style={{ fontSize: "1.25rem", fontWeight: 800, color: "#065f46", marginTop: "0.15rem" }}>
+                        {studentActivitySummary.completed_sessions ?? 0} / {studentActivitySummary.total_sessions ?? 0}
+                      </div>
+                      <div style={{ fontSize: "0.65rem", color: "#64748b" }}>completed</div>
+                    </div>
+                    <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: "10px", padding: "0.75rem 0.85rem", textAlign: "center" }}>
+                      <div style={{ fontSize: "0.65rem", fontWeight: 700, color: "#2563eb", textTransform: "uppercase" }}>Assignments</div>
+                      <div style={{ fontSize: "1.25rem", fontWeight: 800, color: "#1d4ed8", marginTop: "0.15rem" }}>
+                        {studentActivitySummary.completed_assignments ?? 0} / {studentActivitySummary.total_assignments ?? 0}
+                      </div>
+                      <div style={{ fontSize: "0.65rem", color: "#64748b" }}>completed</div>
+                    </div>
+                    <div style={{ background: "#faf5ff", border: "1px solid #e9d5ff", borderRadius: "10px", padding: "0.75rem 0.85rem", textAlign: "center" }}>
+                      <div style={{ fontSize: "0.65rem", fontWeight: 700, color: "#7c3aed", textTransform: "uppercase" }}>Reports</div>
+                      <div style={{ fontSize: "1.25rem", fontWeight: 800, color: "#6d28d9", marginTop: "0.15rem" }}>
+                        {studentActivitySummary.total_reports ?? 0}
+                      </div>
+                      <div style={{ fontSize: "0.65rem", color: "#64748b" }}>filed</div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Filter & Refresh Bar */}
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "0.6rem" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                    <span style={{ fontSize: "0.76rem", fontWeight: 700, color: "#475569" }}>Category:</span>
+                    <select
+                      value={studentActivityTypeFilter}
+                      onChange={(e) => {
+                        const t = e.target.value;
+                        setStudentActivityTypeFilter(t);
+                        fetchStudentActivity(selectedStudent.id, t);
+                      }}
+                      style={{
+                        padding: "0.35rem 0.65rem",
+                        borderRadius: "8px",
+                        border: "1px solid #cbd5e1",
+                        fontSize: "0.78rem",
+                        fontWeight: 600,
+                        color: "#0f172a",
+                        outline: "none",
+                        background: "#fff",
+                      }}
+                    >
+                      <option value="all">All Activities</option>
+                      <option value="session">Sessions</option>
+                      <option value="assignment">Assignments</option>
+                      <option value="report">Reports</option>
+                      <option value="attendance">Attendance</option>
+                      <option value="account">Account</option>
+                    </select>
+                  </div>
+
+                  <button
+                    onClick={() => fetchStudentActivity(selectedStudent.id, studentActivityTypeFilter)}
+                    disabled={studentActivitiesLoading}
+                    style={{
+                      background: "#f1f5f9",
+                      border: "1px solid #e2e8f0",
+                      borderRadius: "6px",
+                      padding: "0.35rem 0.65rem",
+                      fontSize: "0.74rem",
+                      fontWeight: 600,
+                      color: "#475569",
+                      cursor: studentActivitiesLoading ? "not-allowed" : "pointer",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "0.3rem",
+                    }}
+                  >
+                    <RefreshCw size={12} className={studentActivitiesLoading ? "spin" : ""} /> Refresh
+                  </button>
+                </div>
+
+                {/* Activities Timeline Stream */}
+                {studentActivitiesLoading ? (
+                  <div style={{ padding: "3rem 1.5rem", textAlign: "center", color: "#64748b" }}>
+                    <div style={{ width: "24px", height: "24px", border: "2.5px solid #20b2a4", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.7s linear infinite", margin: "0 auto 0.6rem" }} />
+                    <span style={{ fontSize: "0.82rem" }}>Loading activity timeline…</span>
+                  </div>
+                ) : studentActivities.length === 0 ? (
+                  <div style={{ background: "#f8fafc", border: "1px dashed #cbd5e1", borderRadius: "10px", padding: "2.5rem 1.5rem", textAlign: "center" }}>
+                    <Activity size={34} color="#cbd5e1" style={{ margin: "0 auto 0.6rem", display: "block" }} />
+                    <div style={{ fontSize: "0.88rem", fontWeight: 700, color: "#475569" }}>No activities recorded</div>
+                    <div style={{ fontSize: "0.76rem", color: "#94a3b8", marginTop: "0.25rem" }}>
+                      Sessions, assignments, reports, and attendance events will be tracked here chronologically.
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ position: "relative", paddingLeft: "1.25rem" }}>
+                    {/* Vertical timeline line */}
+                    <div
+                      style={{
+                        position: "absolute",
+                        top: "12px",
+                        bottom: "12px",
+                        left: "6px",
+                        width: "2px",
+                        background: "#e2e8f0",
+                      }}
+                    />
+
+                    <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+                      {studentActivities.map((act, idx) => {
+                        const iconBg =
+                          act.type === "session"
+                            ? "#0284c7"
+                            : act.type === "assignment"
+                            ? "#20b2a4"
+                            : act.type === "report"
+                            ? "#8b5cf6"
+                            : act.type === "account"
+                            ? "#f59e0b"
+                            : "#64748b";
+
+                        return (
+                          <div key={act.id || idx} style={{ position: "relative" }}>
+                            {/* Dot on line */}
+                            <div
+                              style={{
+                                position: "absolute",
+                                left: "-1.25rem",
+                                top: "4px",
+                                width: "14px",
+                                height: "14px",
+                                borderRadius: "50%",
+                                background: iconBg,
+                                border: "2px solid #fff",
+                                boxShadow: "0 0 0 2px rgba(0,0,0,0.06)",
+                              }}
+                            />
+
+                            <div
+                              style={{
+                                background: "#fff",
+                                border: "1px solid #e2e8f0",
+                                borderRadius: "10px",
+                                padding: "0.75rem 0.95rem",
+                                display: "flex",
+                                flexDirection: "column",
+                                gap: "0.35rem",
+                              }}
+                            >
+                              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "0.4rem" }}>
+                                <span style={{ fontWeight: 800, fontSize: "0.84rem", color: "#0f172a" }}>{act.title}</span>
+                                <span style={{ fontSize: "0.7rem", color: "#94a3b8", fontWeight: 600 }}>
+                                  {act.date_formatted || (act.timestamp ? new Date(act.timestamp).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "")}
+                                </span>
+                              </div>
+
+                              <p style={{ margin: 0, fontSize: "0.77rem", color: "#475569", lineHeight: 1.5 }}>
+                                {act.description}
+                              </p>
+
+                              {/* Metadata tags if present */}
+                              {act.meta && (
+                                <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", flexWrap: "wrap", marginTop: "0.2rem" }}>
+                                  {act.meta.meeting_link && (
+                                    <a
+                                      href={act.meta.meeting_link}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      style={{
+                                        fontSize: "0.7rem",
+                                        color: "#0284c7",
+                                        fontWeight: 700,
+                                        textDecoration: "none",
+                                        display: "inline-flex",
+                                        alignItems: "center",
+                                        gap: "0.25rem",
+                                        background: "#eff6ff",
+                                        padding: "0.15rem 0.45rem",
+                                        borderRadius: "4px",
+                                        border: "1px solid #bfdbfe",
+                                      }}
+                                    >
+                                      <Video size={10} /> Meeting Room
+                                    </a>
+                                  )}
+                                  {act.meta.file_url && (
+                                    <a
+                                      href={act.meta.file_url}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      style={{
+                                        fontSize: "0.7rem",
+                                        color: "#0d9488",
+                                        fontWeight: 700,
+                                        textDecoration: "none",
+                                        display: "inline-flex",
+                                        alignItems: "center",
+                                        gap: "0.25rem",
+                                        background: "#f0fdf9",
+                                        padding: "0.15rem 0.45rem",
+                                        borderRadius: "4px",
+                                        border: "1px solid #99f6e4",
+                                      }}
+                                    >
+                                      <Paperclip size={10} /> {act.meta.file_name || "Attachment"}
+                                    </a>
+                                  )}
+                                  {act.meta.status && (
+                                    <span style={{ fontSize: "0.68rem", fontWeight: 700, padding: "0.1rem 0.4rem", borderRadius: "10px", background: "#f1f5f9", color: "#475569", textTransform: "capitalize" }}>
+                                      {act.meta.status}
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Footer */}
             <div style={{ padding: "1rem 1.5rem", borderTop: "1px solid #e2e8f0", background: "#f8fafc", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.5rem", flexWrap: "wrap" }}>
