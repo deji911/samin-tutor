@@ -371,6 +371,10 @@ export default function StudentPortalDashboard() {
   const [sessionAttendance, setSessionAttendance] = useState<Record<number, { joined: boolean; joinedAt?: string; leftAt?: string; duration?: number }>>({});
   const [attendanceLoadingId, setAttendanceLoadingId] = useState<number | null>(null);
 
+  // Join Meet & Class confirmation dialog: step 1 = select (test vs begin), step 2 = double-sure confirm begin
+  const [meetModalSession, setMeetModalSession] = useState<{ id: number; meeting_link: string; subject?: string; tutor_name?: string } | null>(null);
+  const [meetModalStep, setMeetModalStep] = useState<"choose" | "confirm">("choose");
+
   // Logout confirmation modal state
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
@@ -1271,11 +1275,57 @@ export default function StudentPortalDashboard() {
                   </div>
 
                   <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", minWidth: "170px" }}>
-                    {nextSession.meeting_link ? (
-                      <a
-                        href={nextSession.meeting_link}
-                        target="_blank"
-                        rel="noreferrer"
+                    {sessionAttendance[nextSession.id]?.joined ? (
+                      <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", alignItems: "center" }}>
+                        {nextSession.meeting_link && (
+                          <a
+                            href={nextSession.meeting_link}
+                            target="_blank"
+                            rel="noreferrer"
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              gap: "0.4rem",
+                              background: "rgba(255,255,255,0.9)",
+                              color: "#0d9488",
+                              padding: "0.55rem 1.1rem",
+                              borderRadius: "10px",
+                              fontWeight: 800,
+                              fontSize: "0.84rem",
+                              textDecoration: "none",
+                              boxShadow: "0 4px 14px rgba(0,0,0,0.15)",
+                            }}
+                          >
+                            <Video size={15} /> Open Meet
+                          </a>
+                        )}
+                        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", justifyContent: "center" }}>
+                          <span style={{ fontSize: "0.75rem", fontWeight: 700, padding: "0.25rem 0.6rem", borderRadius: "14px", background: "#fff", color: "#065f46" }}>
+                            ✓ Joined ({sessionAttendance[nextSession.id].joinedAt})
+                          </span>
+                          <button
+                            onClick={() => handleLeaveSession(nextSession.id)}
+                            disabled={attendanceLoadingId === nextSession.id}
+                            className="action-btn"
+                            style={{ background: "#dc2626", color: "#fff", padding: "0.35rem 0.75rem", fontSize: "0.78rem" }}
+                          >
+                            <LogOut size={13} /> Leave
+                          </button>
+                        </div>
+                      </div>
+                    ) : nextSession.meeting_link ? (
+                      <button
+                        onClick={() => {
+                          setMeetModalSession({
+                            id: nextSession.id,
+                            meeting_link: nextSession.meeting_link!,
+                            subject: nextSession.subject,
+                            tutor_name: nextSession.tutor?.name,
+                          });
+                          setMeetModalStep("choose");
+                        }}
+                        disabled={attendanceLoadingId === nextSession.id}
                         style={{
                           display: "inline-flex",
                           alignItems: "center",
@@ -1287,51 +1337,17 @@ export default function StudentPortalDashboard() {
                           borderRadius: "10px",
                           fontWeight: 800,
                           fontSize: "0.88rem",
-                          textDecoration: "none",
+                          border: "none",
+                          cursor: "pointer",
                           boxShadow: "0 4px 14px rgba(0,0,0,0.2)",
                         }}
                       >
                         <Video size={16} /> Join Google Meet
-                      </a>
+                      </button>
                     ) : (
                       <span style={{ fontSize: "0.75rem", color: "#ccfbf1", textAlign: "center" }}>
                         Meeting link will appear before lesson starts
                       </span>
-                    )}
-
-                    {/* Attendance Tracking */}
-                    {sessionAttendance[nextSession.id]?.joined ? (
-                      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", justifyContent: "center" }}>
-                        <span style={{ fontSize: "0.75rem", fontWeight: 700, padding: "0.25rem 0.6rem", borderRadius: "14px", background: "#fff", color: "#065f46" }}>
-                          ✓ Joined ({sessionAttendance[nextSession.id].joinedAt})
-                        </span>
-                        <button
-                          onClick={() => handleLeaveSession(nextSession.id)}
-                          disabled={attendanceLoadingId === nextSession.id}
-                          className="action-btn"
-                          style={{ background: "#dc2626", color: "#fff", padding: "0.35rem 0.75rem", fontSize: "0.78rem" }}
-                        >
-                          <LogOut size={13} /> Leave
-                        </button>
-                      </div>
-                    ) : (
-                      <button
-                        onClick={() => handleJoinSession(nextSession.id, nextSession.meeting_link)}
-                        disabled={attendanceLoadingId === nextSession.id}
-                        className="action-btn"
-                        style={{
-                          background: "rgba(255,255,255,0.2)",
-                          color: "#fff",
-                          border: "1px solid rgba(255,255,255,0.4)",
-                          padding: "0.5rem 1rem",
-                          borderRadius: "8px",
-                          fontWeight: 700,
-                          fontSize: "0.8rem",
-                          justifyContent: "center",
-                        }}
-                      >
-                        <UserCheck size={14} /> {attendanceLoadingId === nextSession.id ? "Checking in…" : "Log Attendance (Check In)"}
-                      </button>
                     )}
                   </div>
                 </div>
@@ -1426,48 +1442,48 @@ export default function StudentPortalDashboard() {
                             )}
                           </div>
                           <div style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem" }}>
-                            {s.meeting_link && (
-                              <a
-                                href={s.meeting_link}
-                                target="_blank"
-                                rel="noreferrer"
-                                style={{
-                                  display: "inline-flex",
-                                  alignItems: "center",
-                                  gap: "0.25rem",
-                                  background: "#e8f8f7",
-                                  color: "#0d9488",
-                                  padding: "0.3rem 0.65rem",
-                                  borderRadius: "6px",
-                                  fontSize: "0.74rem",
-                                  fontWeight: 700,
-                                  textDecoration: "none",
-                                }}
-                              >
-                                <Video size={13} /> Meet
-                              </a>
-                            )}
                             {sessionAttendance[s.id]?.joined ? (
+                              <>
+                                {s.meeting_link && (
+                                  <a
+                                    href={s.meeting_link}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    style={{ display: "inline-flex", alignItems: "center", gap: "0.25rem", background: "#e8f8f7", color: "#0d9488", padding: "0.25rem 0.5rem", borderRadius: "6px", fontSize: "0.72rem", fontWeight: 700, textDecoration: "none" }}
+                                    title="Re-open Google Meet"
+                                  >
+                                    <Video size={11} /> Meet
+                                  </a>
+                                )}
+                                <button
+                                  onClick={() => handleLeaveSession(s.id)}
+                                  disabled={attendanceLoadingId === s.id}
+                                  className="action-btn"
+                                  style={{ background: "#dc2626", color: "#fff", padding: "0.25rem 0.55rem", fontSize: "0.72rem" }}
+                                  title="Check out / Leave"
+                                >
+                                  <LogOut size={12} /> Leave
+                                </button>
+                              </>
+                            ) : s.meeting_link ? (
                               <button
-                                onClick={() => handleLeaveSession(s.id)}
-                                disabled={attendanceLoadingId === s.id}
-                                className="action-btn"
-                                style={{ background: "#dc2626", color: "#fff", padding: "0.25rem 0.55rem", fontSize: "0.72rem" }}
-                                title="Check out / Leave"
-                              >
-                                <LogOut size={12} /> Leave
-                              </button>
-                            ) : (
-                              <button
-                                onClick={() => handleJoinSession(s.id, s.meeting_link)}
+                                onClick={() => {
+                                  setMeetModalSession({
+                                    id: s.id,
+                                    meeting_link: s.meeting_link!,
+                                    subject: s.subject,
+                                    tutor_name: s.tutor?.name,
+                                  });
+                                  setMeetModalStep("choose");
+                                }}
                                 disabled={attendanceLoadingId === s.id || s.status === "completed"}
                                 className="action-btn"
-                                style={{ background: "#059669", color: "#fff", padding: "0.25rem 0.55rem", fontSize: "0.72rem" }}
-                                title="Join / Check In"
+                                style={{ display: "inline-flex", alignItems: "center", gap: "0.3rem", background: "linear-gradient(135deg, #20b2a4 0%, #0d9488 100%)", color: "#fff", padding: "0.28rem 0.65rem", borderRadius: "6px", fontWeight: 700, fontSize: "0.74rem", border: "none", opacity: s.status === "completed" ? 0.6 : 1, cursor: "pointer" }}
+                                title="Join Google Meet (Test room or begin class)"
                               >
-                                <UserCheck size={12} /> In
+                                <Video size={12} /> {attendanceLoadingId === s.id ? "…" : "Join Meet"}
                               </button>
-                            )}
+                            ) : null}
                           </div>
                         </div>
                       ))}
@@ -1749,49 +1765,49 @@ export default function StudentPortalDashboard() {
                               </td>
                               <td style={{ padding: "0.85rem 1rem", textAlign: "right" }}>
                                 <div style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem", justifyContent: "flex-end" }}>
-                                  {sess.meeting_link && (
-                                    <a
-                                      href={sess.meeting_link}
-                                      target="_blank"
-                                      rel="noreferrer"
-                                      style={{
-                                        display: "inline-flex",
-                                        alignItems: "center",
-                                        gap: "0.3rem",
-                                        background: "#e8f8f7",
-                                        color: "#0d9488",
-                                        padding: "0.3rem 0.65rem",
-                                        borderRadius: "6px",
-                                        fontWeight: 700,
-                                        fontSize: "0.74rem",
-                                        textDecoration: "none",
-                                      }}
-                                    >
-                                      <Video size={13} /> Meet
-                                    </a>
-                                  )}
                                   {sess.status !== "cancelled" && (
                                     sessionAttendance[sess.id]?.joined ? (
+                                      <div style={{ display: "inline-flex", alignItems: "center", gap: "0.25rem" }}>
+                                        {sess.meeting_link && (
+                                          <a
+                                            href={sess.meeting_link}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            style={{ display: "inline-flex", alignItems: "center", gap: "0.25rem", background: "#e8f8f7", color: "#0d9488", padding: "0.25rem 0.5rem", borderRadius: "6px", fontWeight: 700, fontSize: "0.72rem", textDecoration: "none" }}
+                                            title="Re-open Google Meet"
+                                          >
+                                            <Video size={11} /> Meet
+                                          </a>
+                                        )}
+                                        <button
+                                          onClick={() => handleLeaveSession(sess.id)}
+                                          disabled={attendanceLoadingId === sess.id}
+                                          className="action-btn"
+                                          style={{ background: "#dc2626", color: "#fff", padding: "0.25rem 0.55rem", fontSize: "0.72rem" }}
+                                          title="Check out / Leave"
+                                        >
+                                          <LogOut size={12} /> Leave
+                                        </button>
+                                      </div>
+                                    ) : sess.meeting_link ? (
                                       <button
-                                        onClick={() => handleLeaveSession(sess.id)}
-                                        disabled={attendanceLoadingId === sess.id}
-                                        className="action-btn"
-                                        style={{ background: "#dc2626", color: "#fff", padding: "0.25rem 0.55rem", fontSize: "0.72rem" }}
-                                        title="Check out / Leave"
-                                      >
-                                        <LogOut size={12} /> Leave
-                                      </button>
-                                    ) : (
-                                      <button
-                                        onClick={() => handleJoinSession(sess.id, sess.meeting_link)}
+                                        onClick={() => {
+                                          setMeetModalSession({
+                                            id: sess.id,
+                                            meeting_link: sess.meeting_link!,
+                                            subject: sess.subject,
+                                            tutor_name: sess.tutor?.name,
+                                          });
+                                          setMeetModalStep("choose");
+                                        }}
                                         disabled={attendanceLoadingId === sess.id || sess.status === "completed"}
                                         className="action-btn"
-                                        style={{ background: "#059669", color: "#fff", padding: "0.25rem 0.55rem", fontSize: "0.72rem", opacity: sess.status === "completed" ? 0.6 : 1 }}
-                                        title="Join / Check In"
+                                        style={{ display: "inline-flex", alignItems: "center", gap: "0.3rem", background: "linear-gradient(135deg, #20b2a4 0%, #0d9488 100%)", color: "#fff", padding: "0.28rem 0.65rem", borderRadius: "6px", fontWeight: 700, fontSize: "0.74rem", border: "none", opacity: sess.status === "completed" ? 0.6 : 1, cursor: "pointer" }}
+                                        title="Join Google Meet (Test room or begin class)"
                                       >
-                                        <UserCheck size={12} /> In
+                                        <Video size={12} /> {attendanceLoadingId === sess.id ? "…" : "Join Meet"}
                                       </button>
-                                    )
+                                    ) : null
                                   )}
                                 </div>
                               </td>
@@ -3024,6 +3040,113 @@ export default function StudentPortalDashboard() {
                 <LogOut size={15} /> Yes, Sign Out
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Join Google Meet Dialogue (Test vs Begin Class) ── */}
+      {meetModalSession && (
+        <div
+          onClick={() => { if (!attendanceLoadingId) setMeetModalSession(null); }}
+          style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.7)", backdropFilter: "blur(4px)", zIndex: 1100, display: "flex", alignItems: "center", justifyContent: "center", padding: "1rem", animation: "fadeUp 0.2s ease" }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{ background: "#fff", borderRadius: "16px", padding: "1.75rem", width: "100%", maxWidth: "460px", boxShadow: "0 25px 50px -12px rgba(0,0,0,0.25)", textAlign: "center" }}
+          >
+            {meetModalStep === "choose" ? (
+              <>
+                <div style={{ width: "3.5rem", height: "3.5rem", borderRadius: "50%", background: "#f0fdfa", border: "2px solid #20b2a4", color: "#0d9488", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 1rem" }}>
+                  <Video size={26} />
+                </div>
+                <h3 style={{ fontSize: "1.2rem", fontWeight: 800, color: "#0f172a", margin: "0 0 0.35rem" }}>Join Google Meet</h3>
+                <p style={{ fontSize: "0.86rem", color: "#64748b", margin: "0 0 1.5rem", lineHeight: 1.5 }}>
+                  {meetModalSession.subject && <strong>{meetModalSession.subject}</strong>}
+                  {meetModalSession.tutor_name && ` with ${meetModalSession.tutor_name}`}.
+                  <br />Would you like to test your room or begin the class now?
+                </p>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (meetModalSession.meeting_link && typeof window !== "undefined") window.open(meetModalSession.meeting_link, "_blank", "noreferrer");
+                      showToast("Opened Google Meet room for audio/video check.");
+                      setMeetModalSession(null);
+                    }}
+                    style={{ padding: "0.8rem 1rem", borderRadius: "10px", border: "1.5px solid #cbd5e1", background: "#f8fafc", color: "#0f172a", fontSize: "0.88rem", fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between" }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.6rem", textAlign: "left" }}>
+                      <span style={{ fontSize: "1.1rem" }}>🧪</span>
+                      <div>
+                        <div style={{ fontWeight: 800 }}>Test Audio &amp; Video</div>
+                        <div style={{ fontSize: "0.75rem", color: "#64748b", fontWeight: 400 }}>Preview room only — does not record attendance</div>
+                      </div>
+                    </div>
+                    <span style={{ fontSize: "0.85rem", color: "#20b2a4", fontWeight: 800 }}>›</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setMeetModalStep("confirm")}
+                    style={{ padding: "0.85rem 1rem", borderRadius: "10px", border: "none", background: "linear-gradient(135deg, #20b2a4 0%, #0d9488 100%)", color: "#fff", fontSize: "0.88rem", fontWeight: 800, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between", boxShadow: "0 4px 12px rgba(32,178,164,0.3)" }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.6rem", textAlign: "left" }}>
+                      <span style={{ fontSize: "1.1rem" }}>🚀</span>
+                      <div>
+                        <div style={{ fontWeight: 800 }}>Begin Class Now</div>
+                        <div style={{ fontSize: "0.75rem", color: "#ccfbf1", fontWeight: 400 }}>Check in, track attendance &amp; launch Meet</div>
+                      </div>
+                    </div>
+                    <span style={{ fontSize: "0.85rem", color: "#fff", fontWeight: 800 }}>›</span>
+                  </button>
+                </div>
+
+                <div style={{ marginTop: "1.25rem" }}>
+                  <button type="button" onClick={() => setMeetModalSession(null)} style={{ background: "none", border: "none", color: "#94a3b8", fontSize: "0.82rem", fontWeight: 600, cursor: "pointer" }}>
+                    Cancel
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div style={{ width: "3.5rem", height: "3.5rem", borderRadius: "50%", background: "#ecfdf5", border: "2px solid #10b981", color: "#059669", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 1rem" }}>
+                  <CheckCircle2 size={26} />
+                </div>
+                <h3 style={{ fontSize: "1.2rem", fontWeight: 800, color: "#0f172a", margin: "0 0 0.35rem" }}>Ready to Start Class?</h3>
+                <p style={{ fontSize: "0.86rem", color: "#475569", margin: "0 0 1.5rem", lineHeight: 1.55 }}>
+                  Are you double-sure you want to begin this lesson right now?
+                  <br />
+                  <span style={{ fontSize: "0.78rem", color: "#059669", fontWeight: 600, display: "block", marginTop: "0.35rem" }}>
+                    ✓ This will log your attendance, start the lesson timer, and open Google Meet.
+                  </span>
+                </p>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem" }}>
+                  <button
+                    type="button"
+                    onClick={() => setMeetModalStep("choose")}
+                    disabled={attendanceLoadingId === meetModalSession.id}
+                    style={{ padding: "0.7rem 1rem", borderRadius: "8px", border: "1.5px solid #cbd5e1", background: "#fff", color: "#475569", fontSize: "0.85rem", fontWeight: 700, cursor: "pointer" }}
+                  >
+                    Go Back
+                  </button>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const sid = meetModalSession.id;
+                      const link = meetModalSession.meeting_link;
+                      setMeetModalSession(null);
+                      await handleJoinSession(sid, link);
+                    }}
+                    disabled={attendanceLoadingId === meetModalSession.id}
+                    style={{ padding: "0.7rem 1rem", borderRadius: "8px", border: "none", background: "linear-gradient(135deg, #059669 0%, #047857 100%)", color: "#fff", fontSize: "0.85rem", fontWeight: 800, cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "0.4rem", boxShadow: "0 4px 12px rgba(5,150,105,0.3)" }}
+                  >
+                    <Check size={16} /> Yes, Begin Class
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
