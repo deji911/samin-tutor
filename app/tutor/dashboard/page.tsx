@@ -450,6 +450,32 @@ export default function TutorDashboard() {
   const [meetModalSession, setMeetModalSession] = useState<{ id: number; meeting_link: string; subject?: string; student_name?: string } | null>(null);
   const [meetModalStep, setMeetModalStep] = useState<"choose" | "confirm">("choose");
 
+  // Helper: check if a date (YYYY-MM-DD or parseable) falls in the current calendar week (Monday to Sunday)
+  const isDateInCurrentWeek = (dateStr?: string | null): boolean => {
+    if (!dateStr) return false;
+    try {
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return false;
+      const now = new Date();
+
+      // Get Monday of current week (00:00:00)
+      const currentDay = now.getDay(); // 0 is Sun, 1 is Mon...
+      const diffToMonday = currentDay === 0 ? -6 : 1 - currentDay;
+      const monday = new Date(now);
+      monday.setDate(now.getDate() + diffToMonday);
+      monday.setHours(0, 0, 0, 0);
+
+      // Get Sunday of current week (23:59:59.999)
+      const sunday = new Date(monday);
+      sunday.setDate(monday.getDate() + 6);
+      sunday.setHours(23, 59, 59, 999);
+
+      return d >= monday && d <= sunday;
+    } catch {
+      return false;
+    }
+  };
+
   // Logout confirmation modal
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
@@ -1914,18 +1940,68 @@ export default function TutorDashboard() {
                           )}
                         </div>
 
-                        <div style={{ display: "flex", gap: "0.6rem", flexWrap: "wrap" }}>
-                          {nextSession.meeting_link && (
-                            <a
-                              href={nextSession.meeting_link}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="action-btn"
-                              style={{ background: "#20b2a4", color: "#fff", padding: "0.55rem 1.1rem", fontSize: "0.84rem" }}
-                            >
-                              <Video size={16} /> Join Lesson Room
-                            </a>
-                          )}
+                        <div style={{ display: "flex", gap: "0.6rem", flexWrap: "wrap", alignItems: "center" }}>
+                          {sessionAttendance[nextSession.id]?.joined ? (
+                            <div style={{ display: "inline-flex", alignItems: "center", gap: "0.4rem" }}>
+                              {nextSession.meeting_link && (
+                                <a
+                                  href={nextSession.meeting_link}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="action-btn"
+                                  style={{ background: "#20b2a4", color: "#fff", padding: "0.55rem 1rem", fontSize: "0.82rem" }}
+                                  title="Re-open Google Meet room"
+                                >
+                                  <Video size={15} /> Open Meet
+                                </a>
+                              )}
+                              <span style={{ fontSize: "0.76rem", fontWeight: 700, padding: "0.3rem 0.65rem", borderRadius: "14px", background: "#ecfdf5", color: "#065f46", border: "1px solid #a7f3d0", display: "inline-flex", alignItems: "center", gap: "0.3rem" }}>
+                                <CheckCircle2 size={13} color="#059669" /> In Session ({sessionAttendance[nextSession.id].joinedAt})
+                              </span>
+                              <button
+                                onClick={() => handleLeaveSession(nextSession.id)}
+                                disabled={attendanceLoadingId === nextSession.id}
+                                className="action-btn"
+                                style={{ background: "#dc2626", color: "#fff", padding: "0.45rem 0.85rem", fontSize: "0.78rem" }}
+                                title="Check out of session and record duration"
+                              >
+                                <LogOut size={13} /> Leave
+                              </button>
+                            </div>
+                          ) : nextSession.meeting_link ? (
+                            (() => {
+                              const canJoinThisWeek = isDateInCurrentWeek(nextSession.date);
+                              return (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (!canJoinThisWeek) return;
+                                    setMeetModalSession({
+                                      id: nextSession.id,
+                                      meeting_link: nextSession.meeting_link!,
+                                      subject: nextSession.subject,
+                                      student_name: nextSession.student?.student_name,
+                                    });
+                                    setMeetModalStep("choose");
+                                  }}
+                                  disabled={!canJoinThisWeek || attendanceLoadingId === nextSession.id || nextSession.status === "completed"}
+                                  className="action-btn"
+                                  style={{
+                                    background: canJoinThisWeek ? "#20b2a4" : "#e2e8f0",
+                                    color: canJoinThisWeek ? "#fff" : "#94a3b8",
+                                    border: canJoinThisWeek ? "none" : "1.5px solid #cbd5e1",
+                                    padding: "0.55rem 1.1rem",
+                                    fontSize: "0.84rem",
+                                    cursor: canJoinThisWeek ? "pointer" : "not-allowed",
+                                    opacity: canJoinThisWeek ? 1 : 0.75,
+                                  }}
+                                  title={canJoinThisWeek ? "Join Google Meet (Test room or begin class)" : "Available during the week of the lesson"}
+                                >
+                                  <Video size={16} /> {canJoinThisWeek ? "Join Lesson Room" : "Join Available Week of Lesson"}
+                                </button>
+                              );
+                            })()
+                          ) : null}
                           <button
                             onClick={() => openEditModal(nextSession)}
                             className="action-btn"
@@ -2031,23 +2107,38 @@ export default function TutorDashboard() {
                                       </button>
                                     </div>
                                   ) : session.meeting_link ? (
-                                    <button
-                                      onClick={() => {
-                                        setMeetModalSession({
-                                          id: session.id,
-                                          meeting_link: session.meeting_link!,
-                                          subject: session.subject,
-                                          student_name: session.student?.student_name,
-                                        });
-                                        setMeetModalStep("choose");
-                                      }}
-                                      disabled={attendanceLoadingId === session.id || session.status === "completed"}
-                                      className="action-btn"
-                                      style={{ background: "linear-gradient(135deg, #20b2a4 0%, #0d9488 100%)", color: "#fff", padding: "0.35rem 0.8rem", fontSize: "0.76rem", opacity: session.status === "completed" ? 0.6 : 1 }}
-                                      title="Join Google Meet (Test room or begin class)"
-                                    >
-                                      <Video size={13} /> {attendanceLoadingId === session.id ? "Connecting…" : "Join Google Meet"}
-                                    </button>
+                                    (() => {
+                                      const canJoinThisWeek = isDateInCurrentWeek(session.date);
+                                      return (
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            if (!canJoinThisWeek) return;
+                                            setMeetModalSession({
+                                              id: session.id,
+                                              meeting_link: session.meeting_link!,
+                                              subject: session.subject,
+                                              student_name: session.student?.student_name,
+                                            });
+                                            setMeetModalStep("choose");
+                                          }}
+                                          disabled={!canJoinThisWeek || attendanceLoadingId === session.id || session.status === "completed"}
+                                          className="action-btn"
+                                          style={{
+                                            background: canJoinThisWeek ? "linear-gradient(135deg, #20b2a4 0%, #0d9488 100%)" : "#e2e8f0",
+                                            color: canJoinThisWeek ? "#fff" : "#94a3b8",
+                                            border: canJoinThisWeek ? "none" : "1px solid #cbd5e1",
+                                            padding: "0.35rem 0.8rem",
+                                            fontSize: "0.76rem",
+                                            cursor: canJoinThisWeek ? "pointer" : "not-allowed",
+                                            opacity: canJoinThisWeek ? 1 : 0.75,
+                                          }}
+                                          title={canJoinThisWeek ? "Join Google Meet (Test room or begin class)" : "Available during the week of this lesson"}
+                                        >
+                                          <Video size={13} /> {attendanceLoadingId === session.id ? "Connecting…" : canJoinThisWeek ? "Join Google Meet" : "Join (Locked Until Lesson Week)"}
+                                        </button>
+                                      );
+                                    })()
                                   ) : null}
                                 </>
                               )}
@@ -2355,23 +2446,38 @@ export default function TutorDashboard() {
                                       </button>
                                     </div>
                                   ) : session.meeting_link ? (
-                                    <button
-                                      onClick={() => {
-                                        setMeetModalSession({
-                                          id: session.id,
-                                          meeting_link: session.meeting_link!,
-                                          subject: session.subject,
-                                          student_name: session.student?.student_name,
-                                        });
-                                        setMeetModalStep("choose");
-                                      }}
-                                      disabled={attendanceLoadingId === session.id || session.status === "completed"}
-                                      className="action-btn"
-                                      style={{ background: "linear-gradient(135deg, #20b2a4 0%, #0d9488 100%)", color: "#fff", padding: "0.32rem 0.75rem", fontSize: "0.75rem", opacity: session.status === "completed" ? 0.6 : 1 }}
-                                      title="Join Google Meet (Test room or begin class)"
-                                    >
-                                      <Video size={13} /> {attendanceLoadingId === session.id ? "Connecting…" : "Join Google Meet"}
-                                    </button>
+                                    (() => {
+                                      const canJoinThisWeek = isDateInCurrentWeek(session.date);
+                                      return (
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            if (!canJoinThisWeek) return;
+                                            setMeetModalSession({
+                                              id: session.id,
+                                              meeting_link: session.meeting_link!,
+                                              subject: session.subject,
+                                              student_name: session.student?.student_name,
+                                            });
+                                            setMeetModalStep("choose");
+                                          }}
+                                          disabled={!canJoinThisWeek || attendanceLoadingId === session.id || session.status === "completed"}
+                                          className="action-btn"
+                                          style={{
+                                            background: canJoinThisWeek ? "linear-gradient(135deg, #20b2a4 0%, #0d9488 100%)" : "#e2e8f0",
+                                            color: canJoinThisWeek ? "#fff" : "#94a3b8",
+                                            border: canJoinThisWeek ? "none" : "1px solid #cbd5e1",
+                                            padding: "0.32rem 0.75rem",
+                                            fontSize: "0.75rem",
+                                            cursor: canJoinThisWeek ? "pointer" : "not-allowed",
+                                            opacity: canJoinThisWeek ? 1 : 0.75,
+                                          }}
+                                          title={canJoinThisWeek ? "Join Google Meet (Test room or begin class)" : "Available during the week of this lesson"}
+                                        >
+                                          <Video size={13} /> {attendanceLoadingId === session.id ? "Connecting…" : canJoinThisWeek ? "Join Google Meet" : "Join (Locked)"}
+                                        </button>
+                                      );
+                                    })()
                                   ) : null}
                                 </>
                               )}
@@ -2775,23 +2881,43 @@ export default function TutorDashboard() {
                                           </button>
                                         </div>
                                       ) : sess.meeting_link ? (
-                                        <button
-                                          onClick={() => {
-                                            setMeetModalSession({
-                                              id: sess.id,
-                                              meeting_link: sess.meeting_link!,
-                                              subject: sess.subject,
-                                              student_name: sess.student?.student_name,
-                                            });
-                                            setMeetModalStep("choose");
-                                          }}
-                                          disabled={attendanceLoadingId === sess.id || sess.status === "completed"}
-                                          className="action-btn"
-                                          style={{ display: "inline-flex", alignItems: "center", gap: "0.3rem", background: "linear-gradient(135deg, #20b2a4 0%, #0d9488 100%)", color: "#fff", padding: "0.25rem 0.6rem", borderRadius: "6px", fontWeight: 700, fontSize: "0.74rem", border: "none", opacity: sess.status === "completed" ? 0.6 : 1 }}
-                                          title="Join Google Meet (Test room or begin class)"
-                                        >
-                                          <Video size={12} /> {attendanceLoadingId === sess.id ? "…" : "Join Meet"}
-                                        </button>
+                                        (() => {
+                                          const canJoinThisWeek = isDateInCurrentWeek(sess.date);
+                                          return (
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                if (!canJoinThisWeek) return;
+                                                setMeetModalSession({
+                                                  id: sess.id,
+                                                  meeting_link: sess.meeting_link!,
+                                                  subject: sess.subject,
+                                                  student_name: sess.student?.student_name,
+                                                });
+                                                setMeetModalStep("choose");
+                                              }}
+                                              disabled={!canJoinThisWeek || attendanceLoadingId === sess.id || sess.status === "completed"}
+                                              className="action-btn"
+                                              style={{
+                                                display: "inline-flex",
+                                                alignItems: "center",
+                                                gap: "0.3rem",
+                                                background: canJoinThisWeek ? "linear-gradient(135deg, #20b2a4 0%, #0d9488 100%)" : "#e2e8f0",
+                                                color: canJoinThisWeek ? "#fff" : "#94a3b8",
+                                                padding: "0.25rem 0.6rem",
+                                                borderRadius: "6px",
+                                                fontWeight: 700,
+                                                fontSize: "0.74rem",
+                                                border: canJoinThisWeek ? "none" : "1px solid #cbd5e1",
+                                                opacity: canJoinThisWeek ? 1 : 0.75,
+                                                cursor: canJoinThisWeek ? "pointer" : "not-allowed",
+                                              }}
+                                              title={canJoinThisWeek ? "Join Google Meet (Test room or begin class)" : "Available during the week of this lesson"}
+                                            >
+                                              <Video size={12} /> {attendanceLoadingId === sess.id ? "…" : canJoinThisWeek ? "Join Meet" : "Locked"}
+                                            </button>
+                                          );
+                                        })()
                                       ) : (
                                         <span style={{ fontSize: "0.72rem", color: "#94a3b8" }}>—</span>
                                       )
