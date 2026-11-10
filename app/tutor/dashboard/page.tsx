@@ -478,6 +478,7 @@ export default function TutorDashboard() {
 
   // Logout confirmation modal
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   const getBackendApiUrl = () => {
     if (process.env.NEXT_PUBLIC_API_URL) {
@@ -1441,6 +1442,7 @@ export default function TutorDashboard() {
   };
 
   const handleLogout = async () => {
+    setIsLoggingOut(true);
     const token = typeof window !== "undefined" ? localStorage.getItem("samin_auth_token") : null;
     const baseUrl = getBackendApiUrl();
 
@@ -1588,7 +1590,7 @@ export default function TutorDashboard() {
     { tab: "sessions", icon: <CalendarDays size={18} />, label: "All Sessions" },
     { tab: "reports", icon: <FileText size={18} />, label: "Lesson Reports" },
     { tab: "requests", icon: <RotateCcw size={18} />, label: "Change Requests", badge: pendingRequestsCount || undefined },
-    { tab: "payouts", icon: <CreditCard size={18} />, label: "Payouts & Earnings" },
+    { tab: "payouts", icon: <Clock size={18} />, label: "Teaching Log & Hours" },
     { tab: "homework", icon: <BookOpen size={18} />, label: "Homework", badge: assignments.filter((a) => a.status === "submitted").length || undefined },
     { tab: "chat", icon: <MessageSquare size={18} />, label: "Messages", badge: chatUnreadCount || undefined },
     { tab: "profile", icon: <Award size={18} />, label: "My Profile" },
@@ -1782,7 +1784,7 @@ export default function TutorDashboard() {
                 {activeTab === "sessions" && "Lesson Sessions"}
                 {activeTab === "reports" && "Lesson Reports & Feedback"}
                 {activeTab === "requests" && "Session Change Requests"}
-                {activeTab === "payouts" && "Payouts & Earnings"}
+                {activeTab === "payouts" && "Teaching Log & Hours"}
                 {activeTab === "homework" && "Homework & Assignments"}
                 {activeTab === "chat" && "In-App Student Messages"}
                 {activeTab === "profile" && "Tutor Profile"}
@@ -2009,13 +2011,31 @@ export default function TutorDashboard() {
                           >
                             <Edit3 size={15} /> Update Link / Notes
                           </button>
-                          <button
-                            onClick={() => quickMarkCompleted(nextSession)}
-                            className="action-btn"
-                            style={{ background: "#ecfdf5", color: "#065f46", border: "1.5px solid #a7f3d0", padding: "0.55rem 1rem" }}
-                          >
-                            <Check size={15} /> Mark Completed
-                          </button>
+                          {(() => {
+                            const hasStarted = Boolean(sessionAttendance[nextSession.id]?.joined || nextSession.status === "completed");
+                            return (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (!hasStarted) return;
+                                  quickMarkCompleted(nextSession);
+                                }}
+                                disabled={!hasStarted}
+                                className="action-btn"
+                                style={{
+                                  background: hasStarted ? "#ecfdf5" : "#f1f5f9",
+                                  color: hasStarted ? "#065f46" : "#94a3b8",
+                                  border: hasStarted ? "1.5px solid #a7f3d0" : "1.5px solid #e2e8f0",
+                                  padding: "0.55rem 1rem",
+                                  cursor: hasStarted ? "pointer" : "not-allowed",
+                                  opacity: hasStarted ? 1 : 0.75,
+                                }}
+                                title={hasStarted ? "Mark as completed" : "Available once you start or complete class"}
+                              >
+                                <Check size={15} /> Mark Completed
+                              </button>
+                            );
+                          })()}
                         </div>
                       </div>
                     </div>
@@ -2182,30 +2202,60 @@ export default function TutorDashboard() {
                               ) : null}
 
                               {session.status === "scheduled" && (
-                                <button
-                                  onClick={() => quickMarkCompleted(session)}
-                                  className="action-btn"
-                                  style={{ background: "#ecfdf5", color: "#065f46", border: "1px solid #a7f3d0", padding: "0.35rem 0.7rem", fontSize: "0.76rem" }}
-                                  title="Mark as completed"
-                                >
-                                  <Check size={13} /> Complete
-                                </button>
+                                (() => {
+                                  const hasStarted = Boolean(sessionAttendance[session.id]?.joined);
+                                  return (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        if (!hasStarted) return;
+                                        quickMarkCompleted(session);
+                                      }}
+                                      disabled={!hasStarted}
+                                      className="action-btn"
+                                      style={{
+                                        background: hasStarted ? "#ecfdf5" : "#f1f5f9",
+                                        color: hasStarted ? "#065f46" : "#94a3b8",
+                                        border: hasStarted ? "1px solid #a7f3d0" : "1px solid #e2e8f0",
+                                        padding: "0.35rem 0.7rem",
+                                        fontSize: "0.76rem",
+                                        cursor: hasStarted ? "pointer" : "not-allowed",
+                                        opacity: hasStarted ? 1 : 0.75,
+                                      }}
+                                      title={hasStarted ? "Mark as completed" : "Available once you start or complete class"}
+                                    >
+                                      <Check size={13} /> Complete
+                                    </button>
+                                  );
+                                })()
                               )}
 
-                              <button
-                                onClick={() => openReportModal(session)}
-                                className="action-btn"
-                                style={{
-                                  background: session.status === "completed" ? "#f0fdf9" : "#eff6ff",
-                                  color: session.status === "completed" ? "#0d9488" : "#1d4ed8",
-                                  border: session.status === "completed" ? "1px solid #99f6e4" : "1px solid #bfdbfe",
-                                  padding: "0.35rem 0.7rem",
-                                  fontSize: "0.76rem",
-                                }}
-                                title="Submit post-lesson report for this session"
-                              >
-                                <FileText size={13} /> Report
-                              </button>
+                              {(() => {
+                                const canReport = Boolean(sessionAttendance[session.id]?.joined || session.status === "completed");
+                                return (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      if (!canReport) return;
+                                      openReportModal(session);
+                                    }}
+                                    disabled={!canReport}
+                                    className="action-btn"
+                                    style={{
+                                      background: !canReport ? "#f1f5f9" : session.status === "completed" ? "#f0fdf9" : "#eff6ff",
+                                      color: !canReport ? "#94a3b8" : session.status === "completed" ? "#0d9488" : "#1d4ed8",
+                                      border: !canReport ? "1px solid #e2e8f0" : session.status === "completed" ? "1px solid #99f6e4" : "1px solid #bfdbfe",
+                                      padding: "0.35rem 0.7rem",
+                                      fontSize: "0.76rem",
+                                      cursor: canReport ? "pointer" : "not-allowed",
+                                      opacity: canReport ? 1 : 0.75,
+                                    }}
+                                    title={canReport ? "Submit post-lesson report for this session" : "Available once class begins or ends"}
+                                  >
+                                    <FileText size={13} /> Report
+                                  </button>
+                                );
+                              })()}
                             </div>
                           </div>
                         ))}
@@ -2256,14 +2306,22 @@ export default function TutorDashboard() {
                               </div>
                             )}
                             {slot.meeting_link && (
-                              <a
-                                href={slot.meeting_link}
-                                target="_blank"
-                                rel="noreferrer"
-                                style={{ display: "inline-flex", alignItems: "center", gap: "0.3rem", fontSize: "0.74rem", color: "#20b2a4", fontWeight: 700, textDecoration: "none", marginTop: "0.6rem" }}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setMeetModalSession({
+                                    id: slot.id,
+                                    meeting_link: slot.meeting_link!,
+                                    subject: slot.subject,
+                                    student_name: slot.student?.student_name,
+                                  });
+                                  setMeetModalStep("choose");
+                                }}
+                                style={{ display: "inline-flex", alignItems: "center", gap: "0.3rem", fontSize: "0.74rem", color: "#20b2a4", background: "none", border: "none", padding: 0, fontWeight: 700, textDecoration: "none", marginTop: "0.6rem", cursor: "pointer" }}
+                                title="Join Google Meet (Test room or begin class)"
                               >
-                                <Video size={13} /> {slot.meeting_link}
-                              </a>
+                                <Video size={13} /> Open Meeting Room
+                              </button>
                             )}
                           </div>
                         ))}
@@ -2351,14 +2409,22 @@ export default function TutorDashboard() {
                                     </div>
                                   )}
                                   {slot.meeting_link && (
-                                    <a
-                                      href={slot.meeting_link}
-                                      target="_blank"
-                                      rel="noreferrer"
-                                      style={{ display: "inline-flex", alignItems: "center", gap: "0.3rem", fontSize: "0.74rem", color: "#20b2a4", fontWeight: 700, marginTop: "0.45rem", textDecoration: "none" }}
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setMeetModalSession({
+                                          id: slot.id,
+                                          meeting_link: slot.meeting_link!,
+                                          subject: slot.subject,
+                                          student_name: slot.student?.student_name,
+                                        });
+                                        setMeetModalStep("choose");
+                                      }}
+                                      style={{ display: "inline-flex", alignItems: "center", gap: "0.3rem", fontSize: "0.74rem", color: "#20b2a4", background: "none", border: "none", padding: 0, fontWeight: 700, marginTop: "0.45rem", cursor: "pointer" }}
+                                      title="Join Google Meet (Test room or begin class)"
                                     >
                                       <Video size={13} /> Meeting Room
-                                    </a>
+                                    </button>
                                   )}
                                 </div>
                               ))
@@ -2520,26 +2586,56 @@ export default function TutorDashboard() {
                               ) : null}
 
                               {session.status === "scheduled" && (
-                                <button
-                                  onClick={() => quickMarkCompleted(session)}
-                                  className="action-btn"
-                                  style={{ background: "#ecfdf5", color: "#065f46", border: "1px solid #a7f3d0" }}
-                                >
-                                  <Check size={13} /> Complete
-                                </button>
+                                (() => {
+                                  const hasStarted = Boolean(sessionAttendance[session.id]?.joined);
+                                  return (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        if (!hasStarted) return;
+                                        quickMarkCompleted(session);
+                                      }}
+                                      disabled={!hasStarted}
+                                      className="action-btn"
+                                      style={{
+                                        background: hasStarted ? "#ecfdf5" : "#f1f5f9",
+                                        color: hasStarted ? "#065f46" : "#94a3b8",
+                                        border: hasStarted ? "1px solid #a7f3d0" : "1px solid #e2e8f0",
+                                        cursor: hasStarted ? "pointer" : "not-allowed",
+                                        opacity: hasStarted ? 1 : 0.75,
+                                      }}
+                                      title={hasStarted ? "Mark as completed" : "Available once you start or complete class"}
+                                    >
+                                      <Check size={13} /> Complete
+                                    </button>
+                                  );
+                                })()
                               )}
 
-                              <button
-                                onClick={() => openReportModal(session)}
-                                className="action-btn"
-                                style={{
-                                  background: session.status === "completed" ? "#f0fdf9" : "#eff6ff",
-                                  color: session.status === "completed" ? "#0d9488" : "#1d4ed8",
-                                  border: session.status === "completed" ? "1px solid #99f6e4" : "1px solid #bfdbfe",
-                                }}
-                              >
-                                <FileText size={13} /> Report
-                              </button>
+                              {(() => {
+                                const canReport = Boolean(sessionAttendance[session.id]?.joined || session.status === "completed");
+                                return (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      if (!canReport) return;
+                                      openReportModal(session);
+                                    }}
+                                    disabled={!canReport}
+                                    className="action-btn"
+                                    style={{
+                                      background: !canReport ? "#f1f5f9" : session.status === "completed" ? "#f0fdf9" : "#eff6ff",
+                                      color: !canReport ? "#94a3b8" : session.status === "completed" ? "#0d9488" : "#1d4ed8",
+                                      border: !canReport ? "1px solid #e2e8f0" : session.status === "completed" ? "1px solid #99f6e4" : "1px solid #bfdbfe",
+                                      cursor: canReport ? "pointer" : "not-allowed",
+                                      opacity: canReport ? 1 : 0.75,
+                                    }}
+                                    title={canReport ? "Submit post-lesson report for this session" : "Available once class begins or ends"}
+                                  >
+                                    <FileText size={13} /> Report
+                                  </button>
+                                );
+                              })()}
                             </div>
                           </div>
                         ))}
@@ -2963,29 +3059,59 @@ export default function TutorDashboard() {
                                       </button>
                                     ) : null}
                                     {sess.status === "scheduled" && (
-                                      <button
-                                        onClick={() => quickMarkCompleted(sess)}
-                                        className="action-btn"
-                                        style={{ background: "#ecfdf5", color: "#065f46", border: "1px solid #a7f3d0", padding: "0.3rem 0.65rem", fontSize: "0.75rem" }}
-                                        title="Mark session as completed"
-                                      >
-                                        <Check size={13} /> Complete
-                                      </button>
+                                      (() => {
+                                        const hasStarted = Boolean(sessionAttendance[sess.id]?.joined);
+                                        return (
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              if (!hasStarted) return;
+                                              quickMarkCompleted(sess);
+                                            }}
+                                            disabled={!hasStarted}
+                                            className="action-btn"
+                                            style={{
+                                              background: hasStarted ? "#ecfdf5" : "#f1f5f9",
+                                              color: hasStarted ? "#065f46" : "#94a3b8",
+                                              border: hasStarted ? "1px solid #a7f3d0" : "1px solid #e2e8f0",
+                                              padding: "0.3rem 0.65rem",
+                                              fontSize: "0.75rem",
+                                              cursor: hasStarted ? "pointer" : "not-allowed",
+                                              opacity: hasStarted ? 1 : 0.75,
+                                            }}
+                                            title={hasStarted ? "Mark session as completed" : "Available once you start or complete class"}
+                                          >
+                                            <Check size={13} /> Complete
+                                          </button>
+                                        );
+                                      })()
                                     )}
-                                    <button
-                                      onClick={() => openReportModal(sess)}
-                                      className="action-btn"
-                                      style={{
-                                        background: sess.status === "completed" ? "#f0fdf9" : "#eff6ff",
-                                        color: sess.status === "completed" ? "#0d9488" : "#1d4ed8",
-                                        border: sess.status === "completed" ? "1px solid #99f6e4" : "1px solid #bfdbfe",
-                                        padding: "0.3rem 0.65rem",
-                                        fontSize: "0.75rem",
-                                      }}
-                                      title="Submit or edit post-lesson report"
-                                    >
-                                      <FileText size={13} /> Report
-                                    </button>
+                                    {(() => {
+                                      const canReport = Boolean(sessionAttendance[sess.id]?.joined || sess.status === "completed");
+                                      return (
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            if (!canReport) return;
+                                            openReportModal(sess);
+                                          }}
+                                          disabled={!canReport}
+                                          className="action-btn"
+                                          style={{
+                                            background: !canReport ? "#f1f5f9" : sess.status === "completed" ? "#f0fdf9" : "#eff6ff",
+                                            color: !canReport ? "#94a3b8" : sess.status === "completed" ? "#0d9488" : "#1d4ed8",
+                                            border: !canReport ? "1px solid #e2e8f0" : sess.status === "completed" ? "1px solid #99f6e4" : "1px solid #bfdbfe",
+                                            padding: "0.3rem 0.65rem",
+                                            fontSize: "0.75rem",
+                                            cursor: canReport ? "pointer" : "not-allowed",
+                                            opacity: canReport ? 1 : 0.75,
+                                          }}
+                                          title={canReport ? "Submit or edit post-lesson report" : "Available once class begins or ends"}
+                                        >
+                                          <FileText size={13} /> Report
+                                        </button>
+                                      );
+                                    })()}
                                   </div>
                                 </td>
                               </tr>
@@ -3389,18 +3515,18 @@ export default function TutorDashboard() {
                 </div>
               )}
 
-              {/* ══════════════ PAYOUTS TAB (GET /api/tutor/payouts) ══════════════ */}
+              {/* ══════════════ TEACHING LOG & HOURS TAB ══════════════ */}
               {activeTab === "payouts" && (
                 <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }} className="page-enter">
                   {/* Header */}
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "0.75rem" }}>
                     <div>
                       <h2 style={{ fontSize: "1.1rem", fontWeight: 800, color: "#0f172a", margin: 0, display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                        <CreditCard size={20} color="#0d9488" />
-                        Monthly Payouts & Earnings Breakdown
+                        <Clock size={20} color="#0d9488" />
+                        Monthly Teaching Log & Hours
                       </h2>
                       <p style={{ fontSize: "0.78rem", color: "#64748b", margin: "0.15rem 0 0" }}>
-                        Your completed session earnings based on your set hourly rate
+                        Summary of your completed lesson sessions and recorded teaching duration
                       </p>
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>
@@ -3447,14 +3573,7 @@ export default function TutorDashboard() {
                   </div>
 
                   {/* Summary Stat Cards */}
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: "1rem" }}>
-                    <div className="dash-card" style={{ padding: "1.1rem 1.25rem", borderLeft: "4px solid #94a3b8" }}>
-                      <div style={{ fontSize: "0.68rem", fontWeight: 700, color: "#64748b", textTransform: "uppercase" }}>Hourly Rate</div>
-                      <div style={{ fontSize: "1.55rem", fontWeight: 800, color: "#0f172a", marginTop: "0.2rem" }}>
-                        {payoutData?.hourly_rate ? `₦${Number(payoutData.hourly_rate).toLocaleString()}` : "—"}
-                      </div>
-                      <div style={{ fontSize: "0.7rem", color: "#94a3b8", marginTop: "0.25rem" }}>per hour</div>
-                    </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "1rem" }}>
                     <div className="dash-card" style={{ padding: "1.1rem 1.25rem", borderLeft: "4px solid #0284c7" }}>
                       <div style={{ fontSize: "0.68rem", fontWeight: 700, color: "#64748b", textTransform: "uppercase" }}>Total Hours</div>
                       <div style={{ fontSize: "1.55rem", fontWeight: 800, color: "#0284c7", marginTop: "0.2rem" }}>
@@ -3471,21 +3590,14 @@ export default function TutorDashboard() {
                         of {payoutData?.summary?.total_sessions ?? payoutData?.summary?.total_scheduled ?? 0} scheduled
                       </div>
                     </div>
-                    <div className="dash-card" style={{ padding: "1.1rem 1.25rem", borderLeft: "4px solid #20b2a4", background: "linear-gradient(135deg,#f0fdf9,#fff)" }}>
-                      <div style={{ fontSize: "0.68rem", fontWeight: 700, color: "#0d9488", textTransform: "uppercase" }}>Total Earnings</div>
-                      <div style={{ fontSize: "1.55rem", fontWeight: 800, color: "#065f46", marginTop: "0.2rem" }}>
-                        ₦{Number(payoutData?.summary?.total_earnings ?? 0).toLocaleString()}
-                      </div>
-                      <div style={{ fontSize: "0.7rem", color: "#64748b", marginTop: "0.25rem" }}>for {payoutMonth}</div>
-                    </div>
                   </div>
 
                   {/* Itemised Sessions Table */}
                   <div className="dash-card" style={{ overflow: "hidden" }}>
                     <div style={{ padding: "1rem 1.25rem", borderBottom: "1px solid #f1f5f9", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                       <h3 style={{ margin: 0, fontSize: "0.9rem", fontWeight: 800, color: "#0f172a", display: "flex", alignItems: "center", gap: "0.4rem" }}>
-                        <DollarSign size={16} color="#0d9488" />
-                        Itemised Session Breakdown
+                        <Clock size={16} color="#0d9488" />
+                        Session Log Breakdown
                         <span style={{ fontSize: "0.72rem", background: "#f0fdf9", color: "#0d9488", border: "1px solid #99f6e4", padding: "0.1rem 0.45rem", borderRadius: "10px", fontWeight: 700 }}>
                           {payoutData?.sessions?.length ?? 0} sessions
                         </span>
@@ -3495,14 +3607,14 @@ export default function TutorDashboard() {
                     {loadingPayoutData ? (
                       <div style={{ padding: "3rem", textAlign: "center", color: "#64748b" }}>
                         <div style={{ width: "28px", height: "28px", border: "2.5px solid #20b2a4", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.7s linear infinite", margin: "0 auto 0.6rem" }} />
-                        <span style={{ fontSize: "0.82rem" }}>Loading payout breakdown for {payoutMonth}…</span>
+                        <span style={{ fontSize: "0.82rem" }}>Loading session log for {payoutMonth}…</span>
                       </div>
                     ) : !payoutData?.sessions || payoutData.sessions.length === 0 ? (
                       <div style={{ padding: "3.5rem 1.5rem", textAlign: "center" }}>
-                        <CreditCard size={38} color="#cbd5e1" style={{ margin: "0 auto 0.75rem", display: "block" }} />
+                        <Clock size={38} color="#cbd5e1" style={{ margin: "0 auto 0.75rem", display: "block" }} />
                         <div style={{ fontSize: "0.95rem", fontWeight: 700, color: "#475569" }}>No sessions recorded for {payoutMonth}</div>
                         <div style={{ fontSize: "0.8rem", color: "#94a3b8", marginTop: "0.3rem" }}>
-                          Payouts are calculated from completed sessions with submitted attendance reports.
+                          Sessions appear here once completed with recorded attendance.
                         </div>
                       </div>
                     ) : (
@@ -3510,7 +3622,7 @@ export default function TutorDashboard() {
                         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.8rem" }}>
                           <thead>
                             <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
-                              {["Date & Time", "Duration", "Student & Subject", "Status", "Attendance", "Report", "Earnings"].map((h) => (
+                              {["Date & Time", "Duration", "Student & Subject", "Status", "Attendance", "Report"].map((h) => (
                                 <th key={h} style={{ padding: "0.65rem 1rem", textAlign: "left", fontSize: "0.68rem", fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.04em", whiteSpace: "nowrap" }}>
                                   {h}
                                 </th>
@@ -3568,9 +3680,6 @@ export default function TutorDashboard() {
                                     <span style={{ color: "#94a3b8", fontSize: "0.74rem" }}>Pending</span>
                                   )}
                                 </td>
-                                <td style={{ padding: "0.75rem 1rem", fontWeight: 800, color: sess.earnings > 0 ? "#059669" : "#64748b", fontSize: "0.88rem" }}>
-                                  ₦{Number(sess.earnings || 0).toLocaleString()}
-                                </td>
                               </tr>
                             ))}
                           </tbody>
@@ -3583,12 +3692,8 @@ export default function TutorDashboard() {
                               <td style={{ padding: "0.75rem 1rem", fontWeight: 800, color: "#0284c7" }}>
                                 {payoutData.summary.total_hours} hrs
                               </td>
-                              <td colSpan={3} style={{ padding: "0.75rem 1rem", fontSize: "0.74rem", color: "#64748b" }}>
+                              <td colSpan={4} style={{ padding: "0.75rem 1rem", fontSize: "0.74rem", color: "#64748b" }}>
                                 {payoutData.summary.completed_sessions} completed sessions
-                              </td>
-                              <td style={{ padding: "0.75rem 1rem" }} />
-                              <td style={{ padding: "0.75rem 1rem", fontWeight: 800, color: "#065f46", fontSize: "0.95rem" }}>
-                                ₦{Number(payoutData.summary.total_earnings).toLocaleString()}
                               </td>
                             </tr>
                           </tfoot>
@@ -4766,234 +4871,6 @@ export default function TutorDashboard() {
         </div>
       )}
 
-      {/* ── Join Google Meet Dialogue (Test vs Begin Class Confirmation) ── */}
-      {meetModalSession && (
-        <div
-          onClick={() => {
-            if (!attendanceLoadingId) setMeetModalSession(null);
-          }}
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(15,23,42,0.7)",
-            backdropFilter: "blur(4px)",
-            zIndex: 1100,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: "1rem",
-            animation: "fadeUp 0.2s ease",
-          }}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              background: "#fff",
-              borderRadius: "16px",
-              padding: "1.75rem",
-              width: "100%",
-              maxWidth: "460px",
-              boxShadow: "0 25px 50px -12px rgba(0,0,0,0.25)",
-              textAlign: "center",
-            }}
-          >
-            {meetModalStep === "choose" ? (
-              <>
-                <div
-                  style={{
-                    width: "3.5rem",
-                    height: "3.5rem",
-                    borderRadius: "50%",
-                    background: "#f0fdfa",
-                    border: "2px solid #20b2a4",
-                    color: "#0d9488",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    margin: "0 auto 1rem",
-                  }}
-                >
-                  <Video size={26} />
-                </div>
-
-                <h3 style={{ fontSize: "1.2rem", fontWeight: 800, color: "#0f172a", margin: "0 0 0.35rem" }}>
-                  Join Google Meet
-                </h3>
-                <p style={{ fontSize: "0.86rem", color: "#64748b", margin: "0 0 1.5rem", lineHeight: 1.5 }}>
-                  {meetModalSession.subject ? (
-                    <strong>{meetModalSession.subject}</strong>
-                  ) : (
-                    "Lesson Session"
-                  )}
-                  {meetModalSession.student_name && ` with ${meetModalSession.student_name}`}.
-                  <br />
-                  Would you like to test your room or begin the class now?
-                </p>
-
-                <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (meetModalSession.meeting_link && typeof window !== "undefined") {
-                        window.open(meetModalSession.meeting_link, "_blank", "noreferrer");
-                      }
-                      showToast("Opened Google Meet room for audio/video check.");
-                      setMeetModalSession(null);
-                    }}
-                    style={{
-                      padding: "0.8rem 1rem",
-                      borderRadius: "10px",
-                      border: "1.5px solid #cbd5e1",
-                      background: "#f8fafc",
-                      color: "#0f172a",
-                      fontSize: "0.88rem",
-                      fontWeight: 700,
-                      cursor: "pointer",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      transition: "all 0.15s",
-                    }}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", gap: "0.6rem", textAlign: "left" }}>
-                      <span style={{ fontSize: "1.1rem" }}>🧪</span>
-                      <div>
-                        <div style={{ fontWeight: 800 }}>Test Audio &amp; Video</div>
-                        <div style={{ fontSize: "0.75rem", color: "#64748b", fontWeight: 400 }}>Preview room only (does not record attendance)</div>
-                      </div>
-                    </div>
-                    <span style={{ fontSize: "0.85rem", color: "#20b2a4", fontWeight: 800 }}>›</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setMeetModalStep("confirm")}
-                    style={{
-                      padding: "0.85rem 1rem",
-                      borderRadius: "10px",
-                      border: "none",
-                      background: "linear-gradient(135deg, #20b2a4 0%, #0d9488 100%)",
-                      color: "#fff",
-                      fontSize: "0.88rem",
-                      fontWeight: 800,
-                      cursor: "pointer",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      boxShadow: "0 4px 12px rgba(32,178,164,0.3)",
-                      transition: "all 0.15s",
-                    }}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", gap: "0.6rem", textAlign: "left" }}>
-                      <span style={{ fontSize: "1.1rem" }}>🚀</span>
-                      <div>
-                        <div style={{ fontWeight: 800 }}>Begin Class Now</div>
-                        <div style={{ fontSize: "0.75rem", color: "#ccfbf1", fontWeight: 400 }}>Check in, track attendance &amp; launch Meet</div>
-                      </div>
-                    </div>
-                    <span style={{ fontSize: "0.85rem", color: "#fff", fontWeight: 800 }}>›</span>
-                  </button>
-                </div>
-
-                <div style={{ marginTop: "1.25rem" }}>
-                  <button
-                    type="button"
-                    onClick={() => setMeetModalSession(null)}
-                    style={{
-                      background: "none",
-                      border: "none",
-                      color: "#94a3b8",
-                      fontSize: "0.82rem",
-                      fontWeight: 600,
-                      cursor: "pointer",
-                    }}
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </>
-            ) : (
-              <>
-                <div
-                  style={{
-                    width: "3.5rem",
-                    height: "3.5rem",
-                    borderRadius: "50%",
-                    background: "#ecfdf5",
-                    border: "2px solid #10b981",
-                    color: "#059669",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    margin: "0 auto 1rem",
-                  }}
-                >
-                  <CheckCircle2 size={26} />
-                </div>
-
-                <h3 style={{ fontSize: "1.2rem", fontWeight: 800, color: "#0f172a", margin: "0 0 0.35rem" }}>
-                  Ready to Start Class?
-                </h3>
-                <p style={{ fontSize: "0.86rem", color: "#475569", margin: "0 0 1.5rem", lineHeight: 1.55 }}>
-                  Are you double-sure you want to begin this lesson right now?
-                  <br />
-                  <span style={{ fontSize: "0.78rem", color: "#059669", fontWeight: 600, display: "block", marginTop: "0.35rem" }}>
-                    ✓ This will log your attendance, start the lesson timer, and open Google Meet.
-                  </span>
-                </p>
-
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem" }}>
-                  <button
-                    type="button"
-                    onClick={() => setMeetModalStep("choose")}
-                    disabled={attendanceLoadingId === meetModalSession.id}
-                    style={{
-                      padding: "0.7rem 1rem",
-                      borderRadius: "8px",
-                      border: "1.5px solid #cbd5e1",
-                      background: "#fff",
-                      color: "#475569",
-                      fontSize: "0.85rem",
-                      fontWeight: 700,
-                      cursor: "pointer",
-                    }}
-                  >
-                    Go Back
-                  </button>
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      const sid = meetModalSession.id;
-                      const link = meetModalSession.meeting_link;
-                      setMeetModalSession(null);
-                      await handleJoinSession(sid, link);
-                    }}
-                    disabled={attendanceLoadingId === meetModalSession.id}
-                    style={{
-                      padding: "0.7rem 1rem",
-                      borderRadius: "8px",
-                      border: "none",
-                      background: "linear-gradient(135deg, #059669 0%, #047857 100%)",
-                      color: "#fff",
-                      fontSize: "0.85rem",
-                      fontWeight: 800,
-                      cursor: "pointer",
-                      display: "inline-flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      gap: "0.4rem",
-                      boxShadow: "0 4px 12px rgba(5,150,105,0.3)",
-                    }}
-                  >
-                    <Check size={16} /> Yes, Begin Class
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      )}
-
       {/* ── Single Report View Modal ── */}
       {selectedReportView && (
         <div
@@ -5099,234 +4976,6 @@ export default function TutorDashboard() {
                 Close
               </button>
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── Join Google Meet Dialogue (Test vs Begin Class Confirmation) ── */}
-      {meetModalSession && (
-        <div
-          onClick={() => {
-            if (!attendanceLoadingId) setMeetModalSession(null);
-          }}
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(15,23,42,0.7)",
-            backdropFilter: "blur(4px)",
-            zIndex: 1100,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: "1rem",
-            animation: "fadeUp 0.2s ease",
-          }}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              background: "#fff",
-              borderRadius: "16px",
-              padding: "1.75rem",
-              width: "100%",
-              maxWidth: "460px",
-              boxShadow: "0 25px 50px -12px rgba(0,0,0,0.25)",
-              textAlign: "center",
-            }}
-          >
-            {meetModalStep === "choose" ? (
-              <>
-                <div
-                  style={{
-                    width: "3.5rem",
-                    height: "3.5rem",
-                    borderRadius: "50%",
-                    background: "#f0fdfa",
-                    border: "2px solid #20b2a4",
-                    color: "#0d9488",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    margin: "0 auto 1rem",
-                  }}
-                >
-                  <Video size={26} />
-                </div>
-
-                <h3 style={{ fontSize: "1.2rem", fontWeight: 800, color: "#0f172a", margin: "0 0 0.35rem" }}>
-                  Join Google Meet
-                </h3>
-                <p style={{ fontSize: "0.86rem", color: "#64748b", margin: "0 0 1.5rem", lineHeight: 1.5 }}>
-                  {meetModalSession.subject ? (
-                    <strong>{meetModalSession.subject}</strong>
-                  ) : (
-                    "Lesson Session"
-                  )}
-                  {meetModalSession.student_name && ` with ${meetModalSession.student_name}`}.
-                  <br />
-                  Would you like to test your room or begin the class now?
-                </p>
-
-                <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (meetModalSession.meeting_link && typeof window !== "undefined") {
-                        window.open(meetModalSession.meeting_link, "_blank", "noreferrer");
-                      }
-                      showToast("Opened Google Meet room for audio/video check.");
-                      setMeetModalSession(null);
-                    }}
-                    style={{
-                      padding: "0.8rem 1rem",
-                      borderRadius: "10px",
-                      border: "1.5px solid #cbd5e1",
-                      background: "#f8fafc",
-                      color: "#0f172a",
-                      fontSize: "0.88rem",
-                      fontWeight: 700,
-                      cursor: "pointer",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      transition: "all 0.15s",
-                    }}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", gap: "0.6rem", textAlign: "left" }}>
-                      <span style={{ fontSize: "1.1rem" }}>🧪</span>
-                      <div>
-                        <div style={{ fontWeight: 800 }}>Test Audio &amp; Video</div>
-                        <div style={{ fontSize: "0.75rem", color: "#64748b", fontWeight: 400 }}>Preview room only (does not record attendance)</div>
-                      </div>
-                    </div>
-                    <span style={{ fontSize: "0.85rem", color: "#20b2a4", fontWeight: 800 }}>›</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setMeetModalStep("confirm")}
-                    style={{
-                      padding: "0.85rem 1rem",
-                      borderRadius: "10px",
-                      border: "none",
-                      background: "linear-gradient(135deg, #20b2a4 0%, #0d9488 100%)",
-                      color: "#fff",
-                      fontSize: "0.88rem",
-                      fontWeight: 800,
-                      cursor: "pointer",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      boxShadow: "0 4px 12px rgba(32,178,164,0.3)",
-                      transition: "all 0.15s",
-                    }}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", gap: "0.6rem", textAlign: "left" }}>
-                      <span style={{ fontSize: "1.1rem" }}>🚀</span>
-                      <div>
-                        <div style={{ fontWeight: 800 }}>Begin Class Now</div>
-                        <div style={{ fontSize: "0.75rem", color: "#ccfbf1", fontWeight: 400 }}>Check in, track attendance &amp; launch Meet</div>
-                      </div>
-                    </div>
-                    <span style={{ fontSize: "0.85rem", color: "#fff", fontWeight: 800 }}>›</span>
-                  </button>
-                </div>
-
-                <div style={{ marginTop: "1.25rem" }}>
-                  <button
-                    type="button"
-                    onClick={() => setMeetModalSession(null)}
-                    style={{
-                      background: "none",
-                      border: "none",
-                      color: "#94a3b8",
-                      fontSize: "0.82rem",
-                      fontWeight: 600,
-                      cursor: "pointer",
-                    }}
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </>
-            ) : (
-              <>
-                <div
-                  style={{
-                    width: "3.5rem",
-                    height: "3.5rem",
-                    borderRadius: "50%",
-                    background: "#ecfdf5",
-                    border: "2px solid #10b981",
-                    color: "#059669",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    margin: "0 auto 1rem",
-                  }}
-                >
-                  <CheckCircle2 size={26} />
-                </div>
-
-                <h3 style={{ fontSize: "1.2rem", fontWeight: 800, color: "#0f172a", margin: "0 0 0.35rem" }}>
-                  Ready to Start Class?
-                </h3>
-                <p style={{ fontSize: "0.86rem", color: "#475569", margin: "0 0 1.5rem", lineHeight: 1.55 }}>
-                  Are you double-sure you want to begin this lesson right now?
-                  <br />
-                  <span style={{ fontSize: "0.78rem", color: "#059669", fontWeight: 600, display: "block", marginTop: "0.35rem" }}>
-                    ✓ This will log your attendance, start the lesson timer, and open Google Meet.
-                  </span>
-                </p>
-
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem" }}>
-                  <button
-                    type="button"
-                    onClick={() => setMeetModalStep("choose")}
-                    disabled={attendanceLoadingId === meetModalSession.id}
-                    style={{
-                      padding: "0.7rem 1rem",
-                      borderRadius: "8px",
-                      border: "1.5px solid #cbd5e1",
-                      background: "#fff",
-                      color: "#475569",
-                      fontSize: "0.85rem",
-                      fontWeight: 700,
-                      cursor: "pointer",
-                    }}
-                  >
-                    Go Back
-                  </button>
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      const sid = meetModalSession.id;
-                      const link = meetModalSession.meeting_link;
-                      setMeetModalSession(null);
-                      await handleJoinSession(sid, link);
-                    }}
-                    disabled={attendanceLoadingId === meetModalSession.id}
-                    style={{
-                      padding: "0.7rem 1rem",
-                      borderRadius: "8px",
-                      border: "none",
-                      background: "linear-gradient(135deg, #059669 0%, #047857 100%)",
-                      color: "#fff",
-                      fontSize: "0.85rem",
-                      fontWeight: 800,
-                      cursor: "pointer",
-                      display: "inline-flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      gap: "0.4rem",
-                      boxShadow: "0 4px 12px rgba(5,150,105,0.3)",
-                    }}
-                  >
-                    <Check size={16} /> Yes, Begin Class
-                  </button>
-                </div>
-              </>
-            )}
           </div>
         </div>
       )}
@@ -5962,7 +5611,7 @@ export default function TutorDashboard() {
       {/* ── Sign Out Confirmation Dialog ── */}
       {showLogoutConfirm && (
         <div
-          onClick={() => setShowLogoutConfirm(false)}
+          onClick={() => !isLoggingOut && setShowLogoutConfirm(false)}
           style={{
             position: "fixed",
             inset: 0,
@@ -6017,16 +5666,18 @@ export default function TutorDashboard() {
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem", width: "100%" }}>
               <button
                 type="button"
-                onClick={() => setShowLogoutConfirm(false)}
+                onClick={() => !isLoggingOut && setShowLogoutConfirm(false)}
+                disabled={isLoggingOut}
                 style={{
                   padding: "0.6rem 1rem",
                   borderRadius: "8px",
                   border: "1.5px solid #cbd5e1",
                   background: "#fff",
-                  color: "#475569",
+                  color: isLoggingOut ? "#94a3b8" : "#475569",
                   fontSize: "0.84rem",
                   fontWeight: 600,
-                  cursor: "pointer",
+                  cursor: isLoggingOut ? "not-allowed" : "pointer",
+                  opacity: isLoggingOut ? 0.6 : 1,
                 }}
               >
                 Cancel
@@ -6034,23 +5685,44 @@ export default function TutorDashboard() {
               <button
                 type="button"
                 onClick={handleLogout}
+                disabled={isLoggingOut}
                 style={{
                   padding: "0.6rem 1rem",
                   borderRadius: "8px",
                   border: "none",
-                  background: "#dc2626",
+                  background: isLoggingOut ? "#991b1b" : "#dc2626",
                   color: "#fff",
                   fontSize: "0.84rem",
                   fontWeight: 700,
-                  cursor: "pointer",
+                  cursor: isLoggingOut ? "not-allowed" : "pointer",
                   display: "inline-flex",
                   alignItems: "center",
                   justifyContent: "center",
                   gap: "0.4rem",
                   boxShadow: "0 2px 6px rgba(220,38,38,0.3)",
+                  opacity: isLoggingOut ? 0.85 : 1,
                 }}
               >
-                <LogOut size={15} /> Yes, Sign Out
+                {isLoggingOut ? (
+                  <>
+                    <span
+                      style={{
+                        display: "inline-block",
+                        width: "0.85rem",
+                        height: "0.85rem",
+                        border: "2px solid rgba(255,255,255,0.3)",
+                        borderTopColor: "#fff",
+                        borderRadius: "50%",
+                        animation: "spin 0.8s linear infinite",
+                      }}
+                    />
+                    Signing out…
+                  </>
+                ) : (
+                  <>
+                    <LogOut size={15} /> Yes, Sign Out
+                  </>
+                )}
               </button>
             </div>
           </div>

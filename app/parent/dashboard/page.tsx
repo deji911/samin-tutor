@@ -76,6 +76,7 @@ export default function ParentDashboard() {
   const [activeTab, setActiveTab] = useState<"overview" | "sessions" | "homework" | "tutors">("overview");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   // Wards / Children
   const [children, setChildren] = useState<ChildWard[]>([
@@ -185,6 +186,7 @@ export default function ParentDashboard() {
   };
 
   const handleLogout = async () => {
+    setIsLoggingOut(true);
     const token = typeof window !== "undefined" ? localStorage.getItem("samin_auth_token") : null;
     const baseUrl = getBackendApiUrl();
     if (token) {
@@ -288,22 +290,43 @@ export default function ParentDashboard() {
           <button
             type="button"
             onClick={handleLogout}
+            disabled={isLoggingOut}
             style={{
               background: "rgba(239, 68, 68, 0.12)",
               border: "1px solid rgba(239, 68, 68, 0.3)",
               color: "#fca5a5",
               borderRadius: "8px",
               padding: "0.45rem 0.85rem",
-              cursor: "pointer",
+              cursor: isLoggingOut ? "not-allowed" : "pointer",
               fontSize: "0.82rem",
               fontWeight: 600,
               display: "flex",
               alignItems: "center",
               gap: "0.35rem",
+              opacity: isLoggingOut ? 0.7 : 1,
             }}
           >
-            <LogOut size={14} />
-            <span>Sign Out</span>
+            {isLoggingOut ? (
+              <>
+                <span
+                  style={{
+                    width: "13px",
+                    height: "13px",
+                    border: "2px solid rgba(252,165,165,0.35)",
+                    borderTopColor: "#fca5a5",
+                    borderRadius: "50%",
+                    display: "inline-block",
+                    animation: "spin 0.8s linear infinite",
+                  }}
+                />
+                <span>Signing out…</span>
+              </>
+            ) : (
+              <>
+                <LogOut size={14} />
+                <span>Sign Out</span>
+              </>
+            )}
           </button>
         </div>
       </nav>

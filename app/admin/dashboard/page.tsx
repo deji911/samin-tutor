@@ -563,6 +563,7 @@ export default function AdminDashboard() {
 
   // Logout confirmation modal
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   const getBackendApiUrl = () => {
     if (process.env.NEXT_PUBLIC_API_URL) {
@@ -1897,6 +1898,7 @@ export default function AdminDashboard() {
   };
 
   const handleLogout = async () => {
+    setIsLoggingOut(true);
     const token = typeof window !== "undefined" ? localStorage.getItem("samin_auth_token") : null;
     const baseUrl = getBackendApiUrl();
 
@@ -6977,7 +6979,7 @@ export default function AdminDashboard() {
       {/* ── Sign Out Confirmation Dialog ── */}
       {showLogoutConfirm && (
         <div
-          onClick={() => setShowLogoutConfirm(false)}
+          onClick={() => !isLoggingOut && setShowLogoutConfirm(false)}
           style={{
             position: "fixed",
             inset: 0,
@@ -7032,16 +7034,18 @@ export default function AdminDashboard() {
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem", width: "100%" }}>
               <button
                 type="button"
-                onClick={() => setShowLogoutConfirm(false)}
+                onClick={() => !isLoggingOut && setShowLogoutConfirm(false)}
+                disabled={isLoggingOut}
                 style={{
                   padding: "0.6rem 1rem",
                   borderRadius: "8px",
                   border: "1.5px solid #cbd5e1",
                   background: "#fff",
-                  color: "#475569",
+                  color: isLoggingOut ? "#94a3b8" : "#475569",
                   fontSize: "0.85rem",
                   fontWeight: 600,
-                  cursor: "pointer",
+                  cursor: isLoggingOut ? "not-allowed" : "pointer",
+                  opacity: isLoggingOut ? 0.6 : 1,
                 }}
               >
                 Cancel
@@ -7049,15 +7053,16 @@ export default function AdminDashboard() {
               <button
                 type="button"
                 onClick={handleLogout}
+                disabled={isLoggingOut}
                 style={{
                   padding: "0.6rem 1rem",
                   borderRadius: "8px",
                   border: "none",
-                  background: "#dc2626",
+                  background: isLoggingOut ? "#991b1b" : "#dc2626",
                   color: "#fff",
                   fontSize: "0.85rem",
                   fontWeight: 700,
-                  cursor: "pointer",
+                  cursor: isLoggingOut ? "not-allowed" : "pointer",
                   display: "inline-flex",
                   alignItems: "center",
                   justifyContent: "center",
@@ -7065,7 +7070,24 @@ export default function AdminDashboard() {
                   boxShadow: "0 2px 6px rgba(220,38,38,0.3)",
                 }}
               >
-                <LogOut size={15} /> Yes, Sign Out
+                {isLoggingOut ? (
+                  <>
+                    <span
+                      style={{
+                        width: "14px",
+                        height: "14px",
+                        border: "2px solid rgba(255,255,255,0.35)",
+                        borderTopColor: "#fff",
+                        borderRadius: "50%",
+                        display: "inline-block",
+                        animation: "spin 0.8s linear infinite",
+                      }}
+                    />
+                    Signing out…
+                  </>
+                ) : (
+                  <><LogOut size={15} /> Yes, Sign Out</>
+                )}
               </button>
             </div>
           </div>
