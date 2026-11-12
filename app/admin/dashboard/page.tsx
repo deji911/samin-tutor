@@ -47,6 +47,7 @@ import {
   Activity,
   Paperclip,
   ChevronDown,
+  MessageSquare,
 } from "lucide-react";
 import { QUALIFICATIONS_LIST } from "../../constants/qualifications";
 import NotificationEnvelope from "@/components/NotificationEnvelope";
@@ -421,7 +422,33 @@ export type AdminStudentActivitySummary = {
   attendance_rate_percentage?: number | null;
 };
 
-type NavTab = "overview" | "applicants" | "tutors" | "bookings" | "sessions" | "reports" | "changes";
+type NavTab = "overview" | "applicants" | "tutors" | "bookings" | "sessions" | "reports" | "changes" | "chat_oversight";
+
+type AdminChatConversation = {
+  id: number;
+  type: string;
+  subject?: string;
+  lesson_session_id?: number | null;
+  last_message_at?: string;
+  messages_count?: number;
+  participants: { id: number; name: string; email: string; role: string }[];
+  latest_message?: { id: number; sender_name: string; body?: string; has_attachment: boolean; created_at: string } | null;
+};
+
+type AdminChatMessage = {
+  id: number;
+  conversation_id: number;
+  body?: string;
+  attachment_name?: string;
+  attachment_url?: string;
+  created_at: string;
+  created_at_human?: string;
+  sender: { id: number; name: string; role: string };
+  is_deleted?: boolean;
+  deleted_at?: string;
+  reactions?: any[];
+  edited_at?: string;
+};
 
 const statusStyle: Record<string, { bg: string; color: string; label?: string }> = {
   "New Inquiry": { bg: "#fef3c7", color: "#b45309", label: "New Inquiry" },
@@ -622,6 +649,20 @@ export default function AdminDashboard() {
   const [reviewAction, setReviewAction] = useState<"approve" | "reject">("approve");
   const [reviewNotes, setReviewNotes] = useState("");
   const [isSubmittingReview, setIsSubmittingReview] = useState(false);
+
+  // Chat Oversight State
+  const [adminChats, setAdminChats] = useState<AdminChatConversation[]>([]);
+  const [adminChatsLoading, setAdminChatsLoading] = useState(false);
+  const [adminChatsPage, setAdminChatsPage] = useState(1);
+  const [adminChatsTotal, setAdminChatsTotal] = useState(0);
+  const [adminChatsLastPage, setAdminChatsLastPage] = useState(1);
+  const [adminChatTypeFilter, setAdminChatTypeFilter] = useState<string>("all");
+  const [adminChatSearch, setAdminChatSearch] = useState("");
+  const [adminChatStudentFilter, setAdminChatStudentFilter] = useState<string>("");
+  const [adminChatTutorFilter, setAdminChatTutorFilter] = useState<string>("");
+  const [selectedAdminConv, setSelectedAdminConv] = useState<AdminChatConversation | null>(null);
+  const [adminConvMessages, setAdminConvMessages] = useState<AdminChatMessage[]>([]);
+  const [adminConvLoading, setAdminConvLoading] = useState(false);
 
   // Tutor Rate & Payouts Modal State (PATCH /api/admin/tutors/{tutorId}/rate & GET /api/admin/tutors/{tutorId}/payouts)
   const [payoutTutor, setPayoutTutor] = useState<any | null>(null);
@@ -1816,6 +1857,66 @@ export default function AdminDashboard() {
     }
   };
 
+  /* ── Admin Chat Oversight: GET /api/admin/chat/conversations ── */
+  const fetchAdminChatConversations = async (
+    page = 1,
+    opts?: { type?: string; search?: string; student_id?: string; tutor_id?: string }
+  ) => {
+    setAdminChatsLoading(true);
+    try {
+      const baseUrl = getBackendApiUrl();
+      const params = new URLSearchParams({ per_page: "20", page: String(page) });
+      const typeVal = opts?.type ?? adminChatTypeFilter;
+      const searchVal = opts?.search ?? adminChatSearch;
+      const studentVal = opts?.student_id ?? adminChatStudentFilter;
+      const tutorVal = opts?.tutor_id ?? adminChatTutorFilter;
+      if (typeVal && typeVal !== "all") params.append("type", typeVal);
+      if (searchVal.trim()) params.append("search", searchVal.trim());
+      if (studentVal.trim()) params.append("student_id", studentVal.trim());
+      if (tutorVal.trim()) params.append("tutor_id", tutorVal.trim());
+      const res = await fetch(`${baseUrl}/api/admin/chat/conversations?${params}`, {
+        headers: getAuthHeaders(),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const list = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
+        setAdminChats(list);
+        setAdminChatsTotal(data?.total || list.length);
+        setAdminChatsLastPage(data?.last_page || 1);
+        setAdminChatsPage(page);
+      }
+    } catch (err) {
+      console.error("fetchAdminChatConversations error:", err);
+    } finally {
+      setAdminChatsLoading(false);
+    }
+  };
+
+  const fetchAdminChatConvDetail = async (convId: number) => {
+    setAdminConvLoading(true);
+    try {
+      const baseUrl = getBackendApiUrl();
+      const res = await fetch(`${baseUrl}/api/admin/chat/conversations/${convId}?per_page=50`, {
+        headers: getAuthHeaders(),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const msgs = Array.isArray(data?.messages?.data)
+          ? data.messages.data
+          : Array.isArray(data?.messages)
+          ? data.messages
+          : Array.isArray(data?.data)
+          ? data.data
+          : [];
+        setAdminConvMessages(msgs);
+      }
+    } catch (err) {
+      console.error("fetchAdminChatConvDetail error:", err);
+    } finally {
+      setAdminConvLoading(false);
+    }
+  };
+
   /* ── 2. Review Change Request: PATCH /api/admin/change-requests/{id} ── */
   const submitReviewChangeRequest = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1939,6 +2040,9 @@ export default function AdminDashboard() {
       }
       if (activeTab === "changes") {
         fetchAdminChangeRequests(changeRequestsPage, changeRequestsStatusFilter);
+      }
+      if (activeTab === "chat_oversight") {
+        fetchAdminChatConversations(1);
       }
     }
   }, [activeTab, isAuthed, changeRequestsStatusFilter]);
@@ -2407,7 +2511,8 @@ export default function AdminDashboard() {
     { tab: "bookings",    icon: <Users size={18} />,           label: "Students",    badge: (studentStats.pending_match || newInquiries) || undefined },
     { tab: "sessions",    icon: <Calendar size={18} />,        label: "Timetables & Sessions" },
     { tab: "reports",     icon: <FileText size={18} />,        label: "Lesson Reports", badge: reportsTotal || undefined },
-    { tab: "changes",     icon: <RotateCcw size={18} />,       label: "Change Requests", badge: changeRequestsCounts.pending || undefined },
+    { tab: "changes",        icon: <RotateCcw size={18} />,       label: "Change Requests", badge: changeRequestsCounts.pending || undefined },
+    { tab: "chat_oversight", icon: <MessageSquare size={18} />,   label: "Chat Oversight" },
   ];
 
   return (
@@ -2475,6 +2580,7 @@ export default function AdminDashboard() {
               setActiveTab(tab);
               setSidebarOpen(false);
               if (tab === "changes") fetchAdminChangeRequests(1);
+              if (tab === "chat_oversight") fetchAdminChatConversations(1);
             }}
               className={`nav-btn${activeTab === tab ? " active" : ""}`}
               style={{ color: activeTab === tab ? "#0d9488" : "#4b5563" }}>
@@ -2573,6 +2679,7 @@ export default function AdminDashboard() {
                 {activeTab === "sessions" && "Student Timetables & Sessions"}
                 {activeTab === "reports" && "Lesson & Progress Reports"}
                 {activeTab === "changes" && "Session Change Requests"}
+                {activeTab === "chat_oversight" && "Chat Oversight"}
               </h1>
               <p style={{ fontSize: "0.73rem", color: "#94a3b8", margin: 0 }}>
                 {new Date().toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
@@ -2587,6 +2694,9 @@ export default function AdminDashboard() {
                 fetchStudentsFromApi();
                 fetchAdminReports(reportsPage);
                 fetchAdminChangeRequests(changeRequestsPage, changeRequestsStatusFilter);
+                if (activeTab === "chat_oversight") {
+                  fetchAdminChatConversations(adminChatsPage);
+                }
                 if (timetableStudent) {
                   fetchStudentTimetable(timetableStudent.id);
                   fetchStudentSessions(timetableStudent.id);
@@ -3941,6 +4051,807 @@ export default function AdminDashboard() {
                   </div>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* ── Chat Oversight Tab (Admin GET /api/admin/chat/conversations & /api/admin/chat/conversations/{id}) ── */}
+          {activeTab === "chat_oversight" && (
+            <div className="page-enter" style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+              {/* Header Card */}
+              <div
+                style={{
+                  background: "#fff",
+                  borderRadius: "12px",
+                  border: "1px solid #e2e8f0",
+                  padding: "1.25rem 1.5rem",
+                  display: "flex",
+                  flexWrap: "wrap",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: "1rem",
+                  boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
+                }}
+              >
+                <div>
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                    <h2 style={{ fontSize: "1.1rem", fontWeight: 800, color: "#0f172a", margin: 0 }}>
+                      Chat & Messaging Oversight
+                    </h2>
+                    <span
+                      style={{
+                        background: "#f0fdfa",
+                        color: "#0d9488",
+                        border: "1px solid #ccfbf1",
+                        fontSize: "0.72rem",
+                        fontWeight: 700,
+                        padding: "0.15rem 0.55rem",
+                        borderRadius: "20px",
+                      }}
+                    >
+                      {adminChatsTotal} {adminChatsTotal === 1 ? "Conversation" : "Conversations"}
+                    </span>
+                  </div>
+                  <p style={{ fontSize: "0.78rem", color: "#64748b", margin: "0.25rem 0 0 0" }}>
+                    Monitor communications between tutors, students, and parents for safeguarding, quality assurance, and dispute resolution.
+                  </p>
+                </div>
+
+                <button
+                  onClick={() => fetchAdminChatConversations(adminChatsPage)}
+                  disabled={adminChatsLoading}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "0.4rem",
+                    padding: "0.5rem 0.9rem",
+                    borderRadius: "8px",
+                    border: "1px solid #cbd5e1",
+                    background: "#fff",
+                    fontSize: "0.78rem",
+                    fontWeight: 600,
+                    color: "#334155",
+                    cursor: adminChatsLoading ? "not-allowed" : "pointer",
+                    boxShadow: "0 1px 2px rgba(0,0,0,0.03)",
+                  }}
+                >
+                  <RefreshCw size={14} className={adminChatsLoading ? "spin" : ""} />
+                  Refresh
+                </button>
+              </div>
+
+              {/* Filter Controls Bar */}
+              <div
+                style={{
+                  background: "#fff",
+                  borderRadius: "12px",
+                  border: "1px solid #e2e8f0",
+                  padding: "1rem 1.25rem",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "0.75rem",
+                  boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
+                }}
+              >
+                <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "0.6rem" }}>
+                  {/* Type Filter Pills */}
+                  <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "#475569", marginRight: "0.2rem" }}>
+                    Type:
+                  </span>
+                  {[
+                    { id: "all", label: "All Types" },
+                    { id: "student_tutor", label: "Student ↔ Tutor" },
+                    { id: "parent_admin", label: "Parent ↔ Admin" },
+                    { id: "general", label: "General" },
+                  ].map((filter) => {
+                    const isActive = adminChatTypeFilter === filter.id;
+                    return (
+                      <button
+                        key={filter.id}
+                        onClick={() => {
+                          setAdminChatTypeFilter(filter.id);
+                          fetchAdminChatConversations(1, { type: filter.id });
+                        }}
+                        style={{
+                          padding: "0.32rem 0.75rem",
+                          borderRadius: "20px",
+                          fontSize: "0.74rem",
+                          fontWeight: isActive ? 700 : 500,
+                          cursor: "pointer",
+                          transition: "all 0.15s ease",
+                          border: isActive ? "1px solid #0d9488" : "1px solid #e2e8f0",
+                          background: isActive ? "#0d9488" : "#f8fafc",
+                          color: isActive ? "#ffffff" : "#475569",
+                        }}
+                      >
+                        {filter.label}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    fetchAdminChatConversations(1);
+                  }}
+                  style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "0.6rem" }}
+                >
+                  {/* Search by Participant or Subject */}
+                  <div
+                    style={{
+                      flex: "1 1 240px",
+                      position: "relative",
+                      display: "flex",
+                      alignItems: "center",
+                    }}
+                  >
+                    <Search
+                      size={15}
+                      color="#94a3b8"
+                      style={{ position: "absolute", left: "0.75rem", pointerEvents: "none" }}
+                    />
+                    <input
+                      type="text"
+                      placeholder="Search participant name, email, or subject..."
+                      value={adminChatSearch}
+                      onChange={(e) => setAdminChatSearch(e.target.value)}
+                      style={{
+                        width: "100%",
+                        padding: "0.45rem 0.75rem 0.45rem 2.2rem",
+                        borderRadius: "8px",
+                        border: "1px solid #cbd5e1",
+                        fontSize: "0.78rem",
+                        background: "#fff",
+                        color: "#0f172a",
+                      }}
+                    />
+                  </div>
+
+                  {/* Filter by Student ID */}
+                  <div style={{ width: "130px" }}>
+                    <input
+                      type="number"
+                      placeholder="Student ID..."
+                      value={adminChatStudentFilter}
+                      onChange={(e) => setAdminChatStudentFilter(e.target.value)}
+                      style={{
+                        width: "100%",
+                        padding: "0.45rem 0.6rem",
+                        borderRadius: "8px",
+                        border: "1px solid #cbd5e1",
+                        fontSize: "0.78rem",
+                        background: "#fff",
+                        color: "#0f172a",
+                      }}
+                    />
+                  </div>
+
+                  {/* Filter by Tutor ID */}
+                  <div style={{ width: "130px" }}>
+                    <input
+                      type="number"
+                      placeholder="Tutor ID..."
+                      value={adminChatTutorFilter}
+                      onChange={(e) => setAdminChatTutorFilter(e.target.value)}
+                      style={{
+                        width: "100%",
+                        padding: "0.45rem 0.6rem",
+                        borderRadius: "8px",
+                        border: "1px solid #cbd5e1",
+                        fontSize: "0.78rem",
+                        background: "#fff",
+                        color: "#0f172a",
+                      }}
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    style={{
+                      padding: "0.45rem 1rem",
+                      borderRadius: "8px",
+                      background: "#0d9488",
+                      color: "#fff",
+                      border: "none",
+                      fontSize: "0.78rem",
+                      fontWeight: 700,
+                      cursor: "pointer",
+                    }}
+                  >
+                    Apply Filters
+                  </button>
+
+                  {(adminChatSearch || adminChatStudentFilter || adminChatTutorFilter || adminChatTypeFilter !== "all") && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAdminChatSearch("");
+                        setAdminChatStudentFilter("");
+                        setAdminChatTutorFilter("");
+                        setAdminChatTypeFilter("all");
+                        fetchAdminChatConversations(1, {
+                          search: "",
+                          student_id: "",
+                          tutor_id: "",
+                          type: "all",
+                        });
+                      }}
+                      style={{
+                        padding: "0.45rem 0.8rem",
+                        borderRadius: "8px",
+                        background: "#f1f5f9",
+                        color: "#475569",
+                        border: "1px solid #e2e8f0",
+                        fontSize: "0.76rem",
+                        fontWeight: 600,
+                        cursor: "pointer",
+                      }}
+                    >
+                      Clear
+                    </button>
+                  )}
+                </form>
+              </div>
+
+              {/* 2-Panel Oversight Layout */}
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "minmax(320px, 380px) 1fr",
+                  gap: "1rem",
+                  alignItems: "stretch",
+                  minHeight: "600px",
+                }}
+              >
+                {/* Left Panel: Conversation List */}
+                <div
+                  style={{
+                    background: "#fff",
+                    borderRadius: "12px",
+                    border: "1px solid #e2e8f0",
+                    display: "flex",
+                    flexDirection: "column",
+                    boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
+                    overflow: "hidden",
+                  }}
+                >
+                  <div
+                    style={{
+                      padding: "0.85rem 1rem",
+                      borderBottom: "1px solid #f1f5f9",
+                      background: "#f8fafc",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                    }}
+                  >
+                    <span style={{ fontSize: "0.78rem", fontWeight: 700, color: "#334155" }}>
+                      Conversations ({adminChats.length})
+                    </span>
+                    <span style={{ fontSize: "0.7rem", color: "#64748b" }}>
+                      Page {adminChatsPage} of {adminChatsLastPage}
+                    </span>
+                  </div>
+
+                  <div style={{ flex: 1, overflowY: "auto", maxHeight: "650px" }}>
+                    {adminChatsLoading && adminChats.length === 0 ? (
+                      <div style={{ padding: "3rem 1.5rem", textAlign: "center", color: "#94a3b8" }}>
+                        <RefreshCw size={24} className="spin" style={{ margin: "0 auto 0.75rem auto", display: "block" }} />
+                        <p style={{ fontSize: "0.82rem", margin: 0 }}>Loading conversations...</p>
+                      </div>
+                    ) : adminChats.length === 0 ? (
+                      <div style={{ padding: "3rem 1.5rem", textAlign: "center", color: "#94a3b8" }}>
+                        <MessageSquare size={32} style={{ margin: "0 auto 0.75rem auto", display: "block", color: "#cbd5e1" }} />
+                        <p style={{ fontSize: "0.85rem", fontWeight: 600, color: "#64748b", margin: "0 0 0.25rem 0" }}>
+                          No conversations found
+                        </p>
+                        <p style={{ fontSize: "0.75rem", margin: 0 }}>
+                          Try adjusting your search criteria or type filter.
+                        </p>
+                      </div>
+                    ) : (
+                      <div style={{ display: "flex", flexDirection: "column" }}>
+                        {adminChats.map((conv) => {
+                          const isSelected = selectedAdminConv?.id === conv.id;
+                          const participantsStr = conv.participants?.map((p) => p.name).join(" & ") || "Unknown participants";
+
+                          return (
+                            <div
+                              key={conv.id}
+                              onClick={() => {
+                                setSelectedAdminConv(conv);
+                                fetchAdminChatConvDetail(conv.id);
+                              }}
+                              style={{
+                                padding: "0.85rem 1rem",
+                                borderBottom: "1px solid #f1f5f9",
+                                cursor: "pointer",
+                                transition: "background 0.15s ease",
+                                background: isSelected ? "#f0fdfa" : "#fff",
+                                borderLeft: isSelected ? "4px solid #0d9488" : "4px solid transparent",
+                              }}
+                            >
+                              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.3rem" }}>
+                                <span
+                                  style={{
+                                    fontSize: "0.68rem",
+                                    fontWeight: 700,
+                                    textTransform: "uppercase",
+                                    padding: "0.1rem 0.45rem",
+                                    borderRadius: "4px",
+                                    background:
+                                      conv.type === "student_tutor"
+                                        ? "#dcfce7"
+                                        : conv.type === "parent_admin"
+                                        ? "#f3e8ff"
+                                        : "#e0f2fe",
+                                    color:
+                                      conv.type === "student_tutor"
+                                        ? "#15803d"
+                                        : conv.type === "parent_admin"
+                                        ? "#7e22ce"
+                                        : "#0369a1",
+                                  }}
+                                >
+                                  {conv.type.replace(/_/g, " ")}
+                                </span>
+
+                                <span style={{ fontSize: "0.7rem", color: "#94a3b8" }}>
+                                  {conv.last_message_at
+                                    ? new Date(conv.last_message_at).toLocaleDateString("en-GB", {
+                                        day: "numeric",
+                                        month: "short",
+                                      })
+                                    : "No messages"}
+                                </span>
+                              </div>
+
+                              <div style={{ fontSize: "0.82rem", fontWeight: 700, color: "#0f172a", marginBottom: "0.2rem" }}>
+                                {conv.subject || participantsStr}
+                              </div>
+
+                              <div style={{ fontSize: "0.72rem", color: "#64748b", marginBottom: "0.35rem" }}>
+                                {conv.participants?.map((p) => (
+                                  <span key={p.id} style={{ marginRight: "0.4rem" }}>
+                                    <strong>{p.name}</strong> ({p.role})
+                                  </span>
+                                ))}
+                              </div>
+
+                              {conv.latest_message && (
+                                <p
+                                  style={{
+                                    fontSize: "0.74rem",
+                                    color: "#64748b",
+                                    margin: "0 0 0.4rem 0",
+                                    overflow: "hidden",
+                                    textOverflow: "ellipsis",
+                                    whiteSpace: "nowrap",
+                                  }}
+                                >
+                                  <span style={{ fontWeight: 600, color: "#475569" }}>
+                                    {conv.latest_message.sender_name}:
+                                  </span>{" "}
+                                  {conv.latest_message.body || (conv.latest_message.has_attachment ? "📎 Sent an attachment" : "")}
+                                </p>
+                              )}
+
+                              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: "0.68rem", color: "#94a3b8" }}>
+                                <span>ID: #{conv.id}</span>
+                                {conv.messages_count !== undefined && (
+                                  <span style={{ background: "#f1f5f9", padding: "0.1rem 0.45rem", borderRadius: "10px", fontWeight: 600 }}>
+                                    {conv.messages_count} msgs
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Pagination Footer */}
+                  {adminChatsLastPage > 1 && (
+                    <div
+                      style={{
+                        padding: "0.65rem 1rem",
+                        borderTop: "1px solid #f1f5f9",
+                        background: "#f8fafc",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                      }}
+                    >
+                      <button
+                        disabled={adminChatsPage <= 1 || adminChatsLoading}
+                        onClick={() => fetchAdminChatConversations(adminChatsPage - 1)}
+                        style={{
+                          padding: "0.3rem 0.65rem",
+                          borderRadius: "6px",
+                          border: "1px solid #cbd5e1",
+                          background: "#fff",
+                          fontSize: "0.72rem",
+                          fontWeight: 600,
+                          cursor: adminChatsPage <= 1 ? "not-allowed" : "pointer",
+                          color: adminChatsPage <= 1 ? "#94a3b8" : "#334155",
+                        }}
+                      >
+                        Prev
+                      </button>
+
+                      <span style={{ fontSize: "0.72rem", color: "#64748b" }}>
+                        {adminChatsPage} / {adminChatsLastPage}
+                      </span>
+
+                      <button
+                        disabled={adminChatsPage >= adminChatsLastPage || adminChatsLoading}
+                        onClick={() => fetchAdminChatConversations(adminChatsPage + 1)}
+                        style={{
+                          padding: "0.3rem 0.65rem",
+                          borderRadius: "6px",
+                          border: "1px solid #cbd5e1",
+                          background: "#fff",
+                          fontSize: "0.72rem",
+                          fontWeight: 600,
+                          cursor: adminChatsPage >= adminChatsLastPage ? "not-allowed" : "pointer",
+                          color: adminChatsPage >= adminChatsLastPage ? "#94a3b8" : "#334155",
+                        }}
+                      >
+                        Next
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Right Panel: Conversation Detail & Messages Audit */}
+                <div
+                  style={{
+                    background: "#fff",
+                    borderRadius: "12px",
+                    border: "1px solid #e2e8f0",
+                    display: "flex",
+                    flexDirection: "column",
+                    boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
+                    overflow: "hidden",
+                  }}
+                >
+                  {!selectedAdminConv ? (
+                    <div
+                      style={{
+                        flex: 1,
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        padding: "3rem 2rem",
+                        textAlign: "center",
+                        color: "#94a3b8",
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: "56px",
+                          height: "56px",
+                          borderRadius: "50%",
+                          background: "#f0fdfa",
+                          color: "#0d9488",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          marginBottom: "1rem",
+                        }}
+                      >
+                        <MessageSquare size={28} />
+                      </div>
+                      <h3 style={{ fontSize: "1rem", fontWeight: 700, color: "#1e293b", margin: "0 0 0.4rem 0" }}>
+                        Select a Conversation
+                      </h3>
+                      <p style={{ fontSize: "0.8rem", color: "#64748b", maxWidth: "380px", margin: 0, lineHeight: 1.5 }}>
+                        Choose any student-tutor or parent-admin conversation from the list to audit the entire message history, view shared worksheets, and review timestamps.
+                      </p>
+                    </div>
+                  ) : (
+                    <>
+                      {/* Conversation Header */}
+                      <div
+                        style={{
+                          padding: "1rem 1.25rem",
+                          borderBottom: "1px solid #e2e8f0",
+                          background: "#f8fafc",
+                          display: "flex",
+                          flexWrap: "wrap",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          gap: "0.75rem",
+                        }}
+                      >
+                        <div>
+                          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.25rem" }}>
+                            <span
+                              style={{
+                                fontSize: "0.68rem",
+                                fontWeight: 700,
+                                textTransform: "uppercase",
+                                padding: "0.15rem 0.5rem",
+                                borderRadius: "4px",
+                                background:
+                                  selectedAdminConv.type === "student_tutor"
+                                    ? "#dcfce7"
+                                    : selectedAdminConv.type === "parent_admin"
+                                    ? "#f3e8ff"
+                                    : "#e0f2fe",
+                                color:
+                                  selectedAdminConv.type === "student_tutor"
+                                    ? "#15803d"
+                                    : selectedAdminConv.type === "parent_admin"
+                                    ? "#7e22ce"
+                                    : "#0369a1",
+                              }}
+                            >
+                              {selectedAdminConv.type.replace(/_/g, " ")}
+                            </span>
+                            <span style={{ fontSize: "0.82rem", fontWeight: 800, color: "#0f172a" }}>
+                              {selectedAdminConv.subject || `Conversation #${selectedAdminConv.id}`}
+                            </span>
+                          </div>
+
+                          <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "0.6rem", fontSize: "0.74rem", color: "#475569" }}>
+                            {selectedAdminConv.participants?.map((p) => (
+                              <span
+                                key={p.id}
+                                style={{
+                                  background: "#fff",
+                                  border: "1px solid #e2e8f0",
+                                  borderRadius: "6px",
+                                  padding: "0.2rem 0.5rem",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: "0.3rem",
+                                }}
+                              >
+                                <strong>{p.name}</strong>
+                                <span style={{ color: "#64748b" }}>({p.role})</span>
+                                {p.email && <span style={{ color: "#94a3b8", fontSize: "0.68rem" }}>• {p.email}</span>}
+                              </span>
+                            ))}
+
+                            {selectedAdminConv.lesson_session_id && (
+                              <span
+                                style={{
+                                  background: "#fef3c7",
+                                  color: "#b45309",
+                                  border: "1px solid #fde68a",
+                                  borderRadius: "6px",
+                                  padding: "0.2rem 0.5rem",
+                                  fontSize: "0.7rem",
+                                  fontWeight: 600,
+                                }}
+                              >
+                                Session #{selectedAdminConv.lesson_session_id}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        <button
+                          onClick={() => fetchAdminChatConvDetail(selectedAdminConv.id)}
+                          disabled={adminConvLoading}
+                          title="Reload messages"
+                          style={{
+                            padding: "0.4rem 0.75rem",
+                            borderRadius: "6px",
+                            border: "1px solid #cbd5e1",
+                            background: "#fff",
+                            fontSize: "0.74rem",
+                            fontWeight: 600,
+                            color: "#334155",
+                            cursor: adminConvLoading ? "not-allowed" : "pointer",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "0.3rem",
+                          }}
+                        >
+                          <RefreshCw size={13} className={adminConvLoading ? "spin" : ""} />
+                          Refresh
+                        </button>
+                      </div>
+
+                      {/* Messages Thread */}
+                      <div
+                        style={{
+                          flex: 1,
+                          overflowY: "auto",
+                          padding: "1.25rem",
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: "1rem",
+                          maxHeight: "550px",
+                          background: "#fafafa",
+                        }}
+                      >
+                        {adminConvLoading && adminConvMessages.length === 0 ? (
+                          <div style={{ textAlign: "center", padding: "3rem", color: "#94a3b8" }}>
+                            <RefreshCw size={24} className="spin" style={{ margin: "0 auto 0.75rem auto", display: "block" }} />
+                            <p style={{ fontSize: "0.82rem", margin: 0 }}>Loading message history...</p>
+                          </div>
+                        ) : adminConvMessages.length === 0 ? (
+                          <div style={{ textAlign: "center", padding: "3rem", color: "#94a3b8" }}>
+                            <p style={{ fontSize: "0.84rem", margin: 0 }}>No messages found in this conversation.</p>
+                          </div>
+                        ) : (
+                          adminConvMessages.map((msg) => {
+                            const isTutor = msg.sender?.role === "tutor";
+                            const isStudent = msg.sender?.role === "student";
+
+                            return (
+                              <div
+                                key={msg.id}
+                                style={{
+                                  display: "flex",
+                                  flexDirection: "column",
+                                  alignSelf: isTutor ? "flex-end" : "flex-start",
+                                  maxWidth: "80%",
+                                }}
+                              >
+                                {/* Sender Meta */}
+                                <div
+                                  style={{
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: "0.4rem",
+                                    fontSize: "0.72rem",
+                                    color: "#64748b",
+                                    marginBottom: "0.25rem",
+                                    alignSelf: isTutor ? "flex-end" : "flex-start",
+                                  }}
+                                >
+                                  <span style={{ fontWeight: 700, color: "#1e293b" }}>
+                                    {msg.sender?.name || "Participant"}
+                                  </span>
+                                  <span
+                                    style={{
+                                      fontSize: "0.64rem",
+                                      fontWeight: 700,
+                                      padding: "0.05rem 0.35rem",
+                                      borderRadius: "4px",
+                                      background: isTutor ? "#ccfbf1" : isStudent ? "#e0e7ff" : "#f1f5f9",
+                                      color: isTutor ? "#0f766e" : isStudent ? "#3730a3" : "#475569",
+                                    }}
+                                  >
+                                    {msg.sender?.role || "user"}
+                                  </span>
+                                  <span>•</span>
+                                  <span>
+                                    {msg.created_at_human ||
+                                      (msg.created_at
+                                        ? new Date(msg.created_at).toLocaleTimeString("en-GB", {
+                                            hour: "2-digit",
+                                            minute: "2-digit",
+                                            day: "numeric",
+                                            month: "short",
+                                          })
+                                        : "")}
+                                  </span>
+                                  {msg.edited_at && (
+                                    <span style={{ fontStyle: "italic", color: "#94a3b8" }}>(edited)</span>
+                                  )}
+                                </div>
+
+                                {/* Message Bubble */}
+                                <div
+                                  style={{
+                                    padding: "0.75rem 1rem",
+                                    borderRadius: "10px",
+                                    fontSize: "0.82rem",
+                                    lineHeight: 1.5,
+                                    background: msg.is_deleted
+                                      ? "#fef2f2"
+                                      : isTutor
+                                      ? "#f0fdfa"
+                                      : "#ffffff",
+                                    border: msg.is_deleted
+                                      ? "1px dashed #fca5a5"
+                                      : isTutor
+                                      ? "1px solid #ccfbf1"
+                                      : "1px solid #e2e8f0",
+                                    color: msg.is_deleted ? "#991b1b" : "#1e293b",
+                                    boxShadow: "0 1px 2px rgba(0,0,0,0.03)",
+                                  }}
+                                >
+                                  {msg.is_deleted ? (
+                                    <div style={{ fontStyle: "italic", display: "flex", alignItems: "center", gap: "0.35rem" }}>
+                                      <AlertCircle size={14} color="#ef4444" />
+                                      This message was deleted by the sender
+                                      {msg.deleted_at && ` at ${new Date(msg.deleted_at).toLocaleTimeString("en-GB")}`}
+                                    </div>
+                                  ) : (
+                                    <>
+                                      {msg.body && (
+                                        <div style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+                                          {msg.body}
+                                        </div>
+                                      )}
+
+                                      {/* Attachment */}
+                                      {msg.attachment_url && (
+                                        <div style={{ marginTop: msg.body ? "0.6rem" : "0" }}>
+                                          <a
+                                            href={msg.attachment_url}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            style={{
+                                              display: "inline-flex",
+                                              alignItems: "center",
+                                              gap: "0.4rem",
+                                              padding: "0.45rem 0.75rem",
+                                              borderRadius: "6px",
+                                              background: "#ffffff",
+                                              border: "1px solid #cbd5e1",
+                                              color: "#0d9488",
+                                              fontSize: "0.75rem",
+                                              fontWeight: 600,
+                                              textDecoration: "none",
+                                            }}
+                                          >
+                                            <Paperclip size={14} />
+                                            <span>{msg.attachment_name || "Attachment"}</span>
+                                            <ExternalLink size={12} color="#94a3b8" />
+                                          </a>
+                                        </div>
+                                      )}
+
+                                      {/* Reactions (if any) */}
+                                      {msg.reactions && Array.isArray(msg.reactions) && msg.reactions.length > 0 && (
+                                        <div style={{ display: "flex", flexWrap: "wrap", gap: "0.3rem", marginTop: "0.5rem" }}>
+                                          {msg.reactions.map((r: any, rIdx: number) => (
+                                            <span
+                                              key={rIdx}
+                                              style={{
+                                                fontSize: "0.72rem",
+                                                background: "#f1f5f9",
+                                                border: "1px solid #e2e8f0",
+                                                borderRadius: "12px",
+                                                padding: "0.1rem 0.4rem",
+                                              }}
+                                            >
+                                              {r.emoji || r}
+                                            </span>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
+
+                      {/* Audit Mode Footer Notice */}
+                      <div
+                        style={{
+                          padding: "0.75rem 1.25rem",
+                          borderTop: "1px solid #e2e8f0",
+                          background: "#f8fafc",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          fontSize: "0.72rem",
+                          color: "#64748b",
+                        }}
+                      >
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem" }}>
+                          <ShieldCheck size={14} color="#0d9488" />
+                          <strong>Administrator Audit Mode</strong> — All conversations and attachments are logged for platform safety.
+                        </span>
+                        <span>{adminConvMessages.length} total messages</span>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
             </div>
           )}
 
