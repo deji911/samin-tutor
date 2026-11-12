@@ -44,6 +44,12 @@ import {
   Download,
   Plus,
   UserCheck,
+  Smile,
+  Trash2,
+  Archive,
+  BellOff,
+  Bell,
+  MoreVertical,
 } from "lucide-react";
 import NotificationEnvelope from "@/components/NotificationEnvelope";
 
@@ -280,6 +286,8 @@ type ChatConversation = {
   subject?: string;
   last_message_at?: string;
   unread_count: number;
+  is_archived?: boolean;
+  is_muted?: boolean;
   other_participants: ChatParticipant[];
   latest_message?: {
     id: number;
@@ -290,6 +298,14 @@ type ChatConversation = {
   } | null;
 };
 
+type ChatReaction = {
+  emoji: string;
+  count: number;
+  users?: { id: number; name: string }[];
+  user_ids?: number[];
+  reacted_by_me?: boolean;
+};
+
 type ChatMessage = {
   id: number;
   conversation_id: number;
@@ -298,7 +314,11 @@ type ChatMessage = {
   attachment_url?: string;
   created_at: string;
   created_at_human?: string;
+  edited_at?: string | null;
+  is_deleted?: boolean;
+  deleted_at?: string | null;
   sender: { id: number; name: string; role: string };
+  reactions?: Record<string, number> | ChatReaction[] | { emoji: string; user_id: number }[];
 };
 
 const statusStyle: Record<string, { bg: string; color: string; border: string; label: string }> = {
@@ -448,6 +468,12 @@ export default function TutorDashboard() {
   const [messageFile, setMessageFile] = useState<File | null>(null);
   const [isSendingMessage, setIsSendingMessage] = useState(false);
   const [chatUnreadCount, setChatUnreadCount] = useState(0);
+  const [showArchivedChats, setShowArchivedChats] = useState(false);
+  const [editingMessageId, setEditingMessageId] = useState<number | null>(null);
+  const [editingMessageText, setEditingMessageText] = useState("");
+  const [isEditingMessage, setIsEditingMessage] = useState(false);
+  const [activeReactionMessageId, setActiveReactionMessageId] = useState<number | null>(null);
+  const [typingUsers, setTypingUsers] = useState<{ user_id: number; name: string }[]>([]);
   const [showNewConvModal, setShowNewConvModal] = useState(false);
   const [newConvForm, setNewConvForm] = useState({ recipient_id: "", subject: "", initial_message: "" });
   const [newConvFile, setNewConvFile] = useState<File | null>(null);
@@ -1225,7 +1251,131 @@ export default function TutorDashboard() {
     }
   };
 
-  /* ── Send Message (POST /api/chat/conversations/{id}/messages) ── */
+  /* ── Chat Actions: Edit, Delete, React, Archive, Mute, Typing ── */
+  const handleEditMessage = async (messageId: number) => {
+    if (!activeConversation || !editingMessageText.trim()) return;
+    setIsEditingMessage(true);
+    try {
+      const baseUrl = getBackendApiUrl();
+      const res = await fetch(`${baseUrl}/api/chat/conversations/${activeConversation.id}/messages/${messageId}`, {
+        method: "PATCH",
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ body: editingMessageText.trim() }),
+      });
+      const data = await res.json().catch(() => null);
+      if (res.ok) {
+        showToast("Message updated.");
+        setEditingMessageId(null);
+        setEditingMessageText("");
+        fetchMessages(activeConversation.id);
+      } else {
+        showToast(data?.message || "Failed to update message.");
+      }
+    } catch {
+      showToast("Error updating message.");
+    } finally {
+      setIsEditingMessage(false);
+    }
+  };
+
+  const handleDeleteMessage = async (messageId: number) => {
+    if (!activeConversation) return;
+    if (!confirm("Are you sure you want to delete this message?")) return;
+    try {
+      const baseUrl = getBackendApiUrl();
+      const res = await fetch(`${baseUrl}/api/chat/conversations/${activeConversation.id}/messages/${messageId}`, {
+        method: "DELETE",
+        headers: getAuthHeaders(),
+      });
+      const data = await res.json().catch(() => null);
+      if (res.ok) {
+        showToast("Message deleted.");
+        fetchMessages(activeConversation.id);
+      } else {
+        showToast(data?.message || "Failed to delete message.");
+      }
+    } catch {
+      showToast("Error deleting message.");
+    }
+  };
+
+  const handleToggleReaction = async (messageId: number, emoji: string) => {
+    if (!activeConversation) return;
+    try {
+      const baseUrl = getBackendApiUrl();
+      const res = await fetch(`${baseUrl}/api/chat/conversations/${activeConversation.id}/messages/${messageId}/react`, {
+        method: "POST",
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ emoji }),
+      });
+      if (res.ok) {
+        setActiveReactionMessageId(null);
+        fetchMessages(activeConversation.id);
+      }
+    } catch (err) {
+      console.error("handleToggleReaction error:", err);
+    }
+  };
+
+  const handleToggleArchiveConversation = async (convId: number, currentArchived: boolean) => {
+    try {
+      const baseUrl = getBackendApiUrl();
+      const res = await fetch(`${baseUrl}/api/chat/conversations/${convId}/archive`, {
+        method: "PATCH",
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ archived: !currentArchived }),
+      });
+      if (res.ok) {
+        showToast(currentArchived ? "Conversation unarchived." : "Conversation archived.");
+        fetchConversations();
+      }
+    } catch {
+      showToast("Error archiving conversation.");
+    }
+  };
+
+  const handleToggleMuteConversation = async (convId: number, currentMuted: boolean) => {
+    try {
+      const baseUrl = getBackendApiUrl();
+      const res = await fetch(`${baseUrl}/api/chat/conversations/${convId}/mute`, {
+        method: "PATCH",
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ muted: !currentMuted }),
+      });
+      if (res.ok) {
+        showToast(currentMuted ? "Conversation unmuted." : "Conversation muted.");
+        fetchConversations();
+        fetchChatUnreadCount();
+      }
+    } catch {
+      showToast("Error muting conversation.");
+    }
+  };
+
+  const sendTypingSignal = async () => {
+    if (!activeConversation) return;
+    try {
+      const baseUrl = getBackendApiUrl();
+      await fetch(`${baseUrl}/api/chat/conversations/${activeConversation.id}/typing`, {
+        method: "POST",
+        headers: getAuthHeaders(),
+      });
+    } catch {}
+  };
+
+  const pollTypingUsers = async (convId: number) => {
+    try {
+      const baseUrl = getBackendApiUrl();
+      const res = await fetch(`${baseUrl}/api/chat/conversations/${convId}/typing`, {
+        headers: getAuthHeaders(),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const typingList = Array.isArray(data?.typing) ? data.typing : [];
+        setTypingUsers(typingList.filter((u: any) => u.user_id !== tutorProfile?.id));
+      }
+    } catch {}
+  };
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!activeConversation) return;
@@ -4115,8 +4265,8 @@ export default function TutorDashboard() {
                         </button>
                       </div>
 
-                      {/* Search box */}
-                      <div style={{ padding: "0.65rem 0.85rem", borderBottom: "1px solid #f1f5f9" }}>
+                      {/* Search & Filter Header */}
+                      <div style={{ padding: "0.65rem 0.85rem", borderBottom: "1px solid #f1f5f9", display: "flex", flexDirection: "column", gap: "0.45rem" }}>
                         <div className="search-box" style={{ padding: "0.35rem 0.65rem" }}>
                           <Search size={14} color="#94a3b8" />
                           <input
@@ -4126,6 +4276,26 @@ export default function TutorDashboard() {
                             onChange={(e) => setChatSearch(e.target.value)}
                             style={{ fontSize: "0.8rem" }}
                           />
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: "0.72rem" }}>
+                          <button
+                            type="button"
+                            onClick={() => setShowArchivedChats(!showArchivedChats)}
+                            style={{
+                              background: "none",
+                              border: "none",
+                              color: showArchivedChats ? "#0d9488" : "#64748b",
+                              fontWeight: 700,
+                              cursor: "pointer",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "0.3rem",
+                              padding: 0,
+                            }}
+                          >
+                            <Archive size={12} />
+                            <span>{showArchivedChats ? "Viewing Archived" : "Show Archived"}</span>
+                          </button>
                         </div>
                       </div>
 
@@ -4145,6 +4315,11 @@ export default function TutorDashboard() {
                         ) : (
                           conversations
                             .filter((c) => {
+                              if (showArchivedChats) {
+                                if (!c.is_archived) return false;
+                              } else {
+                                if (c.is_archived) return false;
+                              }
                               if (!chatSearch.trim()) return true;
                               const other = c.other_participants?.[0]?.name || "";
                               const sub = c.subject || "";
@@ -4208,8 +4383,18 @@ export default function TutorDashboard() {
                                 {activeConversation.other_participants?.[0]?.name?.charAt(0) || "S"}
                               </div>
                               <div>
-                                <h4 style={{ fontSize: "0.92rem", fontWeight: 800, color: "#0f172a", margin: 0 }}>
+                                <h4 style={{ fontSize: "0.92rem", fontWeight: 800, color: "#0f172a", margin: 0, display: "flex", alignItems: "center", gap: "0.4rem" }}>
                                   {activeConversation.other_participants?.[0]?.name || "Student"}
+                                  {activeConversation.is_muted && (
+                                    <span title="Conversation muted" style={{ display: "inline-flex", alignItems: "center" }}>
+                                      <BellOff size={13} color="#94a3b8" />
+                                    </span>
+                                  )}
+                                  {activeConversation.is_archived && (
+                                    <span style={{ fontSize: "0.65rem", background: "#f1f5f9", color: "#64748b", padding: "0.1rem 0.4rem", borderRadius: "4px" }}>
+                                      Archived
+                                    </span>
+                                  )}
                                 </h4>
                                 <span style={{ fontSize: "0.7rem", color: "#64748b" }}>
                                   {activeConversation.subject || "Direct Message"} • Student Portal
@@ -4217,12 +4402,56 @@ export default function TutorDashboard() {
                               </div>
                             </div>
 
-                            <button
-                              onClick={() => fetchMessages(activeConversation.id)}
-                              style={{ background: "none", border: "1px solid #e2e8f0", borderRadius: "6px", padding: "0.3rem 0.6rem", fontSize: "0.74rem", color: "#64748b", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "0.3rem" }}
-                            >
-                              <RefreshCw size={12} /> Sync
-                            </button>
+                            <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                              <button
+                                type="button"
+                                onClick={() => handleToggleMuteConversation(activeConversation.id, !!activeConversation.is_muted)}
+                                title={activeConversation.is_muted ? "Unmute notifications" : "Mute notifications"}
+                                style={{
+                                  background: activeConversation.is_muted ? "#fef3c7" : "#fff",
+                                  border: "1px solid #e2e8f0",
+                                  borderRadius: "6px",
+                                  padding: "0.3rem 0.55rem",
+                                  fontSize: "0.74rem",
+                                  color: activeConversation.is_muted ? "#b45309" : "#64748b",
+                                  cursor: "pointer",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: "0.25rem",
+                                }}
+                              >
+                                {activeConversation.is_muted ? <Bell size={13} /> : <BellOff size={13} />}
+                                <span>{activeConversation.is_muted ? "Unmute" : "Mute"}</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => handleToggleArchiveConversation(activeConversation.id, !!activeConversation.is_archived)}
+                                title={activeConversation.is_archived ? "Unarchive conversation" : "Archive conversation"}
+                                style={{
+                                  background: activeConversation.is_archived ? "#f1f5f9" : "#fff",
+                                  border: "1px solid #e2e8f0",
+                                  borderRadius: "6px",
+                                  padding: "0.3rem 0.55rem",
+                                  fontSize: "0.74rem",
+                                  color: "#64748b",
+                                  cursor: "pointer",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: "0.25rem",
+                                }}
+                              >
+                                <Archive size={13} />
+                                <span>{activeConversation.is_archived ? "Unarchive" : "Archive"}</span>
+                              </button>
+
+                              <button
+                                onClick={() => fetchMessages(activeConversation.id)}
+                                style={{ background: "none", border: "1px solid #e2e8f0", borderRadius: "6px", padding: "0.3rem 0.6rem", fontSize: "0.74rem", color: "#64748b", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "0.3rem" }}
+                              >
+                                <RefreshCw size={12} /> Sync
+                              </button>
+                            </div>
                           </div>
 
                           {/* Messages Thread Body */}
@@ -4239,6 +4468,37 @@ export default function TutorDashboard() {
                             ) : (
                               messages.map((msg) => {
                                 const isMe = msg.sender?.role === "tutor" || msg.sender?.id === tutorProfile?.id;
+                                const isDeleted = msg.is_deleted || msg.body === "This message was deleted." || !!msg.deleted_at;
+                                const isEditingThis = editingMessageId === msg.id;
+
+                                // Helper: check if message was created within last 24h
+                                const isWithin24Hours = (() => {
+                                  try {
+                                    const createdMs = new Date(msg.created_at).getTime();
+                                    return Date.now() - createdMs < 24 * 60 * 60 * 1000;
+                                  } catch {
+                                    return false;
+                                  }
+                                })();
+
+                                // Normalise reactions
+                                const reactionCounts: { emoji: string; count: number }[] = [];
+                                if (Array.isArray(msg.reactions)) {
+                                  msg.reactions.forEach((r: any) => {
+                                    if (r.emoji && r.count) {
+                                      reactionCounts.push({ emoji: r.emoji, count: r.count });
+                                    } else if (typeof r === "object" && r.emoji) {
+                                      const existing = reactionCounts.find((x) => x.emoji === r.emoji);
+                                      if (existing) existing.count++;
+                                      else reactionCounts.push({ emoji: r.emoji, count: 1 });
+                                    }
+                                  });
+                                } else if (msg.reactions && typeof msg.reactions === "object") {
+                                  Object.entries(msg.reactions).forEach(([emoji, count]) => {
+                                    reactionCounts.push({ emoji, count: Number(count) });
+                                  });
+                                }
+
                                 return (
                                   <div
                                     key={msg.id}
@@ -4246,51 +4506,197 @@ export default function TutorDashboard() {
                                       display: "flex",
                                       flexDirection: "column",
                                       alignItems: isMe ? "flex-end" : "flex-start",
+                                      position: "relative",
                                     }}
                                   >
                                     <span style={{ fontSize: "0.68rem", color: "#94a3b8", marginBottom: "0.2rem" }}>
                                       {isMe ? "You" : msg.sender?.name} • {msg.created_at_human || new Date(msg.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                                      {msg.edited_at && <span style={{ marginLeft: "0.3rem", fontStyle: "italic" }}>(edited)</span>}
                                     </span>
+
+                                    {/* Message Bubble */}
                                     <div
                                       style={{
                                         maxWidth: "75%",
                                         padding: "0.7rem 0.95rem",
                                         borderRadius: isMe ? "14px 14px 2px 14px" : "14px 14px 14px 2px",
-                                        background: isMe ? "#20b2a4" : "#fff",
-                                        color: isMe ? "#fff" : "#0f172a",
-                                        boxShadow: isMe ? "0 2px 6px rgba(32,178,164,0.25)" : "0 1px 3px rgba(0,0,0,0.06)",
-                                        border: isMe ? "none" : "1px solid #e2e8f0",
+                                        background: isDeleted ? "#f1f5f9" : isMe ? "#20b2a4" : "#fff",
+                                        color: isDeleted ? "#94a3b8" : isMe ? "#fff" : "#0f172a",
+                                        boxShadow: isDeleted ? "none" : isMe ? "0 2px 6px rgba(32,178,164,0.25)" : "0 1px 3px rgba(0,0,0,0.06)",
+                                        border: isDeleted ? "1px dashed #cbd5e1" : isMe ? "none" : "1px solid #e2e8f0",
                                         fontSize: "0.85rem",
                                         lineHeight: 1.5,
                                         wordBreak: "break-word",
+                                        fontStyle: isDeleted ? "italic" : "normal",
                                       }}
                                     >
-                                      {msg.body && <div style={{ whiteSpace: "pre-wrap" }}>{msg.body}</div>}
-                                      {msg.attachment_url && (
-                                        <div style={{ marginTop: msg.body ? "0.5rem" : 0 }}>
-                                          <a
-                                            href={msg.attachment_url}
-                                            target="_blank"
-                                            rel="noreferrer"
-                                            download
+                                      {isDeleted ? (
+                                        <span>🚫 This message was deleted</span>
+                                      ) : isEditingThis ? (
+                                        <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", minWidth: "240px" }}>
+                                          <input
+                                            type="text"
+                                            value={editingMessageText}
+                                            onChange={(e) => setEditingMessageText(e.target.value)}
                                             style={{
-                                              display: "inline-flex",
-                                              alignItems: "center",
-                                              gap: "0.35rem",
-                                              padding: "0.3rem 0.6rem",
+                                              width: "100%",
+                                              padding: "0.4rem 0.6rem",
                                               borderRadius: "6px",
-                                              background: isMe ? "rgba(255,255,255,0.2)" : "#f1f5f9",
-                                              color: isMe ? "#fff" : "#0f172a",
-                                              fontSize: "0.75rem",
-                                              fontWeight: 600,
-                                              textDecoration: "none",
+                                              border: "1px solid #cbd5e1",
+                                              fontSize: "0.82rem",
+                                              color: "#0f172a",
+                                              background: "#fff",
+                                              outline: "none",
                                             }}
-                                          >
-                                            <Paperclip size={12} /> {msg.attachment_name || "Download File"}
-                                          </a>
+                                            autoFocus
+                                            onKeyDown={(e) => {
+                                              if (e.key === "Enter") handleEditMessage(msg.id);
+                                              if (e.key === "Escape") setEditingMessageId(null);
+                                            }}
+                                          />
+                                          <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.4rem" }}>
+                                            <button
+                                              type="button"
+                                              onClick={() => setEditingMessageId(null)}
+                                              style={{ background: "rgba(0,0,0,0.1)", border: "none", borderRadius: "4px", padding: "0.25rem 0.5rem", fontSize: "0.72rem", color: isMe ? "#fff" : "#475569", cursor: "pointer" }}
+                                            >
+                                              Cancel
+                                            </button>
+                                            <button
+                                              type="button"
+                                              onClick={() => handleEditMessage(msg.id)}
+                                              disabled={isEditingMessage}
+                                              style={{ background: "#fff", border: "none", borderRadius: "4px", padding: "0.25rem 0.6rem", fontSize: "0.72rem", color: "#0d9488", fontWeight: 700, cursor: "pointer" }}
+                                            >
+                                              Save
+                                            </button>
+                                          </div>
                                         </div>
+                                      ) : (
+                                        <>
+                                          {msg.body && <div style={{ whiteSpace: "pre-wrap" }}>{msg.body}</div>}
+                                          {msg.attachment_url && (
+                                            <div style={{ marginTop: msg.body ? "0.5rem" : 0 }}>
+                                              <a
+                                                href={msg.attachment_url}
+                                                target="_blank"
+                                                rel="noreferrer"
+                                                download
+                                                style={{
+                                                  display: "inline-flex",
+                                                  alignItems: "center",
+                                                  gap: "0.35rem",
+                                                  padding: "0.3rem 0.6rem",
+                                                  borderRadius: "6px",
+                                                  background: isMe ? "rgba(255,255,255,0.2)" : "#f1f5f9",
+                                                  color: isMe ? "#fff" : "#0f172a",
+                                                  fontSize: "0.75rem",
+                                                  fontWeight: 600,
+                                                  textDecoration: "none",
+                                                }}
+                                              >
+                                                <Paperclip size={12} /> {msg.attachment_name || "Download File"}
+                                              </a>
+                                            </div>
+                                          )}
+                                        </>
                                       )}
                                     </div>
+
+                                    {/* Action row below message: Reactions & Edit/Delete for sender within 24h */}
+                                    {!isDeleted && (
+                                      <div style={{ display: "flex", alignItems: "center", gap: "0.35rem", marginTop: "0.25rem", flexWrap: "wrap" }}>
+                                        {/* Existing Reactions */}
+                                        {reactionCounts.map((r) => (
+                                          <button
+                                            key={r.emoji}
+                                            type="button"
+                                            onClick={() => handleToggleReaction(msg.id, r.emoji)}
+                                            style={{
+                                              background: "#fff",
+                                              border: "1px solid #e2e8f0",
+                                              borderRadius: "12px",
+                                              padding: "0.1rem 0.4rem",
+                                              fontSize: "0.72rem",
+                                              cursor: "pointer",
+                                              display: "inline-flex",
+                                              alignItems: "center",
+                                              gap: "0.25rem",
+                                            }}
+                                            title="Click to toggle reaction"
+                                          >
+                                            <span>{r.emoji}</span>
+                                            <span style={{ fontSize: "0.68rem", fontWeight: 700, color: "#64748b" }}>{r.count}</span>
+                                          </button>
+                                        ))}
+
+                                        {/* Add Reaction Button */}
+                                        <div style={{ position: "relative" }}>
+                                          <button
+                                            type="button"
+                                            onClick={() => setActiveReactionMessageId(activeReactionMessageId === msg.id ? null : msg.id)}
+                                            style={{ background: "none", border: "none", color: "#94a3b8", cursor: "pointer", padding: "0.15rem", display: "inline-flex", alignItems: "center" }}
+                                            title="Add reaction"
+                                          >
+                                            <Smile size={13} />
+                                          </button>
+                                          {activeReactionMessageId === msg.id && (
+                                            <div
+                                              style={{
+                                                position: "absolute",
+                                                bottom: "100%",
+                                                [isMe ? "right" : "left"]: 0,
+                                                marginBottom: "4px",
+                                                background: "#fff",
+                                                border: "1px solid #e2e8f0",
+                                                borderRadius: "20px",
+                                                padding: "0.25rem 0.5rem",
+                                                display: "flex",
+                                                gap: "0.35rem",
+                                                boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+                                                zIndex: 50,
+                                              }}
+                                            >
+                                              {["👍", "❤️", "👏", "🙌", "💡", "🎯"].map((emoji) => (
+                                                <button
+                                                  key={emoji}
+                                                  type="button"
+                                                  onClick={() => handleToggleReaction(msg.id, emoji)}
+                                                  style={{ background: "none", border: "none", cursor: "pointer", fontSize: "0.95rem", padding: "0.1rem 0.2rem" }}
+                                                >
+                                                  {emoji}
+                                                </button>
+                                              ))}
+                                            </div>
+                                          )}
+                                        </div>
+
+                                        {/* Edit & Delete for sender within 24h */}
+                                        {isMe && isWithin24Hours && (
+                                          <>
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                setEditingMessageId(msg.id);
+                                                setEditingMessageText(msg.body || "");
+                                              }}
+                                              style={{ background: "none", border: "none", color: "#94a3b8", cursor: "pointer", fontSize: "0.68rem", padding: "0.1rem 0.25rem" }}
+                                              title="Edit message (within 24h)"
+                                            >
+                                              <Edit3 size={11} />
+                                            </button>
+                                            <button
+                                              type="button"
+                                              onClick={() => handleDeleteMessage(msg.id)}
+                                              style={{ background: "none", border: "none", color: "#f87171", cursor: "pointer", fontSize: "0.68rem", padding: "0.1rem 0.25rem" }}
+                                              title="Delete message (within 24h)"
+                                            >
+                                              <Trash2 size={11} />
+                                            </button>
+                                          </>
+                                        )}
+                                      </div>
+                                    )}
                                   </div>
                                 );
                               })
@@ -4312,6 +4718,14 @@ export default function TutorDashboard() {
                                 >
                                   ×
                                 </button>
+                              </div>
+                            )}
+
+                            {/* Typing Indicator */}
+                            {typingUsers.length > 0 && (
+                              <div style={{ fontSize: "0.72rem", color: "#0d9488", fontStyle: "italic", marginBottom: "0.35rem", display: "flex", alignItems: "center", gap: "0.3rem" }}>
+                                <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#20b2a4", display: "inline-block", animation: "pulse 1s infinite" }} />
+                                <span>{typingUsers.map((u) => u.name).join(", ")} {typingUsers.length === 1 ? "is" : "are"} typing…</span>
                               </div>
                             )}
 
@@ -4343,7 +4757,10 @@ export default function TutorDashboard() {
                                 type="text"
                                 placeholder="Write a message to your student… (Press Enter to send)"
                                 value={messageBody}
-                                onChange={(e) => setMessageBody(e.target.value)}
+                                onChange={(e) => {
+                                  setMessageBody(e.target.value);
+                                  sendTypingSignal();
+                                }}
                                 style={{
                                   flex: 1,
                                   padding: "0.6rem 0.9rem",
