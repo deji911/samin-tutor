@@ -1550,6 +1550,8 @@ export default function TutorDashboard() {
         fetchChangeRequests(),
         fetchAssignments(),
         fetchChatUnreadCount(),
+        fetchConversations(),
+        fetchChatContacts(),
       ]).finally(() => {
         setInitialLoading(false);
       });
@@ -4265,71 +4267,208 @@ export default function TutorDashboard() {
                         </div>
                       </div>
 
-                      {/* Conversation list */}
+                      {/* Conversation and Students list */}
                       <div style={{ flex: 1, overflowY: "auto" }}>
-                        {loadingConversations ? (
+                        {loadingConversations && loadingChatContacts ? (
                           <div style={{ padding: "2rem", textAlign: "center", color: "#64748b", fontSize: "0.8rem" }}>
                             <div style={{ width: "20px", height: "20px", border: "2px solid #20b2a4", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.8s linear infinite", margin: "0 auto 0.5rem" }} />
-                            Loading chats…
+                            Loading students & chats…
                           </div>
-                        ) : conversations.length === 0 ? (
-                          <div style={{ padding: "2.5rem 1rem", textAlign: "center", color: "#94a3b8" }}>
-                            <MessageSquare size={28} style={{ margin: "0 auto 0.5rem", opacity: 0.5 }} />
-                            <p style={{ fontSize: "0.82rem", margin: 0 }}>No conversations yet</p>
-                            <span style={{ fontSize: "0.72rem" }}>Click &quot;New Chat&quot; above to message a student</span>
-                          </div>
-                        ) : (
-                          conversations
+                        ) : (() => {
+                          const contactList = chatContacts.length > 0
+                            ? chatContacts
+                            : students.map((s) => ({
+                                user_id: s.id,
+                                student_id: s.id,
+                                name: s.student_name,
+                                subject: (s as any).subject || (Array.isArray((s as any).subjects) ? (s as any).subjects.join(", ") : ""),
+                                level: s.level || "",
+                                has_existing_conversation: false,
+                                conversation_id: null,
+                              }));
+
+                          const studentItems = contactList.map((contact) => {
+                            const matchedConv = conversations.find((c) => {
+                              if (contact.conversation_id && c.id === contact.conversation_id) return true;
+                              return c.other_participants?.some((p) => p.id === contact.user_id || p.id === contact.student_id);
+                            });
+
+                            return {
+                              key: `contact-${contact.user_id || contact.student_id}`,
+                              id: contact.conversation_id || matchedConv?.id || null,
+                              contact,
+                              conversation: matchedConv || null,
+                              hasHistory: Boolean(contact.has_existing_conversation || matchedConv),
+                              name: contact.name,
+                              subject: contact.subject,
+                              subtitle: matchedConv?.latest_message?.body
+                                ? matchedConv.latest_message.body
+                                : matchedConv?.subject
+                                ? matchedConv.subject
+                                : contact.subject
+                                ? `${contact.subject}${contact.level ? ` • ${contact.level}` : ""}`
+                                : "Assigned Student",
+                              unread_count: matchedConv?.unread_count || 0,
+                              last_message_at: matchedConv?.last_message_at || matchedConv?.latest_message?.created_at || null,
+                            };
+                          });
+
+                          const otherConvItems = conversations
                             .filter((c) => {
-                              if (!chatSearch.trim()) return true;
-                              const other = c.other_participants?.[0]?.name || "";
-                              const sub = c.subject || "";
-                              return other.toLowerCase().includes(chatSearch.toLowerCase()) || sub.toLowerCase().includes(chatSearch.toLowerCase());
+                              const otherId = c.other_participants?.[0]?.id;
+                              return !studentItems.some((si) => si.contact.user_id === otherId || si.contact.student_id === otherId || si.id === c.id);
                             })
-                            .map((conv) => {
-                              const other = conv.other_participants?.[0] || { name: "Student", role: "student" };
-                              const isSelected = activeConversation?.id === conv.id;
+                            .map((c) => ({
+                              key: `conv-${c.id}`,
+                              id: c.id,
+                              contact: null,
+                              conversation: c,
+                              hasHistory: true,
+                              name: c.other_participants?.[0]?.name || "Conversation",
+                              subject: c.subject,
+                              subtitle: c.latest_message?.body || c.subject || "Direct Message",
+                              unread_count: c.unread_count || 0,
+                              last_message_at: c.last_message_at || c.latest_message?.created_at || null,
+                            }));
+
+                          const allItems = [...studentItems, ...otherConvItems]
+                            .filter((item) => {
+                              if (!chatSearch.trim()) return true;
+                              const q = chatSearch.toLowerCase();
                               return (
-                                <div
-                                  key={conv.id}
-                                  onClick={() => {
-                                    setActiveConversation(conv);
-                                    fetchMessages(conv.id);
-                                  }}
-                                  style={{
-                                    padding: "0.85rem 1rem",
-                                    borderBottom: "1px solid #f8fafc",
-                                    cursor: "pointer",
-                                    background: isSelected ? "#e8f8f7" : "#fff",
-                                    borderLeft: isSelected ? "3px solid #20b2a4" : "3px solid transparent",
-                                    transition: "background 0.15s",
-                                  }}
-                                >
-                                  <div style={{ display: "flex", alignItems: "center", gap: "0.65rem" }}>
-                                    <div style={{ width: "36px", height: "36px", borderRadius: "50%", background: "linear-gradient(135deg,#20b2a4,#0d9488)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: "0.85rem", flexShrink: 0 }}>
-                                      {other.name?.charAt(0) || "S"}
-                                    </div>
-                                    <div style={{ flex: 1, minWidth: 0 }}>
-                                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                                        <span style={{ fontSize: "0.84rem", fontWeight: 700, color: "#0f172a", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                                          {other.name}
+                                item.name.toLowerCase().includes(q) ||
+                                (item.subject || "").toLowerCase().includes(q) ||
+                                item.subtitle.toLowerCase().includes(q)
+                              );
+                            })
+                            .sort((a, b) => {
+                              if (a.hasHistory && !b.hasHistory) return -1;
+                              if (!a.hasHistory && b.hasHistory) return 1;
+                              if (a.last_message_at && b.last_message_at) {
+                                return new Date(b.last_message_at).getTime() - new Date(a.last_message_at).getTime();
+                              }
+                              return 0;
+                            });
+
+                          if (allItems.length === 0) {
+                            return (
+                              <div style={{ padding: "2.5rem 1rem", textAlign: "center", color: "#94a3b8" }}>
+                                <MessageSquare size={28} style={{ margin: "0 auto 0.5rem", opacity: 0.5 }} />
+                                <p style={{ fontSize: "0.82rem", margin: 0, fontWeight: 600 }}>No students found</p>
+                                <span style={{ fontSize: "0.72rem" }}>
+                                  {chatSearch ? "No students match your search filter" : "No assigned students available"}
+                                </span>
+                              </div>
+                            );
+                          }
+
+                          return allItems.map((item) => {
+                            const isSelected =
+                              activeConversation?.id === item.id ||
+                              (item.contact &&
+                                activeConversation?.other_participants?.some(
+                                  (p) => p.id === item.contact?.user_id || p.id === item.contact?.student_id
+                                ));
+
+                            return (
+                              <div
+                                key={item.key}
+                                onClick={() => {
+                                  if (item.conversation) {
+                                    setActiveConversation(item.conversation);
+                                    fetchMessages(item.conversation.id);
+                                  } else if (item.contact?.has_existing_conversation && item.contact.conversation_id) {
+                                    const convObj: ChatConversation = {
+                                      id: item.contact.conversation_id,
+                                      type: "student_tutor",
+                                      subject: item.contact.subject || "Direct Message",
+                                      unread_count: 0,
+                                      other_participants: [{ id: item.contact.user_id, name: item.contact.name, role: "student" }],
+                                    };
+                                    setActiveConversation(convObj);
+                                    fetchMessages(item.contact.conversation_id);
+                                  } else if (item.contact) {
+                                    handleLaunchStudentChat(item.contact);
+                                  }
+                                }}
+                                style={{
+                                  padding: "0.85rem 1rem",
+                                  borderBottom: "1px solid #f8fafc",
+                                  cursor: "pointer",
+                                  background: isSelected ? "#e8f8f7" : "#fff",
+                                  borderLeft: isSelected ? "3px solid #20b2a4" : "3px solid transparent",
+                                  transition: "background 0.15s",
+                                }}
+                              >
+                                <div style={{ display: "flex", alignItems: "center", gap: "0.65rem" }}>
+                                  <div
+                                    style={{
+                                      width: "36px",
+                                      height: "36px",
+                                      borderRadius: "50%",
+                                      background: item.hasHistory
+                                        ? "linear-gradient(135deg,#20b2a4,#0d9488)"
+                                        : "linear-gradient(135deg,#64748b,#475569)",
+                                      color: "#fff",
+                                      display: "flex",
+                                      alignItems: "center",
+                                      justifyContent: "center",
+                                      fontWeight: 800,
+                                      fontSize: "0.85rem",
+                                      flexShrink: 0,
+                                    }}
+                                  >
+                                    {item.name?.charAt(0) || "S"}
+                                  </div>
+                                  <div style={{ flex: 1, minWidth: 0 }}>
+                                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                                      <span
+                                        style={{
+                                          fontSize: "0.84rem",
+                                          fontWeight: 700,
+                                          color: "#0f172a",
+                                          whiteSpace: "nowrap",
+                                          overflow: "hidden",
+                                          textOverflow: "ellipsis",
+                                        }}
+                                      >
+                                        {item.name}
+                                      </span>
+                                      {item.unread_count > 0 ? (
+                                        <span
+                                          style={{
+                                            background: "#20b2a4",
+                                            color: "#fff",
+                                            borderRadius: "10px",
+                                            fontSize: "0.68rem",
+                                            fontWeight: 800,
+                                            padding: "0.1rem 0.45rem",
+                                          }}
+                                        >
+                                          {item.unread_count}
                                         </span>
-                                        {conv.unread_count > 0 && (
-                                          <span style={{ background: "#20b2a4", color: "#fff", borderRadius: "10px", fontSize: "0.68rem", fontWeight: 800, padding: "0.1rem 0.45rem" }}>
-                                            {conv.unread_count}
-                                          </span>
-                                        )}
-                                      </div>
-                                      <div style={{ fontSize: "0.72rem", color: "#64748b", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", marginTop: "0.15rem" }}>
-                                        {conv.subject ? `[${conv.subject}] ` : ""}
-                                        {conv.latest_message ? conv.latest_message.body || "(Attachment)" : "No messages yet"}
-                                      </div>
+                                      ) : item.hasHistory ? (
+                                        <span style={{ fontSize: "0.65rem", color: "#0d9488", fontWeight: 700 }}>Chat</span>
+                                      ) : null}
+                                    </div>
+                                    <div
+                                      style={{
+                                        fontSize: "0.72rem",
+                                        color: "#64748b",
+                                        whiteSpace: "nowrap",
+                                        overflow: "hidden",
+                                        textOverflow: "ellipsis",
+                                        marginTop: "0.15rem",
+                                      }}
+                                    >
+                                      {item.subtitle}
                                     </div>
                                   </div>
                                 </div>
-                              );
-                            })
-                        )}
+                              </div>
+                            );
+                          });
+                        })()}
                       </div>
                     </div>
 
