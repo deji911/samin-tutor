@@ -46,10 +46,6 @@ import {
   UserCheck,
   Smile,
   Trash2,
-  Archive,
-  BellOff,
-  Bell,
-  MoreVertical,
 } from "lucide-react";
 import NotificationEnvelope from "@/components/NotificationEnvelope";
 
@@ -286,8 +282,6 @@ type ChatConversation = {
   subject?: string;
   last_message_at?: string;
   unread_count: number;
-  is_archived?: boolean;
-  is_muted?: boolean;
   other_participants: ChatParticipant[];
   latest_message?: {
     id: number;
@@ -468,13 +462,14 @@ export default function TutorDashboard() {
   const [messageFile, setMessageFile] = useState<File | null>(null);
   const [isSendingMessage, setIsSendingMessage] = useState(false);
   const [chatUnreadCount, setChatUnreadCount] = useState(0);
-  const [showArchivedChats, setShowArchivedChats] = useState(false);
   const [editingMessageId, setEditingMessageId] = useState<number | null>(null);
   const [editingMessageText, setEditingMessageText] = useState("");
   const [isEditingMessage, setIsEditingMessage] = useState(false);
   const [activeReactionMessageId, setActiveReactionMessageId] = useState<number | null>(null);
   const [typingUsers, setTypingUsers] = useState<{ user_id: number; name: string }[]>([]);
   const [showNewConvModal, setShowNewConvModal] = useState(false);
+  const [studentModalSearch, setStudentModalSearch] = useState("");
+  const [launchingChatId, setLaunchingChatId] = useState<number | string | null>(null);
   const [newConvForm, setNewConvForm] = useState({ recipient_id: "", subject: "", initial_message: "" });
   const [newConvFile, setNewConvFile] = useState<File | null>(null);
   const [isStartingConv, setIsStartingConv] = useState(false);
@@ -1317,41 +1312,6 @@ export default function TutorDashboard() {
     }
   };
 
-  const handleToggleArchiveConversation = async (convId: number, currentArchived: boolean) => {
-    try {
-      const baseUrl = getBackendApiUrl();
-      const res = await fetch(`${baseUrl}/api/chat/conversations/${convId}/archive`, {
-        method: "PATCH",
-        headers: getAuthHeaders(),
-        body: JSON.stringify({ archived: !currentArchived }),
-      });
-      if (res.ok) {
-        showToast(currentArchived ? "Conversation unarchived." : "Conversation archived.");
-        fetchConversations();
-      }
-    } catch {
-      showToast("Error archiving conversation.");
-    }
-  };
-
-  const handleToggleMuteConversation = async (convId: number, currentMuted: boolean) => {
-    try {
-      const baseUrl = getBackendApiUrl();
-      const res = await fetch(`${baseUrl}/api/chat/conversations/${convId}/mute`, {
-        method: "PATCH",
-        headers: getAuthHeaders(),
-        body: JSON.stringify({ muted: !currentMuted }),
-      });
-      if (res.ok) {
-        showToast(currentMuted ? "Conversation unmuted." : "Conversation muted.");
-        fetchConversations();
-        fetchChatUnreadCount();
-      }
-    } catch {
-      showToast("Error muting conversation.");
-    }
-  };
-
   const sendTypingSignal = async () => {
     if (!activeConversation) return;
     try {
@@ -1414,58 +1374,85 @@ export default function TutorDashboard() {
     }
   };
 
-  /* ── Start New Conversation (POST /api/chat/conversations) ── */
-  const handleStartConversation = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newConvForm.recipient_id) {
-      showToast("Please choose a student to message.");
+  /* ── Launch Directly into Student Chat (POST /api/chat/conversations or switch active) ── */
+  const handleLaunchStudentChat = async (contact: any) => {
+    const recipientId = contact.user_id || contact.student_id;
+    if (!recipientId) return;
+
+    // 1. If an existing conversation is already known in the loaded conversations list
+    const existingInList = conversations.find((c) => {
+      if (contact.conversation_id && c.id === contact.conversation_id) return true;
+      return c.other_participants?.some((p) => p.id === contact.user_id || p.id === contact.student_id);
+    });
+
+    if (existingInList) {
+      setShowNewConvModal(false);
+      setActiveConversation(existingInList);
+      fetchMessages(existingInList.id);
+      showToast(`Chat opened with ${contact.name}`);
       return;
     }
-    if (!newConvForm.initial_message.trim() && !newConvFile) {
-      showToast("Please enter an initial message or attach a file.");
+
+    if (contact.has_existing_conversation && contact.conversation_id) {
+      setShowNewConvModal(false);
+      const convObj: ChatConversation = {
+        id: contact.conversation_id,
+        type: "student_tutor",
+        subject: contact.subject || "Direct Message",
+        unread_count: 0,
+        other_participants: [{ id: contact.user_id, name: contact.name, role: "student" }],
+      };
+      setActiveConversation(convObj);
+      fetchMessages(contact.conversation_id);
+      fetchConversations();
+      showToast(`Chat opened with ${contact.name}`);
       return;
     }
-    setIsStartingConv(true);
+
+    // 2. Otherwise create/retrieve the conversation directly via POST /api/chat/conversations
+    setLaunchingChatId(recipientId);
     try {
       const baseUrl = getBackendApiUrl();
-      const formData = new FormData();
-      formData.append("recipient_id", newConvForm.recipient_id);
-      if (newConvForm.subject.trim()) {
-        formData.append("subject", newConvForm.subject.trim());
-      }
-      if (newConvForm.initial_message.trim()) {
-        formData.append("initial_message", newConvForm.initial_message.trim());
-      }
-      if (newConvFile) {
-        formData.append("attachment", newConvFile);
-      }
-
       const res = await fetch(`${baseUrl}/api/chat/conversations`, {
         method: "POST",
-        headers: getAuthHeadersNoContentType(),
-        body: formData,
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          recipient_id: recipientId,
+          subject: contact.subject || undefined,
+        }),
       });
       const data = await res.json().catch(() => null);
       if (res.ok) {
-        showToast("Conversation ready!");
         setShowNewConvModal(false);
-        setNewConvForm({ recipient_id: "", subject: "", initial_message: "" });
-        setNewConvFile(null);
-        fetchConversations();
+        const convObj = data?.conversation || data?.data || data;
+        await fetchConversations();
         fetchChatContacts();
-        const convObj = data?.conversation || data;
         if (convObj?.id) {
           setActiveConversation(convObj);
           fetchMessages(convObj.id);
         }
+        showToast(`Chat started with ${contact.name}`);
       } else {
         showToast(data?.message || "Failed to start conversation.");
       }
     } catch (err: any) {
       showToast(err?.message || "Error starting conversation.");
     } finally {
-      setIsStartingConv(false);
+      setLaunchingChatId(null);
     }
+  };
+
+  /* ── Start New Conversation (fallback) ── */
+  const handleStartConversation = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newConvForm.recipient_id) {
+      showToast("Please choose a student to message.");
+      return;
+    }
+    const chosenContact = chatContacts.find(
+      (c) => String(c.user_id) === newConvForm.recipient_id || String(c.student_id) === newConvForm.recipient_id
+    ) || { user_id: Number(newConvForm.recipient_id), name: "Student" };
+    handleLaunchStudentChat(chosenContact);
   };
 
   /* ── Attendance Tracking (POST /api/sessions/{sessionId}/join & leave) ── */
@@ -4253,8 +4240,7 @@ export default function TutorDashboard() {
                         <button
                           onClick={() => {
                             setShowNewConvModal(true);
-                            setNewConvForm({ recipient_id: "", subject: "", initial_message: "" });
-                            setNewConvFile(null);
+                            setStudentModalSearch("");
                             fetchChatContacts();
                           }}
                           className="action-btn"
@@ -4277,26 +4263,6 @@ export default function TutorDashboard() {
                             style={{ fontSize: "0.8rem" }}
                           />
                         </div>
-                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: "0.72rem" }}>
-                          <button
-                            type="button"
-                            onClick={() => setShowArchivedChats(!showArchivedChats)}
-                            style={{
-                              background: "none",
-                              border: "none",
-                              color: showArchivedChats ? "#0d9488" : "#64748b",
-                              fontWeight: 700,
-                              cursor: "pointer",
-                              display: "inline-flex",
-                              alignItems: "center",
-                              gap: "0.3rem",
-                              padding: 0,
-                            }}
-                          >
-                            <Archive size={12} />
-                            <span>{showArchivedChats ? "Viewing Archived" : "Show Archived"}</span>
-                          </button>
-                        </div>
                       </div>
 
                       {/* Conversation list */}
@@ -4315,11 +4281,6 @@ export default function TutorDashboard() {
                         ) : (
                           conversations
                             .filter((c) => {
-                              if (showArchivedChats) {
-                                if (!c.is_archived) return false;
-                              } else {
-                                if (c.is_archived) return false;
-                              }
                               if (!chatSearch.trim()) return true;
                               const other = c.other_participants?.[0]?.name || "";
                               const sub = c.subject || "";
@@ -4385,16 +4346,6 @@ export default function TutorDashboard() {
                               <div>
                                 <h4 style={{ fontSize: "0.92rem", fontWeight: 800, color: "#0f172a", margin: 0, display: "flex", alignItems: "center", gap: "0.4rem" }}>
                                   {activeConversation.other_participants?.[0]?.name || "Student"}
-                                  {activeConversation.is_muted && (
-                                    <span title="Conversation muted" style={{ display: "inline-flex", alignItems: "center" }}>
-                                      <BellOff size={13} color="#94a3b8" />
-                                    </span>
-                                  )}
-                                  {activeConversation.is_archived && (
-                                    <span style={{ fontSize: "0.65rem", background: "#f1f5f9", color: "#64748b", padding: "0.1rem 0.4rem", borderRadius: "4px" }}>
-                                      Archived
-                                    </span>
-                                  )}
                                 </h4>
                                 <span style={{ fontSize: "0.7rem", color: "#64748b" }}>
                                   {activeConversation.subject || "Direct Message"} • Student Portal
@@ -4403,48 +4354,6 @@ export default function TutorDashboard() {
                             </div>
 
                             <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
-                              <button
-                                type="button"
-                                onClick={() => handleToggleMuteConversation(activeConversation.id, !!activeConversation.is_muted)}
-                                title={activeConversation.is_muted ? "Unmute notifications" : "Mute notifications"}
-                                style={{
-                                  background: activeConversation.is_muted ? "#fef3c7" : "#fff",
-                                  border: "1px solid #e2e8f0",
-                                  borderRadius: "6px",
-                                  padding: "0.3rem 0.55rem",
-                                  fontSize: "0.74rem",
-                                  color: activeConversation.is_muted ? "#b45309" : "#64748b",
-                                  cursor: "pointer",
-                                  display: "inline-flex",
-                                  alignItems: "center",
-                                  gap: "0.25rem",
-                                }}
-                              >
-                                {activeConversation.is_muted ? <Bell size={13} /> : <BellOff size={13} />}
-                                <span>{activeConversation.is_muted ? "Unmute" : "Mute"}</span>
-                              </button>
-
-                              <button
-                                type="button"
-                                onClick={() => handleToggleArchiveConversation(activeConversation.id, !!activeConversation.is_archived)}
-                                title={activeConversation.is_archived ? "Unarchive conversation" : "Archive conversation"}
-                                style={{
-                                  background: activeConversation.is_archived ? "#f1f5f9" : "#fff",
-                                  border: "1px solid #e2e8f0",
-                                  borderRadius: "6px",
-                                  padding: "0.3rem 0.55rem",
-                                  fontSize: "0.74rem",
-                                  color: "#64748b",
-                                  cursor: "pointer",
-                                  display: "inline-flex",
-                                  alignItems: "center",
-                                  gap: "0.25rem",
-                                }}
-                              >
-                                <Archive size={13} />
-                                <span>{activeConversation.is_archived ? "Unarchive" : "Archive"}</span>
-                              </button>
-
                               <button
                                 onClick={() => fetchMessages(activeConversation.id)}
                                 style={{ background: "none", border: "1px solid #e2e8f0", borderRadius: "6px", padding: "0.3rem 0.6rem", fontSize: "0.74rem", color: "#64748b", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "0.3rem" }}
@@ -5934,7 +5843,7 @@ export default function TutorDashboard() {
         </div>
       )}
 
-      {/* ── Start New Conversation Modal ── */}
+      {/* ── Start New Conversation Modal: Pick Student & Launch Direct ── */}
       {showNewConvModal && (
         <div
           onClick={() => setShowNewConvModal(false)}
@@ -5957,167 +5866,188 @@ export default function TutorDashboard() {
               background: "#fff",
               borderRadius: "16px",
               width: "100%",
-              maxWidth: "480px",
+              maxWidth: "520px",
               padding: "1.75rem",
               boxShadow: "0 25px 60px rgba(0,0,0,0.3)",
               display: "flex",
               flexDirection: "column",
               gap: "1rem",
+              maxHeight: "85vh",
             }}
           >
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid #f1f5f9", paddingBottom: "0.75rem" }}>
               <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                <div style={{ width: "32px", height: "32px", borderRadius: "8px", background: "#e8f8f7", color: "#0d9488", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <div style={{ width: "34px", height: "34px", borderRadius: "8px", background: "#e8f8f7", color: "#0d9488", display: "flex", alignItems: "center", justifyContent: "center" }}>
                   <MessageSquare size={18} />
                 </div>
-                <h3 style={{ fontSize: "1.05rem", fontWeight: 800, color: "#0f172a", margin: 0 }}>
-                  New Student Message
-                </h3>
+                <div>
+                  <h3 style={{ fontSize: "1.05rem", fontWeight: 800, color: "#0f172a", margin: 0 }}>
+                    New Student Message
+                  </h3>
+                  <p style={{ fontSize: "0.74rem", color: "#64748b", margin: "0.15rem 0 0 0" }}>
+                    Select an assigned student to launch directly into chat
+                  </p>
+                </div>
               </div>
               <button
                 type="button"
                 onClick={() => setShowNewConvModal(false)}
-                style={{ background: "none", border: "none", cursor: "pointer", color: "#64748b" }}
+                style={{ background: "none", border: "none", cursor: "pointer", color: "#64748b", padding: "0.25rem" }}
               >
                 <X size={18} />
               </button>
             </div>
 
-            <form onSubmit={handleStartConversation} style={{ display: "flex", flexDirection: "column", gap: "0.85rem" }}>
-              <div>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.3rem" }}>
-                  <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 700, color: "#374151" }}>
-                    Recipient Student <span style={{ color: "#dc2626" }}>*</span>
-                  </label>
-                  {loadingChatContacts && (
-                    <span style={{ fontSize: "0.7rem", color: "#0d9488" }}>Syncing assigned students…</span>
-                  )}
+            {/* Student Search */}
+            <div className="search-box" style={{ padding: "0.45rem 0.75rem" }}>
+              <Search size={14} color="#94a3b8" />
+              <input
+                type="text"
+                placeholder="Search assigned students by name or subject..."
+                value={studentModalSearch}
+                onChange={(e) => setStudentModalSearch(e.target.value)}
+                style={{ fontSize: "0.82rem" }}
+              />
+            </div>
+
+            {/* Student Selection List */}
+            <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: "0.5rem", minHeight: "160px", maxHeight: "360px", paddingRight: "0.25rem" }}>
+              {loadingChatContacts ? (
+                <div style={{ padding: "2.5rem 1rem", textAlign: "center", color: "#64748b", fontSize: "0.82rem" }}>
+                  <div style={{ width: "22px", height: "22px", border: "2px solid #20b2a4", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.8s linear infinite", margin: "0 auto 0.6rem" }} />
+                  Loading your assigned students…
                 </div>
-                <select
-                  value={newConvForm.recipient_id}
-                  onChange={(e) => {
-                    const selectedVal = e.target.value;
-                    setNewConvForm({ ...newConvForm, recipient_id: selectedVal });
-                    // Check if this contact already has an existing conversation
-                    const contact = chatContacts.find(
-                      (c) => String(c.user_id) === selectedVal || String(c.student_id) === selectedVal
-                    );
-                    if (contact?.has_existing_conversation && contact.conversation_id) {
-                      const existingConv = conversations.find((c) => c.id === contact.conversation_id);
-                      if (existingConv) {
-                        setShowNewConvModal(false);
-                        setActiveConversation(existingConv);
-                        fetchMessages(contact.conversation_id);
-                        showToast(`Opened existing chat with ${contact.name}`);
-                      }
-                    }
-                  }}
-                  required
-                  style={{ width: "100%", padding: "0.55rem 0.75rem", borderRadius: "8px", border: "1.5px solid #e2e8f0", fontSize: "0.85rem", background: "#fff", outline: "none" }}
-                >
-                  <option value="">-- Choose Student to Message --</option>
-                  {chatContacts.length > 0 ? (
-                    chatContacts.map((c) => (
-                      <option key={c.user_id || c.student_id} value={c.user_id || c.student_id}>
-                        {c.name} {c.subject ? `• ${c.subject}` : ""} {c.level ? `(${c.level})` : ""} {c.has_existing_conversation ? "— [Active Chat]" : ""}
-                      </option>
-                    ))
-                  ) : (
-                    students.map((st) => (
-                      <option key={st.id} value={st.id}>
-                        {st.student_name} ({st.email || "Student"})
-                      </option>
-                    ))
-                  )}
-                </select>
-                {(() => {
-                  const selectedContact = chatContacts.find(
-                    (c) => String(c.user_id) === newConvForm.recipient_id || String(c.student_id) === newConvForm.recipient_id
-                  );
-                  if (selectedContact?.has_existing_conversation && selectedContact.conversation_id) {
+              ) : (() => {
+                  const allContacts = (chatContacts.length > 0
+                    ? chatContacts
+                    : students.map((s) => ({
+                        user_id: s.id,
+                        student_id: s.id,
+                        name: s.student_name,
+                        subject: (s as any).subject || (Array.isArray((s as any).subjects) ? (s as any).subjects.join(", ") : ""),
+                        level: s.level || "",
+                        has_existing_conversation: false,
+                        conversation_id: null,
+                      }))
+                  ).filter((c) => {
+                    if (!studentModalSearch.trim()) return true;
+                    const q = studentModalSearch.toLowerCase();
+                    return (c.name || "").toLowerCase().includes(q) || (c.subject || "").toLowerCase().includes(q);
+                  });
+
+                  if (allContacts.length === 0) {
                     return (
-                      <div style={{ marginTop: "0.35rem", fontSize: "0.74rem", color: "#0d9488", background: "#f0fdf9", padding: "0.3rem 0.5rem", borderRadius: "6px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                        <span>A direct conversation already exists with this student.</span>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setShowNewConvModal(false);
-                            const existingConv = conversations.find((c) => c.id === selectedContact.conversation_id) || {
-                              id: selectedContact.conversation_id!,
-                              type: "student_tutor",
-                              unread_count: 0,
-                              other_participants: [{ id: selectedContact.user_id, name: selectedContact.name, role: "student" }],
-                            };
-                            setActiveConversation(existingConv as any);
-                            fetchMessages(selectedContact.conversation_id!);
-                          }}
-                          style={{ background: "#20b2a4", color: "#fff", border: "none", borderRadius: "4px", padding: "0.2rem 0.5rem", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}
-                        >
-                          Open Chat
-                        </button>
+                      <div style={{ padding: "2.5rem 1rem", textAlign: "center", color: "#94a3b8" }}>
+                        <Users size={28} style={{ margin: "0 auto 0.5rem", opacity: 0.5 }} />
+                        <p style={{ fontSize: "0.84rem", margin: 0, fontWeight: 600 }}>No students found</p>
+                        <span style={{ fontSize: "0.72rem" }}>No assigned students match your search</span>
                       </div>
                     );
                   }
-                  return null;
+
+                  return allContacts.map((contact) => {
+                    const idKey = contact.user_id || contact.student_id;
+                    const isLaunching = launchingChatId === idKey;
+                    return (
+                      <div
+                        key={idKey}
+                        onClick={() => !isLaunching && handleLaunchStudentChat(contact)}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          padding: "0.75rem 1rem",
+                          borderRadius: "10px",
+                          border: "1.5px solid #e2e8f0",
+                          background: "#fff",
+                          cursor: isLaunching ? "wait" : "pointer",
+                          transition: "all 0.15s ease",
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.borderColor = "#20b2a4";
+                          e.currentTarget.style.background = "#f0fdf9";
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.borderColor = "#e2e8f0";
+                          e.currentTarget.style.background = "#fff";
+                        }}
+                      >
+                        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+                          <div style={{
+                            width: "38px",
+                            height: "38px",
+                            borderRadius: "50%",
+                            background: "linear-gradient(135deg,#0d9488,#0f766e)",
+                            color: "#fff",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            fontWeight: 800,
+                            fontSize: "0.9rem",
+                            flexShrink: 0,
+                          }}>
+                            {contact.name?.charAt(0) || "S"}
+                          </div>
+                          <div>
+                            <div style={{ display: "flex", alignItems: "center", gap: "0.45rem" }}>
+                              <span style={{ fontSize: "0.88rem", fontWeight: 700, color: "#0f172a" }}>
+                                {contact.name}
+                              </span>
+                              {contact.has_existing_conversation && (
+                                <span style={{ fontSize: "0.65rem", background: "#f0fdf4", color: "#16a34a", padding: "0.1rem 0.4rem", borderRadius: "4px", fontWeight: 700 }}>
+                                  Active Chat
+                                </span>
+                              )}
+                            </div>
+                            <div style={{ fontSize: "0.74rem", color: "#64748b", marginTop: "0.1rem" }}>
+                              {contact.subject ? contact.subject : "Assigned Student"}
+                              {contact.level ? ` • ${contact.level}` : ""}
+                            </div>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          disabled={isLaunching}
+                          style={{
+                            background: "#20b2a4",
+                            color: "#fff",
+                            border: "none",
+                            borderRadius: "8px",
+                            padding: "0.4rem 0.85rem",
+                            fontSize: "0.76rem",
+                            fontWeight: 700,
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "0.35rem",
+                            cursor: isLaunching ? "wait" : "pointer",
+                            pointerEvents: "none",
+                          }}
+                        >
+                          {isLaunching ? (
+                            "Opening…"
+                          ) : (
+                            <>
+                              <Send size={12} />
+                              <span>Message</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    );
+                  });
                 })()}
-              </div>
+            </div>
 
-              <div>
-                <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 700, color: "#374151", marginBottom: "0.3rem" }}>
-                  Subject (Optional)
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g. Next Lesson Prep / Math Questions"
-                  value={newConvForm.subject}
-                  onChange={(e) => setNewConvForm({ ...newConvForm, subject: e.target.value })}
-                  style={{ width: "100%", padding: "0.55rem 0.75rem", borderRadius: "8px", border: "1.5px solid #e2e8f0", fontSize: "0.85rem", outline: "none" }}
-                />
-              </div>
-
-              <div>
-                <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 700, color: "#374151", marginBottom: "0.3rem" }}>
-                  Initial Message <span style={{ color: "#dc2626" }}>*</span>
-                </label>
-                <textarea
-                  placeholder="Type your message to the student..."
-                  rows={4}
-                  value={newConvForm.initial_message}
-                  onChange={(e) => setNewConvForm({ ...newConvForm, initial_message: e.target.value })}
-                  required
-                  style={{ width: "100%", padding: "0.55rem 0.75rem", borderRadius: "8px", border: "1.5px solid #e2e8f0", fontSize: "0.85rem", resize: "vertical", outline: "none" }}
-                />
-              </div>
-
-              <div>
-                <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 700, color: "#374151", marginBottom: "0.3rem" }}>
-                  Attach File or Worksheet (Optional)
-                </label>
-                <input
-                  type="file"
-                  onChange={(e) => setNewConvFile(e.target.files?.[0] || null)}
-                  style={{ width: "100%", padding: "0.45rem", borderRadius: "8px", border: "1.5px dashed #cbd5e1", fontSize: "0.8rem", background: "#f8fafc" }}
-                />
-              </div>
-
-              <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.75rem", marginTop: "0.5rem" }}>
-                <button
-                  type="button"
-                  onClick={() => setShowNewConvModal(false)}
-                  style={{ padding: "0.55rem 1rem", borderRadius: "8px", border: "1px solid #cbd5e1", background: "#fff", color: "#475569", fontSize: "0.82rem", fontWeight: 600, cursor: "pointer" }}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isStartingConv}
-                  className="action-btn"
-                  style={{ background: "#20b2a4", color: "#fff", padding: "0.55rem 1.25rem", fontSize: "0.82rem" }}
-                >
-                  <Send size={14} /> {isStartingConv ? "Sending…" : "Send Message"}
-                </button>
-              </div>
-            </form>
+            <div style={{ display: "flex", justifyContent: "flex-end", borderTop: "1px solid #f1f5f9", paddingTop: "0.75rem" }}>
+              <button
+                type="button"
+                onClick={() => setShowNewConvModal(false)}
+                style={{ padding: "0.5rem 1rem", borderRadius: "8px", border: "1px solid #cbd5e1", background: "#fff", color: "#475569", fontSize: "0.8rem", fontWeight: 600, cursor: "pointer" }}
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}
