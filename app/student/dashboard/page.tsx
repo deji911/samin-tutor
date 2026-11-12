@@ -713,8 +713,8 @@ export default function StudentPortalDashboard() {
     }
   };
 
-  const fetchMessages = async (convId: number) => {
-    setLoadingMessages(true);
+  const fetchMessages = async (convId: number, silent: boolean = false) => {
+    if (!silent) setLoadingMessages(true);
     try {
       const baseUrl = getBackendApiUrl();
       const res = await fetch(`${baseUrl}/api/chat/conversations/${convId}/messages`, { headers: getAuthHeaders() });
@@ -738,7 +738,7 @@ export default function StudentPortalDashboard() {
     } catch (err) {
       console.error("fetchMessages error:", err);
     } finally {
-      setLoadingMessages(false);
+      if (!silent) setLoadingMessages(false);
     }
   };
 
@@ -755,28 +755,38 @@ export default function StudentPortalDashboard() {
     }
   };
 
-  /* ── Chat Actions: Edit, Delete, React, Archive, Mute, Typing ── */
+  /* ── Chat Actions: Edit, Delete, React, Typing ── */
   const handleEditMessage = async (messageId: number) => {
     if (!activeConversation || !editingMessageText.trim()) return;
+    const newText = editingMessageText.trim();
     setIsEditingMessage(true);
+
+    // Optimistically update message body in state immediately
+    setMessages((prev) =>
+      prev.map((m) => (m.id === messageId ? { ...m, body: newText, edited_at: new Date().toISOString() } : m))
+    );
+    setEditingMessageId(null);
+    setEditingMessageText("");
+
     try {
       const baseUrl = getBackendApiUrl();
       const res = await fetch(`${baseUrl}/api/chat/conversations/${activeConversation.id}/messages/${messageId}`, {
         method: "PATCH",
         headers: getAuthHeaders(),
-        body: JSON.stringify({ body: editingMessageText.trim() }),
+        body: JSON.stringify({ body: newText }),
       });
       const data = await res.json().catch(() => null);
       if (res.ok) {
         showToast("Message updated.");
-        setEditingMessageId(null);
-        setEditingMessageText("");
-        fetchMessages(activeConversation.id);
+        fetchMessages(activeConversation.id, true);
+        fetchConversations();
       } else {
         showToast(data?.message || "Failed to update message.");
+        fetchMessages(activeConversation.id, true);
       }
     } catch {
       showToast("Error updating message.");
+      fetchMessages(activeConversation.id, true);
     } finally {
       setIsEditingMessage(false);
     }
@@ -785,6 +795,23 @@ export default function StudentPortalDashboard() {
   const handleDeleteMessage = async (messageId: number) => {
     if (!activeConversation) return;
     if (!confirm("Are you sure you want to delete this message?")) return;
+
+    // Optimistically mark message as deleted in state immediately
+    setMessages((prev) =>
+      prev.map((m) =>
+        m.id === messageId
+          ? {
+              ...m,
+              is_deleted: true,
+              body: "This message was deleted.",
+              attachment_name: undefined,
+              attachment_url: undefined,
+              deleted_at: new Date().toISOString(),
+            }
+          : m
+      )
+    );
+
     try {
       const baseUrl = getBackendApiUrl();
       const res = await fetch(`${baseUrl}/api/chat/conversations/${activeConversation.id}/messages/${messageId}`, {
@@ -794,17 +821,62 @@ export default function StudentPortalDashboard() {
       const data = await res.json().catch(() => null);
       if (res.ok) {
         showToast("Message deleted.");
-        fetchMessages(activeConversation.id);
+        fetchMessages(activeConversation.id, true);
+        fetchConversations();
       } else {
         showToast(data?.message || "Failed to delete message.");
+        fetchMessages(activeConversation.id, true);
       }
     } catch {
       showToast("Error deleting message.");
+      fetchMessages(activeConversation.id, true);
     }
   };
 
   const handleToggleReaction = async (messageId: number, emoji: string) => {
     if (!activeConversation) return;
+
+    // Close emoji reaction picker immediately
+    setActiveReactionMessageId(null);
+
+    // Optimistically toggle emoji reaction in state immediately
+    setMessages((prev) =>
+      prev.map((m) => {
+        if (m.id !== messageId) return m;
+        const currentReactions: any[] = Array.isArray(m.reactions) ? [...m.reactions] : [];
+        const existingIdx = currentReactions.findIndex((r) => r.emoji === emoji);
+
+        if (existingIdx >= 0) {
+          const existing = currentReactions[existingIdx];
+          if (existing.reacted_by_me) {
+            if (existing.count <= 1) {
+              currentReactions.splice(existingIdx, 1);
+            } else {
+              currentReactions[existingIdx] = {
+                ...existing,
+                count: existing.count - 1,
+                reacted_by_me: false,
+              };
+            }
+          } else {
+            currentReactions[existingIdx] = {
+              ...existing,
+              count: existing.count + 1,
+              reacted_by_me: true,
+            };
+          }
+        } else {
+          currentReactions.push({
+            emoji,
+            count: 1,
+            reacted_by_me: true,
+          });
+        }
+
+        return { ...m, reactions: currentReactions };
+      })
+    );
+
     try {
       const baseUrl = getBackendApiUrl();
       const res = await fetch(`${baseUrl}/api/chat/conversations/${activeConversation.id}/messages/${messageId}/react`, {
@@ -813,8 +885,8 @@ export default function StudentPortalDashboard() {
         body: JSON.stringify({ emoji }),
       });
       if (res.ok) {
-        setActiveReactionMessageId(null);
-        fetchMessages(activeConversation.id);
+        // Silently sync messages without reloading chat UI
+        fetchMessages(activeConversation.id, true);
       }
     } catch (err) {
       console.error("handleToggleReaction error:", err);
@@ -924,7 +996,7 @@ export default function StudentPortalDashboard() {
       if (res.ok) {
         setMessageBody("");
         setMessageFile(null);
-        fetchMessages(activeConversation.id);
+        fetchMessages(activeConversation.id, true);
         fetchConversations();
       } else {
         const data = await res.json().catch(() => null);
@@ -2790,7 +2862,7 @@ export default function StudentPortalDashboard() {
 
                         <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
                           <button
-                            onClick={() => fetchMessages(activeConversation.id)}
+                            onClick={() => fetchMessages(activeConversation.id, true)}
                             style={{ background: "none", border: "1px solid #e2e8f0", borderRadius: "6px", padding: "0.3rem 0.6rem", fontSize: "0.74rem", color: "#64748b", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "0.3rem" }}
                           >
                             <RefreshCw size={12} /> Sync
