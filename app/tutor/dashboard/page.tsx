@@ -257,6 +257,16 @@ type Assignment = {
   submissions?: AssignmentSubmission[];
 };
 
+type ChatContact = {
+  user_id: number;
+  student_id?: number;
+  name: string;
+  subject?: string;
+  level?: string;
+  has_existing_conversation: boolean;
+  conversation_id: number | null;
+};
+
 type ChatParticipant = {
   id: number;
   name: string;
@@ -429,6 +439,8 @@ export default function TutorDashboard() {
   // Chat / Messaging State
   const [conversations, setConversations] = useState<ChatConversation[]>([]);
   const [loadingConversations, setLoadingConversations] = useState(false);
+  const [chatContacts, setChatContacts] = useState<ChatContact[]>([]);
+  const [loadingChatContacts, setLoadingChatContacts] = useState(false);
   const [activeConversation, setActiveConversation] = useState<ChatConversation | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loadingMessages, setLoadingMessages] = useState(false);
@@ -1146,6 +1158,28 @@ export default function TutorDashboard() {
     }
   };
 
+  /* ── Fetch Chat Contacts for Tutor (GET /api/tutor/chat-contacts) ── */
+  const fetchChatContacts = async () => {
+    setLoadingChatContacts(true);
+    try {
+      const baseUrl = getBackendApiUrl();
+      const res = await fetch(`${baseUrl}/api/tutor/chat-contacts`, { headers: getAuthHeaders() });
+      if (res.ok) {
+        const data = await res.json();
+        const list = Array.isArray(data?.contacts)
+          ? data.contacts
+          : Array.isArray(data)
+          ? data
+          : [];
+        setChatContacts(list);
+      }
+    } catch (err) {
+      console.error("fetchChatContacts error:", err);
+    } finally {
+      setLoadingChatContacts(false);
+    }
+  };
+
   /* ── Fetch Messages for active conversation (GET /api/chat/conversations/{id}/messages) ── */
   const fetchMessages = async (convId: number) => {
     setLoadingMessages(true);
@@ -1263,14 +1297,16 @@ export default function TutorDashboard() {
       });
       const data = await res.json().catch(() => null);
       if (res.ok) {
-        showToast("Conversation started!");
+        showToast("Conversation ready!");
         setShowNewConvModal(false);
         setNewConvForm({ recipient_id: "", subject: "", initial_message: "" });
         setNewConvFile(null);
         fetchConversations();
-        if (data?.conversation?.id) {
-          setActiveConversation(data.conversation);
-          fetchMessages(data.conversation.id);
+        fetchChatContacts();
+        const convObj = data?.conversation || data;
+        if (convObj?.id) {
+          setActiveConversation(convObj);
+          fetchMessages(convObj.id);
         }
       } else {
         showToast(data?.message || "Failed to start conversation.");
@@ -1676,6 +1712,7 @@ export default function TutorDashboard() {
                 if (tab === "homework") fetchAssignments();
                 if (tab === "chat") {
                   fetchConversations();
+                  fetchChatContacts();
                   fetchChatUnreadCount();
                 }
               }}
@@ -4068,6 +4105,7 @@ export default function TutorDashboard() {
                             setShowNewConvModal(true);
                             setNewConvForm({ recipient_id: "", subject: "", initial_message: "" });
                             setNewConvFile(null);
+                            fetchChatContacts();
                           }}
                           className="action-btn"
                           style={{ background: "#20b2a4", color: "#fff", padding: "0.35rem 0.65rem", fontSize: "0.75rem" }}
@@ -5530,22 +5568,81 @@ export default function TutorDashboard() {
 
             <form onSubmit={handleStartConversation} style={{ display: "flex", flexDirection: "column", gap: "0.85rem" }}>
               <div>
-                <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 700, color: "#374151", marginBottom: "0.3rem" }}>
-                  Recipient Student <span style={{ color: "#dc2626" }}>*</span>
-                </label>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.3rem" }}>
+                  <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 700, color: "#374151" }}>
+                    Recipient Student <span style={{ color: "#dc2626" }}>*</span>
+                  </label>
+                  {loadingChatContacts && (
+                    <span style={{ fontSize: "0.7rem", color: "#0d9488" }}>Syncing assigned students…</span>
+                  )}
+                </div>
                 <select
                   value={newConvForm.recipient_id}
-                  onChange={(e) => setNewConvForm({ ...newConvForm, recipient_id: e.target.value })}
+                  onChange={(e) => {
+                    const selectedVal = e.target.value;
+                    setNewConvForm({ ...newConvForm, recipient_id: selectedVal });
+                    // Check if this contact already has an existing conversation
+                    const contact = chatContacts.find(
+                      (c) => String(c.user_id) === selectedVal || String(c.student_id) === selectedVal
+                    );
+                    if (contact?.has_existing_conversation && contact.conversation_id) {
+                      const existingConv = conversations.find((c) => c.id === contact.conversation_id);
+                      if (existingConv) {
+                        setShowNewConvModal(false);
+                        setActiveConversation(existingConv);
+                        fetchMessages(contact.conversation_id);
+                        showToast(`Opened existing chat with ${contact.name}`);
+                      }
+                    }
+                  }}
                   required
                   style={{ width: "100%", padding: "0.55rem 0.75rem", borderRadius: "8px", border: "1.5px solid #e2e8f0", fontSize: "0.85rem", background: "#fff", outline: "none" }}
                 >
                   <option value="">-- Choose Student to Message --</option>
-                  {students.map((st) => (
-                    <option key={st.id} value={st.id}>
-                      {st.student_name} ({st.email || "Student"})
-                    </option>
-                  ))}
+                  {chatContacts.length > 0 ? (
+                    chatContacts.map((c) => (
+                      <option key={c.user_id || c.student_id} value={c.user_id || c.student_id}>
+                        {c.name} {c.subject ? `• ${c.subject}` : ""} {c.level ? `(${c.level})` : ""} {c.has_existing_conversation ? "— [Active Chat]" : ""}
+                      </option>
+                    ))
+                  ) : (
+                    students.map((st) => (
+                      <option key={st.id} value={st.id}>
+                        {st.student_name} ({st.email || "Student"})
+                      </option>
+                    ))
+                  )}
                 </select>
+                {(() => {
+                  const selectedContact = chatContacts.find(
+                    (c) => String(c.user_id) === newConvForm.recipient_id || String(c.student_id) === newConvForm.recipient_id
+                  );
+                  if (selectedContact?.has_existing_conversation && selectedContact.conversation_id) {
+                    return (
+                      <div style={{ marginTop: "0.35rem", fontSize: "0.74rem", color: "#0d9488", background: "#f0fdf9", padding: "0.3rem 0.5rem", borderRadius: "6px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                        <span>A direct conversation already exists with this student.</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowNewConvModal(false);
+                            const existingConv = conversations.find((c) => c.id === selectedContact.conversation_id) || {
+                              id: selectedContact.conversation_id!,
+                              type: "student_tutor",
+                              unread_count: 0,
+                              other_participants: [{ id: selectedContact.user_id, name: selectedContact.name, role: "student" }],
+                            };
+                            setActiveConversation(existingConv as any);
+                            fetchMessages(selectedContact.conversation_id!);
+                          }}
+                          style={{ background: "#20b2a4", color: "#fff", border: "none", borderRadius: "4px", padding: "0.2rem 0.5rem", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}
+                        >
+                          Open Chat
+                        </button>
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
               </div>
 
               <div>
