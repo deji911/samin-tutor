@@ -29,6 +29,7 @@ import {
   AlertCircle,
   Sparkles,
   Check,
+  ShieldCheck,
   MessageSquare,
   Paperclip,
   Download,
@@ -379,6 +380,7 @@ export default function StudentPortalDashboard() {
   const [loadingConversations, setLoadingConversations] = useState(false);
   const [chatContacts, setChatContacts] = useState<ChatContact[]>([]);
   const [loadingChatContacts, setLoadingChatContacts] = useState(false);
+  const [adminSupportContact, setAdminSupportContact] = useState<any | null>(null);
   const [activeConversation, setActiveConversation] = useState<ChatConversation | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loadingMessages, setLoadingMessages] = useState(false);
@@ -705,6 +707,9 @@ export default function StudentPortalDashboard() {
           ? data
           : [];
         setChatContacts(list);
+        if (data?.admin_support) {
+          setAdminSupportContact(data.admin_support);
+        }
       }
     } catch (err) {
       console.error("fetchChatContacts error:", err);
@@ -895,12 +900,21 @@ export default function StudentPortalDashboard() {
 
   /* ── Launch Directly into Tutor Chat (POST /api/chat/conversations or switch active) ── */
   const handleLaunchTutorChat = async (contact: any) => {
-    const recipientId = contact.user_id || contact.id;
+    const isRecipientAdmin =
+      contact.role === "admin" ||
+      contact.user_id === "admin" ||
+      contact.id === "admin" ||
+      contact.name === "Admin Support";
+
+    const recipientId = isRecipientAdmin ? "admin" : (contact.user_id || contact.id);
     if (!recipientId) return;
 
     // 1. If an existing conversation is already known in the loaded conversations list
     const existingInList = conversations.find((c) => {
       if (contact.conversation_id && c.id === contact.conversation_id) return true;
+      if (isRecipientAdmin) {
+        return c.type === "student_admin" || c.other_participants?.some((p) => p.role === "admin");
+      }
       return c.other_participants?.some((p) => p.id === contact.user_id || p.id === contact.id);
     });
 
@@ -916,10 +930,10 @@ export default function StudentPortalDashboard() {
       setShowNewConvModal(false);
       const convObj: ChatConversation = {
         id: contact.conversation_id,
-        type: "student_tutor",
-        subject: contact.subject || "Direct Message",
+        type: isRecipientAdmin ? "student_admin" : "student_tutor",
+        subject: contact.subject || (isRecipientAdmin ? "Admin Support" : "Direct Message"),
         unread_count: 0,
-        other_participants: [{ id: contact.user_id, name: contact.name, role: "tutor" }],
+        other_participants: [{ id: isRecipientAdmin ? 1 : contact.user_id, name: contact.name, role: isRecipientAdmin ? "admin" : "tutor" }],
       };
       setActiveConversation(convObj);
       fetchMessages(contact.conversation_id);
@@ -932,13 +946,18 @@ export default function StudentPortalDashboard() {
     setLaunchingChatId(recipientId);
     try {
       const baseUrl = getBackendApiUrl();
+      const bodyPayload: any = {
+        recipient_id: isRecipientAdmin ? "admin" : recipientId,
+        subject: contact.subject || (isRecipientAdmin ? "Admin Support" : undefined),
+      };
+      if (isRecipientAdmin) {
+        bodyPayload.recipient_role = "admin";
+      }
+
       const res = await fetch(`${baseUrl}/api/chat/conversations`, {
         method: "POST",
         headers: getAuthHeaders(),
-        body: JSON.stringify({
-          recipient_id: recipientId,
-          subject: contact.subject || undefined,
-        }),
+        body: JSON.stringify(bodyPayload),
       });
       const data = await res.json().catch(() => null);
       if (res.ok) {
@@ -2683,9 +2702,45 @@ export default function StudentPortalDashboard() {
                         };
                       });
 
+                      const adminContact = adminSupportContact || {
+                        user_id: "admin",
+                        name: "Admin Support",
+                        role: "admin",
+                        subject: "Platform Support",
+                        has_existing_conversation: conversations.some(
+                          (c) => c.type === "student_admin" || c.other_participants?.some((p) => p.role === "admin")
+                        ),
+                        conversation_id:
+                          conversations.find(
+                            (c) => c.type === "student_admin" || c.other_participants?.some((p) => p.role === "admin")
+                          )?.id || null,
+                      };
+
+                      const matchedAdminConv = conversations.find(
+                        (c) =>
+                          c.type === "student_admin" ||
+                          (adminContact.conversation_id && c.id === adminContact.conversation_id) ||
+                          c.other_participants?.some((p) => p.role === "admin")
+                      );
+
+                      const adminItem = {
+                        key: "contact-admin-support",
+                        id: adminContact.conversation_id || matchedAdminConv?.id || null,
+                        contact: adminContact,
+                        conversation: matchedAdminConv || null,
+                        hasHistory: Boolean(adminContact.has_existing_conversation || matchedAdminConv),
+                        name: "Admin Support",
+                        subject: "Platform & Lesson Support",
+                        subtitle: matchedAdminConv?.latest_message?.body || "Direct line to Samin Admin Support",
+                        unread_count: matchedAdminConv?.unread_count || 0,
+                        last_message_at: matchedAdminConv?.last_message_at || matchedAdminConv?.latest_message?.created_at || null,
+                        isAdmin: true,
+                      };
+
                       const otherConvItems = conversations
                         .filter((c) => {
                           const otherId = c.other_participants?.[0]?.id;
+                          if (c.id === adminItem.id || c.type === "student_admin" || c.other_participants?.some((p) => p.role === "admin")) return false;
                           return !tutorItems.some((ti) => ti.contact.user_id === otherId || ti.id === c.id);
                         })
                         .map((c) => ({
@@ -2699,9 +2754,10 @@ export default function StudentPortalDashboard() {
                           subtitle: c.latest_message?.body || c.subject || "Direct Message",
                           unread_count: c.unread_count || 0,
                           last_message_at: c.last_message_at || c.latest_message?.created_at || null,
+                          isAdmin: false,
                         }));
 
-                      const allItems = [...tutorItems, ...otherConvItems]
+                      const allItems = [adminItem, ...tutorItems, ...otherConvItems]
                         .filter((item) => {
                           if (!chatSearch.trim()) return true;
                           const q = chatSearch.toLowerCase();
@@ -2774,7 +2830,9 @@ export default function StudentPortalDashboard() {
                                   width: "36px",
                                   height: "36px",
                                   borderRadius: "50%",
-                                  background: item.hasHistory
+                                  background: (item as any).isAdmin
+                                    ? "linear-gradient(135deg,#0284c7,#0369a1)"
+                                    : item.hasHistory
                                     ? "linear-gradient(135deg,#0d9488,#0f766e)"
                                     : "linear-gradient(135deg,#64748b,#475569)",
                                   color: "#fff",
@@ -2786,7 +2844,11 @@ export default function StudentPortalDashboard() {
                                   flexShrink: 0,
                                 }}
                               >
-                                {item.name?.charAt(0) || "T"}
+                                {(item as any).isAdmin ? (
+                                  <ShieldCheck size={18} />
+                                ) : (
+                                  item.name?.charAt(0) || "T"
+                                )}
                               </div>
                               <div style={{ flex: 1, minWidth: 0 }}>
                                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -3528,7 +3590,22 @@ export default function StudentPortalDashboard() {
                   Loading your assigned tutors…
                 </div>
               ) : (() => {
-                  const allContacts = (chatContacts.length > 0
+                  const adminContact = adminSupportContact || {
+                    user_id: "admin",
+                    id: "admin",
+                    name: "Admin Support",
+                    role: "admin",
+                    subject: "Platform Support",
+                    has_existing_conversation: conversations.some(
+                      (c) => c.type === "student_admin" || c.other_participants?.some((p) => p.role === "admin")
+                    ),
+                    conversation_id:
+                      conversations.find(
+                        (c) => c.type === "student_admin" || c.other_participants?.some((p) => p.role === "admin")
+                      )?.id || null,
+                  };
+
+                  const baseContacts = chatContacts.length > 0
                     ? chatContacts
                     : assignedTutors.map((t) => ({
                         user_id: t.id,
@@ -3537,8 +3614,9 @@ export default function StudentPortalDashboard() {
                         subject: t.subject || "Tutor",
                         has_existing_conversation: false,
                         conversation_id: null,
-                      }))
-                  ).filter((c) => {
+                      }));
+
+                  const allContacts = [adminContact, ...baseContacts].filter((c) => {
                     if (!tutorModalSearch.trim()) return true;
                     const q = tutorModalSearch.toLowerCase();
                     return (c.name || "").toLowerCase().includes(q) || (c.subject || "").toLowerCase().includes(q);
@@ -3586,7 +3664,9 @@ export default function StudentPortalDashboard() {
                             width: "38px",
                             height: "38px",
                             borderRadius: "50%",
-                            background: "linear-gradient(135deg,#0d9488,#0f766e)",
+                            background: (contact as any).role === "admin"
+                              ? "linear-gradient(135deg,#0284c7,#0369a1)"
+                              : "linear-gradient(135deg,#0d9488,#0f766e)",
                             color: "#fff",
                             display: "flex",
                             alignItems: "center",
@@ -3595,7 +3675,11 @@ export default function StudentPortalDashboard() {
                             fontSize: "0.9rem",
                             flexShrink: 0,
                           }}>
-                            {contact.name?.charAt(0) || "T"}
+                            {(contact as any).role === "admin" ? (
+                              <ShieldCheck size={18} />
+                            ) : (
+                              contact.name?.charAt(0) || "T"
+                            )}
                           </div>
                           <div>
                             <div style={{ display: "flex", alignItems: "center", gap: "0.45rem" }}>

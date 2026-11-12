@@ -48,6 +48,9 @@ import {
   Paperclip,
   ChevronDown,
   MessageSquare,
+  Send,
+  Radio,
+  UserCheck,
 } from "lucide-react";
 import { QUALIFICATIONS_LIST } from "../../constants/qualifications";
 import NotificationEnvelope from "@/components/NotificationEnvelope";
@@ -450,6 +453,16 @@ type AdminChatMessage = {
   edited_at?: string;
 };
 
+type AdminChatContact = {
+  user_id: number;
+  name: string;
+  email: string;
+  role: "tutor" | "parent" | "student" | string;
+  has_existing_conversation: boolean;
+  conversation_id?: number | null;
+  last_message_at?: string | null;
+};
+
 const statusStyle: Record<string, { bg: string; color: string; label?: string }> = {
   "New Inquiry": { bg: "#fef3c7", color: "#b45309", label: "New Inquiry" },
   "Diagnostic Scheduled": { bg: "#dbeafe", color: "#1d4ed8", label: "Diagnostic Scheduled" },
@@ -663,6 +676,32 @@ export default function AdminDashboard() {
   const [selectedAdminConv, setSelectedAdminConv] = useState<AdminChatConversation | null>(null);
   const [adminConvMessages, setAdminConvMessages] = useState<AdminChatMessage[]>([]);
   const [adminConvLoading, setAdminConvLoading] = useState(false);
+
+  // Admin Chat Contacts & Messaging State (GET /api/admin/chat/contacts & POST /api/admin/chat/broadcast)
+  const [showAdminContactsModal, setShowAdminContactsModal] = useState(false);
+  const [adminContacts, setAdminContacts] = useState<AdminChatContact[]>([]);
+  const [adminContactsLoading, setAdminContactsLoading] = useState(false);
+  const [adminContactsRoleFilter, setAdminContactsRoleFilter] = useState<string>("all");
+  const [adminContactsSearch, setAdminContactsSearch] = useState("");
+  const [adminContactsPage, setAdminContactsPage] = useState(1);
+  const [adminContactsTotal, setAdminContactsTotal] = useState(0);
+  const [adminContactsLastPage, setAdminContactsLastPage] = useState(1);
+  const [startingChatWithUserId, setStartingChatWithUserId] = useState<number | null>(null);
+
+  // Admin Broadcast State (POST /api/admin/chat/broadcast)
+  const [showBroadcastModal, setShowBroadcastModal] = useState(false);
+  const [broadcastTarget, setBroadcastTarget] = useState<string>("all_tutors");
+  const [broadcastSubject, setBroadcastSubject] = useState("");
+  const [broadcastMessage, setBroadcastMessage] = useState("");
+  const [broadcastAttachment, setBroadcastAttachment] = useState<File | null>(null);
+  const [broadcastRecipientIds, setBroadcastRecipientIds] = useState<number[]>([]);
+  const [isSubmittingBroadcast, setIsSubmittingBroadcast] = useState(false);
+  const [broadcastCustomSearch, setBroadcastCustomSearch] = useState("");
+
+  // Admin Direct Reply in active conversation (POST /api/chat/conversations/{id}/messages)
+  const [adminReplyText, setAdminReplyText] = useState("");
+  const [adminReplyAttachment, setAdminReplyAttachment] = useState<File | null>(null);
+  const [isSendingAdminReply, setIsSendingAdminReply] = useState(false);
 
   // Tutor Rate & Payouts Modal State (PATCH /api/admin/tutors/{tutorId}/rate & GET /api/admin/tutors/{tutorId}/payouts)
   const [payoutTutor, setPayoutTutor] = useState<any | null>(null);
@@ -1914,6 +1953,226 @@ export default function AdminDashboard() {
       console.error("fetchAdminChatConvDetail error:", err);
     } finally {
       setAdminConvLoading(false);
+    }
+  };
+
+  /* ── Admin Chat Contacts: GET /api/admin/chat/contacts ── */
+  const fetchAdminChatContacts = async (
+    page = 1,
+    opts?: { role?: string; search?: string }
+  ) => {
+    setAdminContactsLoading(true);
+    try {
+      const baseUrl = getBackendApiUrl();
+      const params = new URLSearchParams({ per_page: "30", page: String(page) });
+      const roleVal = opts?.role ?? adminContactsRoleFilter;
+      const searchVal = opts?.search ?? adminContactsSearch;
+      if (roleVal && roleVal !== "all") params.append("role", roleVal);
+      if (searchVal.trim()) params.append("search", searchVal.trim());
+
+      const res = await fetch(`${baseUrl}/api/admin/chat/contacts?${params}`, {
+        headers: getAuthHeaders(),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const list = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
+        setAdminContacts(list);
+        setAdminContactsTotal(data?.total || list.length);
+        setAdminContactsLastPage(data?.last_page || 1);
+        setAdminContactsPage(page);
+      }
+    } catch (err) {
+      console.error("fetchAdminChatContacts error:", err);
+    } finally {
+      setAdminContactsLoading(false);
+    }
+  };
+
+  /* ── Initiate or open conversation from contact ── */
+  const startChatWithContact = async (contact: AdminChatContact) => {
+    // If existing conversation exists, open it directly
+    if (contact.has_existing_conversation && contact.conversation_id) {
+      setShowAdminContactsModal(false);
+      const existing = adminChats.find((c) => c.id === contact.conversation_id);
+      if (existing) {
+        setSelectedAdminConv(existing);
+      } else {
+        setSelectedAdminConv({
+          id: contact.conversation_id,
+          type: "general",
+          participants: [
+            {
+              id: contact.user_id,
+              name: contact.name,
+              email: contact.email,
+              role: contact.role,
+            },
+          ],
+        });
+      }
+      fetchAdminChatConvDetail(contact.conversation_id);
+      return;
+    }
+
+    // Otherwise create or retrieve via POST /api/chat/conversations
+    setStartingChatWithUserId(contact.user_id);
+    try {
+      const baseUrl = getBackendApiUrl();
+      const res = await fetch(`${baseUrl}/api/chat/conversations`, {
+        method: "POST",
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          recipient_id: contact.user_id,
+          subject: `Direct message with ${contact.name}`,
+        }),
+      });
+      const data = await res.json().catch(() => null);
+      if (res.ok) {
+        setShowAdminContactsModal(false);
+        const convObj = data?.conversation || data?.data || data;
+        await fetchAdminChatConversations(1);
+        if (convObj?.id) {
+          setSelectedAdminConv(convObj);
+          fetchAdminChatConvDetail(convObj.id);
+        }
+        showToast(`Chat started with ${contact.name}`);
+      } else {
+        showToast(data?.message || "Failed to start conversation.");
+      }
+    } catch (err: any) {
+      showToast(err?.message || "Error starting conversation.");
+    } finally {
+      setStartingChatWithUserId(null);
+    }
+  };
+
+  /* ── Admin Broadcast: POST /api/admin/chat/broadcast ── */
+  const submitAdminBroadcast = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!broadcastMessage.trim()) {
+      showToast("Please provide a broadcast message.");
+      return;
+    }
+    if (broadcastTarget === "custom" && broadcastRecipientIds.length === 0) {
+      showToast("Please select at least one recipient for custom broadcast.");
+      return;
+    }
+
+    setIsSubmittingBroadcast(true);
+    try {
+      const baseUrl = getBackendApiUrl();
+      const formData = new FormData();
+      formData.append("target", broadcastTarget);
+      formData.append("message", broadcastMessage.trim());
+      if (broadcastSubject.trim()) {
+        formData.append("subject", broadcastSubject.trim());
+      }
+      if (broadcastTarget === "custom") {
+        broadcastRecipientIds.forEach((id) => {
+          formData.append("recipient_ids[]", String(id));
+        });
+      }
+      if (broadcastAttachment) {
+        formData.append("attachment", broadcastAttachment);
+      }
+
+      const authHeaders = getAuthHeaders() as Record<string, string>;
+      const headersForFormData: Record<string, string> = {};
+      if (authHeaders.Authorization) {
+        headersForFormData.Authorization = authHeaders.Authorization;
+      }
+
+      const res = await fetch(`${baseUrl}/api/admin/chat/broadcast`, {
+        method: "POST",
+        headers: headersForFormData,
+        body: formData,
+      });
+
+      const data = await res.json().catch(() => null);
+
+      if (res.ok) {
+        showToast(data?.message || "Broadcast sent successfully!");
+        setShowBroadcastModal(false);
+        setBroadcastSubject("");
+        setBroadcastMessage("");
+        setBroadcastAttachment(null);
+        setBroadcastRecipientIds([]);
+        fetchAdminChatConversations(1);
+      } else {
+        showToast(data?.message || "Failed to send broadcast.");
+      }
+    } catch (err: any) {
+      console.error("submitAdminBroadcast error:", err);
+      showToast(err?.message || "An unexpected error occurred while broadcasting.");
+    } finally {
+      setIsSubmittingBroadcast(false);
+    }
+  };
+
+  /* ── Admin Direct Message in Active Conversation: POST /api/chat/conversations/{id}/messages ── */
+  const submitAdminMessageReply = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedAdminConv) return;
+    if (!adminReplyText.trim() && !adminReplyAttachment) return;
+
+    const convId = selectedAdminConv.id;
+    const textToSend = adminReplyText.trim();
+    const fileToSend = adminReplyAttachment;
+
+    // Optimistic UI update
+    const tempId = Date.now();
+    const optimisticMsg: AdminChatMessage = {
+      id: tempId,
+      conversation_id: convId,
+      body: textToSend,
+      attachment_name: fileToSend?.name,
+      attachment_url: fileToSend ? URL.createObjectURL(fileToSend) : undefined,
+      created_at: new Date().toISOString(),
+      created_at_human: "Just now",
+      sender: {
+        id: currentUser?.id || 1,
+        name: currentUser?.name || "Administrator",
+        role: "admin",
+      },
+    };
+
+    setAdminConvMessages((prev) => [...prev, optimisticMsg]);
+    setAdminReplyText("");
+    setAdminReplyAttachment(null);
+    setIsSendingAdminReply(true);
+
+    try {
+      const baseUrl = getBackendApiUrl();
+      const formData = new FormData();
+      if (textToSend) formData.append("body", textToSend);
+      if (fileToSend) formData.append("attachment", fileToSend);
+
+      const authHeaders = getAuthHeaders() as Record<string, string>;
+      const headersForFormData: Record<string, string> = {};
+      if (authHeaders.Authorization) {
+        headersForFormData.Authorization = authHeaders.Authorization;
+      }
+
+      const res = await fetch(`${baseUrl}/api/chat/conversations/${convId}/messages`, {
+        method: "POST",
+        headers: headersForFormData,
+        body: formData,
+      });
+
+      if (res.ok) {
+        fetchAdminChatConvDetail(convId);
+        fetchAdminChatConversations(adminChatsPage);
+      } else {
+        const errData = await res.json().catch(() => null);
+        showToast(errData?.message || "Failed to send message.");
+        setAdminConvMessages((prev) => prev.filter((m) => m.id !== tempId));
+      }
+    } catch (err: any) {
+      console.error("submitAdminMessageReply error:", err);
+      showToast(err?.message || "Error delivering message.");
+      setAdminConvMessages((prev) => prev.filter((m) => m.id !== tempId));
+    } finally {
+      setIsSendingAdminReply(false);
     }
   };
 
@@ -4096,27 +4355,77 @@ export default function AdminDashboard() {
                   </p>
                 </div>
 
-                <button
-                  onClick={() => fetchAdminChatConversations(adminChatsPage)}
-                  disabled={adminChatsLoading}
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: "0.4rem",
-                    padding: "0.5rem 0.9rem",
-                    borderRadius: "8px",
-                    border: "1px solid #cbd5e1",
-                    background: "#fff",
-                    fontSize: "0.78rem",
-                    fontWeight: 600,
-                    color: "#334155",
-                    cursor: adminChatsLoading ? "not-allowed" : "pointer",
-                    boxShadow: "0 1px 2px rgba(0,0,0,0.03)",
-                  }}
-                >
-                  <RefreshCw size={14} className={adminChatsLoading ? "spin" : ""} />
-                  Refresh
-                </button>
+                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
+                  <button
+                    onClick={() => {
+                      setShowAdminContactsModal(true);
+                      fetchAdminChatContacts(1);
+                    }}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "0.4rem",
+                      padding: "0.5rem 0.9rem",
+                      borderRadius: "8px",
+                      border: "1px solid #cbd5e1",
+                      background: "#fff",
+                      fontSize: "0.78rem",
+                      fontWeight: 600,
+                      color: "#334155",
+                      cursor: "pointer",
+                      boxShadow: "0 1px 2px rgba(0,0,0,0.03)",
+                    }}
+                  >
+                    <Users size={14} color="#0d9488" />
+                    Browse Contacts
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setShowBroadcastModal(true);
+                      fetchAdminChatContacts(1, { role: "all" });
+                    }}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "0.4rem",
+                      padding: "0.5rem 0.95rem",
+                      borderRadius: "8px",
+                      border: "none",
+                      background: "linear-gradient(135deg, #0d9488 0%, #0f766e 100%)",
+                      fontSize: "0.78rem",
+                      fontWeight: 700,
+                      color: "#fff",
+                      cursor: "pointer",
+                      boxShadow: "0 2px 4px rgba(13,148,136,0.25)",
+                    }}
+                  >
+                    <Radio size={14} />
+                    Broadcast Message
+                  </button>
+
+                  <button
+                    onClick={() => fetchAdminChatConversations(adminChatsPage)}
+                    disabled={adminChatsLoading}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "0.4rem",
+                      padding: "0.5rem 0.9rem",
+                      borderRadius: "8px",
+                      border: "1px solid #cbd5e1",
+                      background: "#fff",
+                      fontSize: "0.78rem",
+                      fontWeight: 600,
+                      color: "#334155",
+                      cursor: adminChatsLoading ? "not-allowed" : "pointer",
+                      boxShadow: "0 1px 2px rgba(0,0,0,0.03)",
+                    }}
+                  >
+                    <RefreshCw size={14} className={adminChatsLoading ? "spin" : ""} />
+                    Refresh
+                  </button>
+                </div>
               </div>
 
               {/* Filter Controls Bar */}
@@ -4140,7 +4449,9 @@ export default function AdminDashboard() {
                   {[
                     { id: "all", label: "All Types" },
                     { id: "student_tutor", label: "Student ↔ Tutor" },
+                    { id: "tutor_admin", label: "Tutor ↔ Admin" },
                     { id: "parent_admin", label: "Parent ↔ Admin" },
+                    { id: "student_admin", label: "Student ↔ Admin" },
                     { id: "general", label: "General" },
                   ].map((filter) => {
                     const isActive = adminChatTypeFilter === filter.id;
@@ -4382,15 +4693,23 @@ export default function AdminDashboard() {
                                     background:
                                       conv.type === "student_tutor"
                                         ? "#dcfce7"
+                                        : conv.type === "tutor_admin"
+                                        ? "#fef3c7"
                                         : conv.type === "parent_admin"
                                         ? "#f3e8ff"
-                                        : "#e0f2fe",
+                                        : conv.type === "student_admin"
+                                        ? "#e0f2fe"
+                                        : "#f1f5f9",
                                     color:
                                       conv.type === "student_tutor"
                                         ? "#15803d"
+                                        : conv.type === "tutor_admin"
+                                        ? "#b45309"
                                         : conv.type === "parent_admin"
                                         ? "#7e22ce"
-                                        : "#0369a1",
+                                        : conv.type === "student_admin"
+                                        ? "#0369a1"
+                                        : "#475569",
                                   }}
                                 >
                                   {conv.type.replace(/_/g, " ")}
@@ -4578,15 +4897,23 @@ export default function AdminDashboard() {
                                 background:
                                   selectedAdminConv.type === "student_tutor"
                                     ? "#dcfce7"
+                                    : selectedAdminConv.type === "tutor_admin"
+                                    ? "#fef3c7"
                                     : selectedAdminConv.type === "parent_admin"
                                     ? "#f3e8ff"
-                                    : "#e0f2fe",
+                                    : selectedAdminConv.type === "student_admin"
+                                    ? "#e0f2fe"
+                                    : "#f1f5f9",
                                 color:
                                   selectedAdminConv.type === "student_tutor"
                                     ? "#15803d"
+                                    : selectedAdminConv.type === "tutor_admin"
+                                    ? "#b45309"
                                     : selectedAdminConv.type === "parent_admin"
                                     ? "#7e22ce"
-                                    : "#0369a1",
+                                    : selectedAdminConv.type === "student_admin"
+                                    ? "#0369a1"
+                                    : "#475569",
                               }}
                             >
                               {selectedAdminConv.type.replace(/_/g, " ")}
@@ -4828,6 +5155,114 @@ export default function AdminDashboard() {
                           })
                         )}
                       </div>
+
+                      {/* Admin Message Compose Form */}
+                      <form
+                        onSubmit={submitAdminMessageReply}
+                        style={{
+                          padding: "0.75rem 1rem",
+                          borderTop: "1px solid #e2e8f0",
+                          background: "#fff",
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: "0.5rem",
+                        }}
+                      >
+                        {adminReplyAttachment && (
+                          <div
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "0.4rem",
+                              background: "#f1f5f9",
+                              border: "1px solid #e2e8f0",
+                              borderRadius: "6px",
+                              padding: "0.25rem 0.5rem",
+                              fontSize: "0.74rem",
+                              color: "#334155",
+                              width: "fit-content",
+                            }}
+                          >
+                            <Paperclip size={13} color="#0d9488" />
+                            <span style={{ maxWidth: "220px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              {adminReplyAttachment.name}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => setAdminReplyAttachment(null)}
+                              style={{ background: "none", border: "none", cursor: "pointer", color: "#94a3b8", display: "flex", alignItems: "center" }}
+                            >
+                              <X size={13} />
+                            </button>
+                          </div>
+                        )}
+
+                        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                          <input
+                            type="text"
+                            placeholder="Send a direct message in this thread as Admin..."
+                            value={adminReplyText}
+                            onChange={(e) => setAdminReplyText(e.target.value)}
+                            style={{
+                              flex: 1,
+                              padding: "0.5rem 0.85rem",
+                              borderRadius: "8px",
+                              border: "1px solid #cbd5e1",
+                              fontSize: "0.8rem",
+                              background: "#f8fafc",
+                              color: "#0f172a",
+                              outline: "none",
+                            }}
+                          />
+
+                          <label
+                            style={{
+                              padding: "0.5rem 0.65rem",
+                              borderRadius: "8px",
+                              border: "1px solid #cbd5e1",
+                              background: "#fff",
+                              color: "#64748b",
+                              cursor: "pointer",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                            }}
+                            title="Attach File or Document"
+                          >
+                            <Paperclip size={15} />
+                            <input
+                              type="file"
+                              style={{ display: "none" }}
+                              onChange={(e) => {
+                                if (e.target.files && e.target.files[0]) {
+                                  setAdminReplyAttachment(e.target.files[0]);
+                                }
+                              }}
+                            />
+                          </label>
+
+                          <button
+                            type="submit"
+                            disabled={isSendingAdminReply || (!adminReplyText.trim() && !adminReplyAttachment)}
+                            style={{
+                              padding: "0.5rem 0.95rem",
+                              borderRadius: "8px",
+                              border: "none",
+                              background: (!adminReplyText.trim() && !adminReplyAttachment) || isSendingAdminReply ? "#94a3b8" : "#0d9488",
+                              color: "#fff",
+                              fontSize: "0.78rem",
+                              fontWeight: 700,
+                              cursor: (!adminReplyText.trim() && !adminReplyAttachment) || isSendingAdminReply ? "not-allowed" : "pointer",
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "0.35rem",
+                            }}
+                          >
+                            <Send size={13} />
+                            {isSendingAdminReply ? "Sending..." : "Send"}
+                          </button>
+                        </div>
+                      </form>
 
                       {/* Audit Mode Footer Notice */}
                       <div
@@ -9193,6 +9628,771 @@ export default function AdminDashboard() {
                 </form>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Admin Chat Contacts Modal (GET /api/admin/chat/contacts) ── */}
+      {showAdminContactsModal && (
+        <div
+          className="modal-overlay"
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15, 23, 42, 0.75)",
+            backdropFilter: "blur(6px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000,
+            padding: "1rem",
+          }}
+          onClick={() => setShowAdminContactsModal(false)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: "#fff",
+              borderRadius: "16px",
+              width: "100%",
+              maxWidth: "680px",
+              maxHeight: "85vh",
+              display: "flex",
+              flexDirection: "column",
+              boxShadow: "0 25px 50px -12px rgba(0,0,0,0.25)",
+              overflow: "hidden",
+            }}
+          >
+            {/* Modal Header */}
+            <div
+              style={{
+                padding: "1.25rem 1.5rem",
+                borderBottom: "1px solid #e2e8f0",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                background: "#f8fafc",
+              }}
+            >
+              <div>
+                <h3 style={{ fontSize: "1.05rem", fontWeight: 800, color: "#0f172a", margin: 0 }}>
+                  Platform Chat Contacts
+                </h3>
+                <p style={{ fontSize: "0.75rem", color: "#64748b", margin: "0.2rem 0 0 0" }}>
+                  Browse tutors, parents, and students to view conversations or initiate 1-on-1 direct messaging.
+                </p>
+              </div>
+              <button
+                onClick={() => setShowAdminContactsModal(false)}
+                style={{
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                  color: "#94a3b8",
+                  padding: "0.4rem",
+                  borderRadius: "6px",
+                  display: "flex",
+                  alignItems: "center",
+                }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Filter and Search Bar */}
+            <div
+              style={{
+                padding: "1rem 1.5rem",
+                borderBottom: "1px solid #f1f5f9",
+                display: "flex",
+                flexDirection: "column",
+                gap: "0.6rem",
+                background: "#fff",
+              }}
+            >
+              {/* Role filter pills */}
+              <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", flexWrap: "wrap" }}>
+                <span style={{ fontSize: "0.72rem", fontWeight: 700, color: "#475569", marginRight: "0.2rem" }}>
+                  Role:
+                </span>
+                {[
+                  { id: "all", label: "All Contacts" },
+                  { id: "tutor", label: "Tutors" },
+                  { id: "parent", label: "Parents" },
+                  { id: "student", label: "Students" },
+                ].map((rf) => {
+                  const isActive = adminContactsRoleFilter === rf.id;
+                  return (
+                    <button
+                      key={rf.id}
+                      onClick={() => {
+                        setAdminContactsRoleFilter(rf.id);
+                        fetchAdminChatContacts(1, { role: rf.id });
+                      }}
+                      style={{
+                        padding: "0.25rem 0.65rem",
+                        borderRadius: "15px",
+                        fontSize: "0.72rem",
+                        fontWeight: isActive ? 700 : 500,
+                        cursor: "pointer",
+                        border: isActive ? "1px solid #0d9488" : "1px solid #e2e8f0",
+                        background: isActive ? "#0d9488" : "#f8fafc",
+                        color: isActive ? "#ffffff" : "#475569",
+                      }}
+                    >
+                      {rf.label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Search form */}
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  fetchAdminChatContacts(1);
+                }}
+                style={{ display: "flex", gap: "0.5rem" }}
+              >
+                <div style={{ flex: 1, position: "relative", display: "flex", alignItems: "center" }}>
+                  <Search size={14} color="#94a3b8" style={{ position: "absolute", left: "0.75rem", pointerEvents: "none" }} />
+                  <input
+                    type="text"
+                    placeholder="Search by name or email..."
+                    value={adminContactsSearch}
+                    onChange={(e) => setAdminContactsSearch(e.target.value)}
+                    style={{
+                      width: "100%",
+                      padding: "0.45rem 0.75rem 0.45rem 2.1rem",
+                      borderRadius: "8px",
+                      border: "1px solid #cbd5e1",
+                      fontSize: "0.78rem",
+                      background: "#fff",
+                      color: "#0f172a",
+                    }}
+                  />
+                </div>
+                <button
+                  type="submit"
+                  style={{
+                    padding: "0.45rem 0.9rem",
+                    borderRadius: "8px",
+                    background: "#0d9488",
+                    color: "#fff",
+                    border: "none",
+                    fontSize: "0.76rem",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                  }}
+                >
+                  Search
+                </button>
+              </form>
+            </div>
+
+            {/* Contacts List */}
+            <div style={{ flex: 1, overflowY: "auto", maxHeight: "420px", padding: "0.5rem 1.5rem" }}>
+              {adminContactsLoading ? (
+                <div style={{ textAlign: "center", padding: "3rem", color: "#94a3b8" }}>
+                  <RefreshCw size={24} className="spin" style={{ margin: "0 auto 0.75rem auto", display: "block" }} />
+                  <p style={{ fontSize: "0.8rem", margin: 0 }}>Loading contacts...</p>
+                </div>
+              ) : adminContacts.length === 0 ? (
+                <div style={{ textAlign: "center", padding: "3rem", color: "#94a3b8" }}>
+                  <Users size={32} style={{ margin: "0 auto 0.75rem auto", display: "block", color: "#cbd5e1" }} />
+                  <p style={{ fontSize: "0.85rem", fontWeight: 600, color: "#64748b", margin: "0 0 0.25rem 0" }}>
+                    No contacts found
+                  </p>
+                  <p style={{ fontSize: "0.75rem", margin: 0 }}>
+                    Try searching with another name or filter by a different role.
+                  </p>
+                </div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                  {adminContacts.map((contact) => {
+                    const isStartingThis = startingChatWithUserId === contact.user_id;
+                    const roleColor =
+                      contact.role === "tutor"
+                        ? { bg: "#ccfbf1", text: "#0f766e" }
+                        : contact.role === "parent"
+                        ? { bg: "#f3e8ff", text: "#7e22ce" }
+                        : { bg: "#e0f2fe", text: "#0369a1" };
+
+                    return (
+                      <div
+                        key={contact.user_id}
+                        style={{
+                          padding: "0.75rem 0.9rem",
+                          borderRadius: "10px",
+                          border: "1px solid #e2e8f0",
+                          background: "#fff",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          gap: "0.75rem",
+                          transition: "box-shadow 0.15s ease",
+                        }}
+                      >
+                        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+                          <div
+                            style={{
+                              width: "38px",
+                              height: "38px",
+                              borderRadius: "50%",
+                              background: roleColor.bg,
+                              color: roleColor.text,
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              fontSize: "0.85rem",
+                              fontWeight: 800,
+                              flexShrink: 0,
+                            }}
+                          >
+                            {contact.name?.charAt(0) || "U"}
+                          </div>
+                          <div>
+                            <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                              <span style={{ fontSize: "0.82rem", fontWeight: 700, color: "#0f172a" }}>
+                                {contact.name}
+                              </span>
+                              <span
+                                style={{
+                                  fontSize: "0.62rem",
+                                  fontWeight: 700,
+                                  textTransform: "uppercase",
+                                  padding: "0.08rem 0.4rem",
+                                  borderRadius: "4px",
+                                  background: roleColor.bg,
+                                  color: roleColor.text,
+                                }}
+                              >
+                                {contact.role}
+                              </span>
+                            </div>
+                            <span style={{ fontSize: "0.72rem", color: "#64748b" }}>
+                              {contact.email}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>
+                          {contact.has_existing_conversation ? (
+                            <button
+                              onClick={() => startChatWithContact(contact)}
+                              style={{
+                                padding: "0.38rem 0.75rem",
+                                borderRadius: "6px",
+                                background: "#f0fdfa",
+                                color: "#0d9488",
+                                border: "1px solid #ccfbf1",
+                                fontSize: "0.74rem",
+                                fontWeight: 700,
+                                cursor: "pointer",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "0.3rem",
+                              }}
+                            >
+                              <MessageSquare size={13} />
+                              Open Existing Chat
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => startChatWithContact(contact)}
+                              disabled={isStartingThis}
+                              style={{
+                                padding: "0.38rem 0.75rem",
+                                borderRadius: "6px",
+                                background: isStartingThis ? "#94a3b8" : "#0d9488",
+                                color: "#fff",
+                                border: "none",
+                                fontSize: "0.74rem",
+                                fontWeight: 700,
+                                cursor: isStartingThis ? "not-allowed" : "pointer",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "0.3rem",
+                              }}
+                            >
+                              {isStartingThis ? (
+                                <>
+                                  <RefreshCw size={12} className="spin" />
+                                  Starting...
+                                </>
+                              ) : (
+                                <>
+                                  <Send size={12} />
+                                  Start Direct Chat
+                                </>
+                              )}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Modal Pagination Footer */}
+            {adminContactsLastPage > 1 && (
+              <div
+                style={{
+                  padding: "0.75rem 1.5rem",
+                  borderTop: "1px solid #f1f5f9",
+                  background: "#f8fafc",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                }}
+              >
+                <button
+                  disabled={adminContactsPage <= 1 || adminContactsLoading}
+                  onClick={() => fetchAdminChatContacts(adminContactsPage - 1)}
+                  style={{
+                    padding: "0.3rem 0.65rem",
+                    borderRadius: "6px",
+                    border: "1px solid #cbd5e1",
+                    background: "#fff",
+                    fontSize: "0.72rem",
+                    fontWeight: 600,
+                    cursor: adminContactsPage <= 1 ? "not-allowed" : "pointer",
+                  }}
+                >
+                  Prev
+                </button>
+                <span style={{ fontSize: "0.72rem", color: "#64748b" }}>
+                  Page {adminContactsPage} of {adminContactsLastPage} ({adminContactsTotal} contacts)
+                </span>
+                <button
+                  disabled={adminContactsPage >= adminContactsLastPage || adminContactsLoading}
+                  onClick={() => fetchAdminChatContacts(adminContactsPage + 1)}
+                  style={{
+                    padding: "0.3rem 0.65rem",
+                    borderRadius: "6px",
+                    border: "1px solid #cbd5e1",
+                    background: "#fff",
+                    fontSize: "0.72rem",
+                    fontWeight: 600,
+                    cursor: adminContactsPage >= adminContactsLastPage ? "not-allowed" : "pointer",
+                  }}
+                >
+                  Next
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Admin Broadcast Modal (POST /api/admin/chat/broadcast) ── */}
+      {showBroadcastModal && (
+        <div
+          className="modal-overlay"
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15, 23, 42, 0.75)",
+            backdropFilter: "blur(6px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000,
+            padding: "1rem",
+          }}
+          onClick={() => !isSubmittingBroadcast && setShowBroadcastModal(false)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: "#fff",
+              borderRadius: "16px",
+              width: "100%",
+              maxWidth: "640px",
+              maxHeight: "90vh",
+              display: "flex",
+              flexDirection: "column",
+              boxShadow: "0 25px 50px -12px rgba(0,0,0,0.25)",
+              overflow: "hidden",
+            }}
+          >
+            {/* Header */}
+            <div
+              style={{
+                padding: "1.25rem 1.5rem",
+                borderBottom: "1px solid #e2e8f0",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                background: "#f8fafc",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>
+                <div
+                  style={{
+                    width: "36px",
+                    height: "36px",
+                    borderRadius: "50%",
+                    background: "#f0fdfa",
+                    color: "#0d9488",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <Radio size={18} />
+                </div>
+                <div>
+                  <h3 style={{ fontSize: "1.05rem", fontWeight: 800, color: "#0f172a", margin: 0 }}>
+                    Broadcast Announcement
+                  </h3>
+                  <p style={{ fontSize: "0.74rem", color: "#64748b", margin: "0.15rem 0 0 0" }}>
+                    Send an individual 1-on-1 direct message from Admin to a platform group.
+                  </p>
+                </div>
+              </div>
+              <button
+                disabled={isSubmittingBroadcast}
+                onClick={() => setShowBroadcastModal(false)}
+                style={{
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                  color: "#94a3b8",
+                  padding: "0.4rem",
+                  borderRadius: "6px",
+                }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Form */}
+            <form onSubmit={submitAdminBroadcast} style={{ display: "flex", flexDirection: "column", flex: 1, overflowY: "auto" }}>
+              <div style={{ padding: "1.25rem 1.5rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
+                {/* Target Audience Selector */}
+                <div>
+                  <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 700, color: "#334155", marginBottom: "0.4rem" }}>
+                    Target Audience *
+                  </label>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))", gap: "0.5rem" }}>
+                    {[
+                      { id: "all_tutors", label: "All Tutors" },
+                      { id: "all_parents", label: "All Parents" },
+                      { id: "all_students", label: "All Students" },
+                      { id: "all", label: "All Users" },
+                      { id: "custom", label: "Custom Group" },
+                    ].map((tg) => {
+                      const isSelected = broadcastTarget === tg.id;
+                      return (
+                        <button
+                          key={tg.id}
+                          type="button"
+                          onClick={() => setBroadcastTarget(tg.id)}
+                          style={{
+                            padding: "0.55rem 0.5rem",
+                            borderRadius: "8px",
+                            border: isSelected ? "2px solid #0d9488" : "1px solid #e2e8f0",
+                            background: isSelected ? "#f0fdfa" : "#fff",
+                            color: isSelected ? "#0d9488" : "#475569",
+                            fontSize: "0.76rem",
+                            fontWeight: isSelected ? 800 : 500,
+                            cursor: "pointer",
+                            textAlign: "center",
+                          }}
+                        >
+                          {tg.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Custom Selection Area (if target === "custom") */}
+                {broadcastTarget === "custom" && (
+                  <div
+                    style={{
+                      border: "1px solid #e2e8f0",
+                      borderRadius: "10px",
+                      padding: "0.85rem",
+                      background: "#f8fafc",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "0.6rem",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                      <span style={{ fontSize: "0.76rem", fontWeight: 700, color: "#334155" }}>
+                        Selected Recipients: {broadcastRecipientIds.length}
+                      </span>
+                      <div style={{ display: "flex", gap: "0.4rem" }}>
+                        <button
+                          type="button"
+                          onClick={() => setBroadcastRecipientIds(adminContacts.map((c) => c.user_id))}
+                          style={{
+                            background: "none",
+                            border: "none",
+                            color: "#0d9488",
+                            fontSize: "0.72rem",
+                            fontWeight: 700,
+                            cursor: "pointer",
+                          }}
+                        >
+                          Select All Visible
+                        </button>
+                        <span style={{ color: "#cbd5e1" }}>|</span>
+                        <button
+                          type="button"
+                          onClick={() => setBroadcastRecipientIds([])}
+                          style={{
+                            background: "none",
+                            border: "none",
+                            color: "#dc2626",
+                            fontSize: "0.72rem",
+                            fontWeight: 700,
+                            cursor: "pointer",
+                          }}
+                        >
+                          Clear
+                        </button>
+                      </div>
+                    </div>
+
+                    <input
+                      type="text"
+                      placeholder="Filter visible contacts..."
+                      value={broadcastCustomSearch}
+                      onChange={(e) => setBroadcastCustomSearch(e.target.value)}
+                      style={{
+                        padding: "0.4rem 0.65rem",
+                        borderRadius: "6px",
+                        border: "1px solid #cbd5e1",
+                        fontSize: "0.75rem",
+                        background: "#fff",
+                      }}
+                    />
+
+                    <div style={{ maxHeight: "160px", overflowY: "auto", display: "flex", flexDirection: "column", gap: "0.3rem" }}>
+                      {adminContacts
+                        .filter((c) =>
+                          broadcastCustomSearch
+                            ? c.name.toLowerCase().includes(broadcastCustomSearch.toLowerCase()) ||
+                              c.email.toLowerCase().includes(broadcastCustomSearch.toLowerCase())
+                            : true
+                        )
+                        .map((contact) => {
+                          const isChecked = broadcastRecipientIds.includes(contact.user_id);
+                          return (
+                            <label
+                              key={contact.user_id}
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: "0.6rem",
+                                padding: "0.35rem 0.5rem",
+                                borderRadius: "6px",
+                                background: isChecked ? "#f0fdfa" : "#fff",
+                                border: isChecked ? "1px solid #ccfbf1" : "1px solid #f1f5f9",
+                                cursor: "pointer",
+                                fontSize: "0.74rem",
+                              }}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={isChecked}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setBroadcastRecipientIds((prev) => [...prev, contact.user_id]);
+                                  } else {
+                                    setBroadcastRecipientIds((prev) => prev.filter((id) => id !== contact.user_id));
+                                  }
+                                }}
+                              />
+                              <span style={{ fontWeight: 600, color: "#1e293b" }}>{contact.name}</span>
+                              <span style={{ color: "#64748b" }}>({contact.role})</span>
+                              <span style={{ color: "#94a3b8", marginLeft: "auto", fontSize: "0.68rem" }}>{contact.email}</span>
+                            </label>
+                          );
+                        })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Subject */}
+                <div>
+                  <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 700, color: "#334155", marginBottom: "0.4rem" }}>
+                    Subject (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Schedule Update / Term 2 Notice / Exam Preparation"
+                    value={broadcastSubject}
+                    onChange={(e) => setBroadcastSubject(e.target.value)}
+                    style={{
+                      width: "100%",
+                      padding: "0.55rem 0.8rem",
+                      borderRadius: "8px",
+                      border: "1px solid #cbd5e1",
+                      fontSize: "0.8rem",
+                      background: "#fff",
+                      color: "#0f172a",
+                    }}
+                  />
+                </div>
+
+                {/* Message */}
+                <div>
+                  <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 700, color: "#334155", marginBottom: "0.4rem" }}>
+                    Broadcast Message *
+                  </label>
+                  <textarea
+                    rows={4}
+                    required
+                    placeholder="Type the message that will be sent to all selected recipients..."
+                    value={broadcastMessage}
+                    onChange={(e) => setBroadcastMessage(e.target.value)}
+                    style={{
+                      width: "100%",
+                      padding: "0.6rem 0.8rem",
+                      borderRadius: "8px",
+                      border: "1px solid #cbd5e1",
+                      fontSize: "0.8rem",
+                      background: "#fff",
+                      color: "#0f172a",
+                      resize: "vertical",
+                    }}
+                  />
+                </div>
+
+                {/* Attachment */}
+                <div>
+                  <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 700, color: "#334155", marginBottom: "0.4rem" }}>
+                    Attach Worksheet or Announcement File (Optional)
+                  </label>
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>
+                    <label
+                      style={{
+                        padding: "0.45rem 0.85rem",
+                        borderRadius: "8px",
+                        border: "1px solid #cbd5e1",
+                        background: "#f8fafc",
+                        fontSize: "0.76rem",
+                        fontWeight: 600,
+                        color: "#334155",
+                        cursor: "pointer",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "0.4rem",
+                      }}
+                    >
+                      <Paperclip size={14} />
+                      Choose File
+                      <input
+                        type="file"
+                        style={{ display: "none" }}
+                        onChange={(e) => {
+                          if (e.target.files && e.target.files[0]) {
+                            setBroadcastAttachment(e.target.files[0]);
+                          }
+                        }}
+                      />
+                    </label>
+
+                    {broadcastAttachment && (
+                      <div style={{ display: "flex", alignItems: "center", gap: "0.3rem", fontSize: "0.75rem", color: "#0d9488" }}>
+                        <span>{broadcastAttachment.name}</span>
+                        <button
+                          type="button"
+                          onClick={() => setBroadcastAttachment(null)}
+                          style={{ background: "none", border: "none", cursor: "pointer", color: "#94a3b8" }}
+                        >
+                          <X size={13} />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Info notice */}
+                <div
+                  style={{
+                    background: "#f0fdfa",
+                    border: "1px solid #ccfbf1",
+                    borderRadius: "8px",
+                    padding: "0.7rem 0.85rem",
+                    fontSize: "0.73rem",
+                    color: "#0f766e",
+                    lineHeight: 1.45,
+                  }}
+                >
+                  Each recipient receives an individual, private 1-on-1 direct message from Admin and an in-app activity notification. Replies remain confidential between Admin and each user.
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div
+                style={{
+                  padding: "1rem 1.5rem",
+                  borderTop: "1px solid #e2e8f0",
+                  background: "#f8fafc",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "flex-end",
+                  gap: "0.6rem",
+                }}
+              >
+                <button
+                  type="button"
+                  disabled={isSubmittingBroadcast}
+                  onClick={() => setShowBroadcastModal(false)}
+                  style={{
+                    padding: "0.55rem 1rem",
+                    borderRadius: "8px",
+                    border: "1px solid #cbd5e1",
+                    background: "#fff",
+                    color: "#475569",
+                    fontSize: "0.78rem",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  Cancel
+                </button>
+
+                <button
+                  type="submit"
+                  disabled={isSubmittingBroadcast || !broadcastMessage.trim()}
+                  style={{
+                    padding: "0.55rem 1.25rem",
+                    borderRadius: "8px",
+                    border: "none",
+                    background: isSubmittingBroadcast || !broadcastMessage.trim() ? "#94a3b8" : "#0d9488",
+                    color: "#fff",
+                    fontSize: "0.78rem",
+                    fontWeight: 700,
+                    cursor: isSubmittingBroadcast || !broadcastMessage.trim() ? "not-allowed" : "pointer",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "0.4rem",
+                    boxShadow: "0 2px 4px rgba(13,148,136,0.25)",
+                  }}
+                >
+                  {isSubmittingBroadcast ? (
+                    <>
+                      <RefreshCw size={14} className="spin" />
+                      Broadcasting...
+                    </>
+                  ) : (
+                    <>
+                      <Send size={14} />
+                      Send Broadcast
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
