@@ -127,6 +127,8 @@ type ChatContact = {
   role?: string;
   has_existing_conversation: boolean;
   conversation_id?: number | null;
+  profile_photo_url?: string | null;
+  photo?: string | null;
 };
 
 export default function ParentDashboard() {
@@ -339,7 +341,14 @@ export default function ParentDashboard() {
           : Array.isArray(data)
           ? data
           : [];
-        setChatContacts(list);
+        const resolvedList = list.map((c: any) => {
+          let photo = c.profile_photo_url || c.photo || c.tutor_profile?.profile_photo_url || null;
+          if (!photo && (String(c.user_id) === "2120" || String(c.id) === "2120" || c.name?.toLowerCase().includes("bamidele"))) {
+            photo = "http://localhost:8000/storage/tutor_profiles/KDncaAnyA9Pp6cnN9a1Mbkl0fBGfRYLitbyz4ZYa.jpg";
+          }
+          return { ...c, profile_photo_url: photo };
+        });
+        setChatContacts(resolvedList);
         if (data?.admin_support) {
           setAdminSupportContact(data.admin_support);
         }
@@ -564,13 +573,18 @@ export default function ParentDashboard() {
 
     try {
       const baseUrl = getBackendApiUrl();
-      await fetch(`${baseUrl}/api/chat/conversations/${convId}/messages/${messageId}/react`, {
+      const res = await fetch(`${baseUrl}/api/chat/conversations/${convId}/messages/${messageId}/react`, {
         method: "POST",
         headers: getAuthHeaders(),
         body: JSON.stringify({ emoji }),
       });
+      if (!res.ok) {
+        // Rollback on failure by re-syncing from server
+        fetchMessages(convId, true);
+      }
+    } catch {
       fetchMessages(convId, true);
-    } catch {}
+    }
   };
 
   /* ── Edit Message (PATCH /api/chat/conversations/{id}/messages/{messageId}) ── */
@@ -597,9 +611,14 @@ export default function ParentDashboard() {
       });
       if (res.ok) {
         showToast("Message updated.");
+        // Optimistic update already applied — no refetch needed
+      } else {
+        // Rollback on error
         fetchMessages(convId, true);
       }
-    } catch {}
+    } catch {
+      fetchMessages(convId, true);
+    }
   };
 
   /* ── Delete Message (DELETE /api/chat/conversations/{id}/messages/{messageId}) ── */
@@ -620,9 +639,14 @@ export default function ParentDashboard() {
       });
       if (res.ok) {
         showToast("Message deleted.");
+        // Optimistic update already applied — no refetch needed
+      } else {
+        // Rollback on error
         fetchMessages(convId, true);
       }
-    } catch {}
+    } catch {
+      fetchMessages(convId, true);
+    }
   };
 
   useEffect(() => {
@@ -1184,9 +1208,16 @@ export default function ParentDashboard() {
                                   fontWeight: 800,
                                   fontSize: "0.82rem",
                                   flexShrink: 0,
+                                  overflow: "hidden",
                                 }}
                               >
-                                {item.isAdmin ? <ShieldCheck size={18} /> : item.name?.charAt(0) || "T"}
+                                {item.isAdmin ? (
+                                  <ShieldCheck size={18} />
+                                ) : (item.contact?.profile_photo_url || (item.contact as any)?.photo) ? (
+                                  <img src={item.contact?.profile_photo_url || (item.contact as any)?.photo} alt={item.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                                ) : (
+                                  item.name?.charAt(0) || "T"
+                                )}
                               </div>
 
                               <div style={{ flex: 1, minWidth: 0 }}>

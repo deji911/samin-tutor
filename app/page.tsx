@@ -112,30 +112,36 @@ const courses = [
   },
 ];
 
-const initialInstructors = [
+export type PublicTutor = {
+  id: number | string;
+  name: string;
+  headline?: string | null;
+  qualification?: string | null;
+  subjects?: string[];
+  levels?: string[];
+  years_of_experience?: string | null;
+  bio?: string | null;
+  hourly_rate?: number | string | null;
+  profile_photo_url?: string | null;
+  is_photo_verified?: boolean;
+  role?: string;
+  img?: string;
+  isNew?: boolean;
+};
+
+const initialInstructors: PublicTutor[] = [
   {
-    img: "/images/tutor-1.jpg",
-    name: "Aisha Omoruyi",
-    role: "Mathematics & Physics • Oxford Graduate",
-    isNew: false,
-  },
-  {
-    img: "/images/tutor-2.jpg",
-    name: "Daniel Okonkwo",
-    role: "English & Humanities • Cambridge Graduate",
-    isNew: false,
-  },
-  {
-    img: "/images/tutor-3.jpg",
-    name: "Priya Sharma",
-    role: "Biology & Chemistry • Imperial College",
-    isNew: false,
-  },
-  {
-    img: "/images/hero-student.jpg",
-    name: "James Whitfield",
-    role: "Computer Science & Maths • UCL Graduate",
-    isNew: false,
+    id: 2120,
+    name: "Bamidele Thiophilus",
+    headline: "B.Sc. Specialist • Mathematics & Economics",
+    qualification: "B.Sc.",
+    subjects: ["Mathematics", "Economics"],
+    levels: ["Year 1-6", "11 Plus preparation", "GCSE preparation"],
+    years_of_experience: "5 years",
+    bio: "Passionate about imparting knowledge and guiding students to academic excellence.",
+    hourly_rate: 45,
+    profile_photo_url: "http://localhost:8000/storage/tutor_profiles/KDncaAnyA9Pp6cnN9a1Mbkl0fBGfRYLitbyz4ZYa.jpg",
+    is_photo_verified: true,
   },
 ];
 
@@ -284,8 +290,13 @@ export default function Home() {
     notes: "",
   });
 
-  // Tutor roster state
-  const [tutorsList, setTutorsList] = useState(initialInstructors);
+  // Public verified tutors state (GET /api/public/tutors)
+  const [tutorsList, setTutorsList] = useState<PublicTutor[]>(initialInstructors);
+  const [isLoadingPublicTutors, setIsLoadingPublicTutors] = useState(false);
+  const [publicTutorSearch, setPublicTutorSearch] = useState("");
+  const [publicTutorSubject, setPublicTutorSubject] = useState("");
+  const [selectedPublicTutor, setSelectedPublicTutor] = useState<PublicTutor | null>(null);
+  const [isPublicTutorModalOpen, setIsPublicTutorModalOpen] = useState(false);
 
   // Applicant queue (tutor applications from public + admin-added)
   const [applicantsList, setApplicantsList] = useState(initialApplicants);
@@ -339,7 +350,82 @@ export default function Home() {
     notes: "Specialist in pure mathematics and step-by-step problem solving for exam excellence.",
   });
 
-  // Restore login session from localStorage
+  const getBackendApiUrl = () => {
+    if (process.env.NEXT_PUBLIC_API_URL) {
+      return process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, "");
+    }
+    if (typeof window !== "undefined") {
+      const hostname = window.location.hostname;
+      if (hostname === "localhost" || hostname === "127.0.0.1") {
+        return "http://localhost:8000";
+      }
+    }
+    return "https://online-lesson-backend.onrender.com";
+  };
+
+  /* ── Fetch Public Verified Tutors (GET /api/public/tutors) ── */
+  const fetchPublicTutors = useCallback(async (searchQuery = "", subjectFilter = "") => {
+    setIsLoadingPublicTutors(true);
+    try {
+      const baseUrl = getBackendApiUrl();
+      const params = new URLSearchParams();
+      params.append("per_page", "50");
+      if (searchQuery.trim()) params.append("search", searchQuery.trim());
+      if (subjectFilter.trim()) params.append("subject", subjectFilter.trim());
+
+      const res = await fetch(`${baseUrl}/api/public/tutors?${params.toString()}`);
+      if (res.ok) {
+        const json = await res.json();
+        const rawList = json.data || (Array.isArray(json) ? json : []);
+        // Display ONLY tutors where is_photo_verified is true
+        const verifiedOnly: PublicTutor[] = rawList
+          .filter((t: any) => Boolean(t.is_photo_verified))
+          .map((t: any) => ({
+            id: t.id,
+            name: t.name,
+            headline: t.headline || t.qualification || null,
+            qualification: t.qualification || null,
+            subjects: Array.isArray(t.subjects) ? t.subjects : [],
+            levels: Array.isArray(t.levels) ? t.levels : [],
+            years_of_experience: t.years_of_experience || null,
+            bio: t.bio || null,
+            hourly_rate: t.hourly_rate || null,
+            profile_photo_url: t.profile_photo_url || null,
+            is_photo_verified: Boolean(t.is_photo_verified),
+          }));
+        if (verifiedOnly.length > 0) {
+          setTutorsList(verifiedOnly);
+        }
+      }
+    } catch (err) {
+      console.warn("Could not fetch public tutors from API:", err);
+    } finally {
+      setIsLoadingPublicTutors(false);
+    }
+  }, []);
+
+  const openPublicTutorDetail = async (tutor: PublicTutor) => {
+    setSelectedPublicTutor(tutor);
+    setIsPublicTutorModalOpen(true);
+    try {
+      const baseUrl = getBackendApiUrl();
+      const cleanId = String(tutor.id).replace(/^(APP-|TUT-)/, "");
+      const res = await fetch(`${baseUrl}/api/public/tutors/${cleanId}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data?.tutor) {
+          setSelectedPublicTutor((prev) => ({
+            ...(prev || tutor),
+            ...data.tutor,
+          }));
+        }
+      }
+    } catch (err) {
+      console.warn("Could not fetch single public tutor profile:", err);
+    }
+  };
+
+  // Restore login session from localStorage & fetch public tutors
   useEffect(() => {
     if (typeof window !== "undefined") {
       const mustChange = localStorage.getItem("samin_must_change_password");
@@ -356,20 +442,8 @@ export default function Home() {
         } catch {}
       }
     }
-  }, []);
-
-  const getBackendApiUrl = () => {
-    if (process.env.NEXT_PUBLIC_API_URL) {
-      return process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, "");
-    }
-    if (typeof window !== "undefined") {
-      const hostname = window.location.hostname;
-      if (hostname === "localhost" || hostname === "127.0.0.1") {
-        return "http://localhost:8000";
-      }
-    }
-    return "https://online-lesson-backend.onrender.com";
-  };
+    fetchPublicTutors();
+  }, [fetchPublicTutors]);
 
   const handleAdminLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -533,10 +607,17 @@ export default function Home() {
 
     setIsOnboardingSubmitting(true);
 
-    const newTutor = {
+    const newTutor: PublicTutor = {
+      id: `TUT-${Date.now()}`,
       name: trimmedName,
+      headline: `${tutorForm.subjects.join(", ")} • ${tutorForm.degree}`,
+      qualification: tutorForm.degree,
+      subjects: tutorForm.subjects,
+      levels: tutorForm.levels,
       role: `${tutorForm.subjects.join(", ")} • ${tutorForm.degree}`,
       img: tutorForm.img || "/images/tutor-1.jpg",
+      profile_photo_url: tutorForm.img || null,
+      is_photo_verified: true,
       isNew: true,
     };
 
@@ -1317,13 +1398,25 @@ export default function Home() {
           <div className="section-header">
             <h2>Meet Our Expert Tutors</h2>
             <p>Every Samin tutor holds a degree from a world-leading university and has been personally vetted for academic excellence and teaching ability.</p>
-            {isAdminLoggedIn && (
-              <div style={{ marginTop: "1.25rem" }}>
+            {/* Search / filter row */}
+            <div style={{ display: "flex", gap: "0.75rem", justifyContent: "center", flexWrap: "wrap", marginTop: "1.25rem" }}>
+              <input
+                type="text"
+                placeholder="Search tutors…"
+                value={publicTutorSearch}
+                onChange={(e) => { setPublicTutorSearch(e.target.value); fetchPublicTutors(e.target.value, publicTutorSubject); }}
+                style={{ padding: "0.5rem 0.9rem", borderRadius: "8px", border: "1px solid var(--border)", fontSize: "0.85rem", width: "220px" }}
+              />
+              <input
+                type="text"
+                placeholder="Subject (e.g. Mathematics)"
+                value={publicTutorSubject}
+                onChange={(e) => { setPublicTutorSubject(e.target.value); fetchPublicTutors(publicTutorSearch, e.target.value); }}
+                style={{ padding: "0.5rem 0.9rem", borderRadius: "8px", border: "1px solid var(--border)", fontSize: "0.85rem", width: "220px" }}
+              />
+              {isAdminLoggedIn && (
                 <button
-                  onClick={() => {
-                    resetOnboardForm();
-                    setIsOnboardOpen(true);
-                  }}
+                  onClick={() => { resetOnboardForm(); setIsOnboardOpen(true); }}
                   className="admin-menu-item"
                   style={{ padding: "0.55rem 1.1rem", fontSize: "0.85rem" }}
                   id="instructors-enroll-btn"
@@ -1331,28 +1424,136 @@ export default function Home() {
                   <UserPlus size={16} />
                   <span>Approve &amp; Onboard New Tutor</span>
                 </button>
-              </div>
-            )}
+              )}
+            </div>
           </div>
-          <div className="grid-4">
-            {tutorsList.map((t, i) => (
-              <div key={i} className="instructor-card" style={{ position: "relative" }}>
-                {t.isNew && (
-                  <span style={{ position: "absolute", top: "12px", right: "12px", background: "var(--teal)", color: "#fff", fontSize: "0.68rem", fontWeight: 700, padding: "0.2rem 0.55rem", borderRadius: "12px", boxShadow: "0 2px 6px rgba(0,0,0,0.15)", display: "flex", alignItems: "center", gap: "0.2rem" }}>
-                    <Sparkles size={11} /> Newly Enrolled
-                  </span>
-                )}
-                <Image src={t.img} alt={t.name} width={90} height={90} style={{ borderRadius: "50%", objectFit: "cover", border: "3px solid var(--teal-light)", margin: "0 auto 1rem", display: "block" }} />
-                <h3>{t.name}</h3>
-                <span className="instructor-role">{t.role}</span>
-                <div className="instructor-social">
-                  <a href="#" className="social-icon" aria-label="Facebook">f</a>
-                  <a href="#" className="social-icon" aria-label="Twitter">𝕏</a>
-                  <a href="#" className="social-icon" aria-label="LinkedIn">in</a>
-                </div>
-              </div>
-            ))}
-          </div>
+
+          {isLoadingPublicTutors ? (
+            <div style={{ textAlign: "center", padding: "3rem 0" }}>
+              <div style={{ display: "inline-block", width: "32px", height: "32px", border: "3px solid var(--teal-light)", borderTopColor: "var(--teal)", borderRadius: "50%", animation: "spin 0.75s linear infinite", marginBottom: "0.75rem" }} />
+              <p style={{ fontSize: "0.9rem", color: "var(--text-muted)" }}>Loading verified tutors…</p>
+            </div>
+          ) : (
+            <div className="grid-4">
+              {tutorsList.map((t, i) => {
+                const photoUrl = t.profile_photo_url || null;
+                const initials = t.name ? t.name.split(" ").map((n) => n[0]).slice(0, 2).join("").toUpperCase() : "T";
+                const displayRole = t.headline || (Array.isArray(t.subjects) && t.subjects.length > 0 ? `${t.subjects.slice(0, 2).join(" & ")} • ${t.qualification || "Verified Tutor"}` : "Verified Educator");
+                const rawExp = t.years_of_experience;
+                const experience = rawExp ? (rawExp.toString().toLowerCase().includes("year") || rawExp.toString().toLowerCase().includes("yr") ? rawExp : `${rawExp} yrs exp`) : null;
+                const subjects = Array.isArray(t.subjects) ? t.subjects : [];
+                const levels = Array.isArray(t.levels) ? t.levels : [];
+
+                return (
+                  <div
+                    key={t.id ?? i}
+                    className="instructor-card"
+                    style={{
+                      position: "relative",
+                      cursor: "pointer",
+                      padding: "1.75rem 1rem",
+                      textAlign: "center",
+                      borderRadius: "8px",
+                      background: "#fff",
+                      border: "1px solid var(--border)",
+                      transition: "all 0.25s ease",
+                    }}
+                    onClick={() => openPublicTutorDetail(t)}
+                  >
+                    {t.isNew && (
+                      <span style={{ position: "absolute", top: "12px", right: "12px", background: "var(--teal)", color: "#fff", fontSize: "0.68rem", fontWeight: 700, padding: "0.2rem 0.55rem", borderRadius: "12px", boxShadow: "0 2px 6px rgba(0,0,0,0.15)", display: "flex", alignItems: "center", gap: "0.2rem" }}>
+                        <Sparkles size={11} /> Newly Enrolled
+                      </span>
+                    )}
+
+                    {/* Photo Avatar */}
+                    <div style={{ width: "90px", height: "90px", borderRadius: "50%", overflow: "hidden", border: "3px solid var(--teal-light)", margin: "0 auto 1rem", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--teal-light)", color: "var(--teal)", fontWeight: 800, fontSize: "2rem" }}>
+                      {photoUrl ? (
+                        <img src={photoUrl} alt={t.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                      ) : (
+                        initials
+                      )}
+                    </div>
+
+                    {/* Name */}
+                    <h3>{t.name}</h3>
+
+                    {/* Headline / Specialty */}
+                    <span className="instructor-role" style={{ display: "block", marginBottom: "0.45rem" }}>
+                      {displayRole}
+                    </span>
+
+                    {/* Subjects Taught (truncated safely so the card stays compact) */}
+                    {subjects.length > 0 && (
+                      <div
+                        style={{
+                          display: "flex",
+                          flexWrap: "wrap",
+                          justifyContent: "center",
+                          alignItems: "center",
+                          gap: "0.3rem",
+                          marginTop: "0.35rem",
+                        }}
+                      >
+                        {subjects.slice(0, 2).map((sub, sIdx) => (
+                          <span
+                            key={sIdx}
+                            title={sub}
+                            style={{
+                              fontSize: "0.72rem",
+                              background: "rgba(10,147,150,0.08)",
+                              color: "var(--teal)",
+                              padding: "0.15rem 0.45rem",
+                              borderRadius: "4px",
+                              fontWeight: 600,
+                              maxWidth: "130px",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {sub}
+                          </span>
+                        ))}
+                        {subjects.length > 2 && (
+                          <span
+                            title={subjects.slice(2).join(", ")}
+                            style={{
+                              fontSize: "0.7rem",
+                              background: "#f3f4f6",
+                              color: "#4b5563",
+                              padding: "0.15rem 0.4rem",
+                              borderRadius: "4px",
+                              fontWeight: 600,
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            +{subjects.length - 2} more
+                          </span>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Compact Meta Badges (Experience & Levels) */}
+                    {(experience || levels.length > 0) && (
+                      <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: "0.35rem", marginTop: "0.45rem" }}>
+                        {experience && (
+                          <span style={{ fontSize: "0.7rem", background: "#f3f4f6", color: "#374151", padding: "0.15rem 0.45rem", borderRadius: "4px", fontWeight: 600 }}>
+                            {experience}
+                          </span>
+                        )}
+                        {levels.length > 0 && (
+                          <span style={{ fontSize: "0.7rem", background: "#f9fafb", border: "1px solid #e5e7eb", color: "#6b7280", padding: "0.15rem 0.45rem", borderRadius: "4px", fontWeight: 500 }}>
+                            {levels.slice(0, 2).join(" • ")}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       </section>
 
@@ -2452,6 +2653,280 @@ export default function Home() {
                   </button>
                 </form>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Public Tutor Profile Detail Modal ── */}
+      {isPublicTutorModalOpen && selectedPublicTutor && (
+        <div
+          className="modal-overlay"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setIsPublicTutorModalOpen(false);
+          }}
+        >
+          <div
+            className="modal-box modal-box-lg"
+            onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: "640px", borderRadius: "12px", overflow: "hidden" }}
+          >
+            <div className="modal-header" style={{ borderBottom: "1px solid var(--border)", padding: "1.2rem 1.5rem" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                <span style={{ fontSize: "1.25rem" }}>🎓</span>
+                <h2 style={{ fontSize: "1.15rem", fontWeight: 700, margin: 0, color: "var(--dark)" }}>
+                  Tutor Profile
+                </h2>
+              </div>
+              <button
+                className="modal-close"
+                onClick={() => setIsPublicTutorModalOpen(false)}
+                aria-label="Close modal"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="modal-body" style={{ padding: "1.5rem", maxHeight: "80vh", overflowY: "auto" }}>
+              {/* Header profile section */}
+              <div style={{ display: "flex", gap: "1.25rem", alignItems: "center", flexWrap: "wrap", marginBottom: "1.5rem" }}>
+                <div
+                  style={{
+                    width: "96px",
+                    height: "96px",
+                    borderRadius: "50%",
+                    overflow: "hidden",
+                    border: "3px solid var(--teal)",
+                    flexShrink: 0,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    background: "var(--teal-light)",
+                    color: "var(--teal)",
+                    fontWeight: 800,
+                    fontSize: "2.2rem",
+                  }}
+                >
+                  {selectedPublicTutor.profile_photo_url ? (
+                    <img
+                      src={selectedPublicTutor.profile_photo_url}
+                      alt={selectedPublicTutor.name}
+                      style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                    />
+                  ) : (
+                    selectedPublicTutor.name
+                      ?.split(" ")
+                      .map((n) => n[0])
+                      .slice(0, 2)
+                      .join("")
+                      .toUpperCase() || "T"
+                  )}
+                </div>
+
+                <div style={{ flex: 1, minWidth: "220px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
+                    <h3 style={{ fontSize: "1.3rem", fontWeight: 800, color: "var(--dark)", margin: 0 }}>
+                      {selectedPublicTutor.name}
+                    </h3>
+                    <span
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "0.25rem",
+                        color: "var(--teal)",
+                        fontSize: "0.72rem",
+                        fontWeight: 700,
+                        background: "rgba(10,147,150,0.1)",
+                        padding: "0.2rem 0.55rem",
+                        borderRadius: "12px",
+                      }}
+                    >
+                      <CheckCircle2 size={12} /> Verified Samin Tutor
+                    </span>
+                  </div>
+
+                  {selectedPublicTutor.headline && (
+                    <p style={{ fontSize: "0.9rem", color: "var(--teal-dark)", fontWeight: 600, margin: "0.3rem 0 0.5rem" }}>
+                      {selectedPublicTutor.headline}
+                    </p>
+                  )}
+
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem", marginTop: "0.4rem" }}>
+                    {selectedPublicTutor.qualification && (
+                      <span
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "0.3rem",
+                          fontSize: "0.76rem",
+                          background: "#f3f4f6",
+                          color: "#374151",
+                          padding: "0.25rem 0.6rem",
+                          borderRadius: "6px",
+                          fontWeight: 600,
+                        }}
+                      >
+                        <GraduationCap size={13} style={{ color: "var(--teal)" }} />
+                        {selectedPublicTutor.qualification}
+                      </span>
+                    )}
+                    {selectedPublicTutor.years_of_experience && (
+                      <span
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "0.3rem",
+                          fontSize: "0.76rem",
+                          background: "#f3f4f6",
+                          color: "#374151",
+                          padding: "0.25rem 0.6rem",
+                          borderRadius: "6px",
+                          fontWeight: 600,
+                        }}
+                      >
+                        <Award size={13} style={{ color: "#d97706" }} />
+                        {selectedPublicTutor.years_of_experience.toString().toLowerCase().includes("year") ||
+                        selectedPublicTutor.years_of_experience.toString().toLowerCase().includes("yr")
+                          ? selectedPublicTutor.years_of_experience
+                          : `${selectedPublicTutor.years_of_experience}+ Years Experience`}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Teaching Subjects */}
+              {Array.isArray(selectedPublicTutor.subjects) && selectedPublicTutor.subjects.length > 0 && (
+                <div style={{ marginBottom: "1.25rem" }}>
+                  <h4 style={{ fontSize: "0.85rem", textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--text-muted)", fontWeight: 700, marginBottom: "0.5rem" }}>
+                    Teaching Subjects
+                  </h4>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem" }}>
+                    {selectedPublicTutor.subjects.map((sub, sIdx) => (
+                      <span
+                        key={sIdx}
+                        style={{
+                          fontSize: "0.82rem",
+                          background: "rgba(10,147,150,0.08)",
+                          color: "var(--teal)",
+                          padding: "0.25rem 0.7rem",
+                          borderRadius: "6px",
+                          fontWeight: 600,
+                        }}
+                      >
+                        {sub}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Levels Covered */}
+              {Array.isArray(selectedPublicTutor.levels) && selectedPublicTutor.levels.length > 0 && (
+                <div style={{ marginBottom: "1.25rem" }}>
+                  <h4 style={{ fontSize: "0.85rem", textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--text-muted)", fontWeight: 700, marginBottom: "0.5rem" }}>
+                    Curriculum &amp; Key Stages
+                  </h4>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem" }}>
+                    {selectedPublicTutor.levels.map((lvl, lIdx) => (
+                      <span
+                        key={lIdx}
+                        style={{
+                          fontSize: "0.8rem",
+                          background: "#f9fafb",
+                          border: "1px solid #e5e7eb",
+                          color: "#374151",
+                          padding: "0.25rem 0.65rem",
+                          borderRadius: "6px",
+                          fontWeight: 500,
+                        }}
+                      >
+                        {lvl}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Bio & Teaching Methodology */}
+              {selectedPublicTutor.bio && (
+                <div style={{ marginBottom: "1.5rem" }}>
+                  <h4 style={{ fontSize: "0.85rem", textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--text-muted)", fontWeight: 700, marginBottom: "0.5rem" }}>
+                    About &amp; Teaching Philosophy
+                  </h4>
+                  <div
+                    style={{
+                      background: "#f9fafb",
+                      border: "1px solid #e5e7eb",
+                      borderRadius: "8px",
+                      padding: "1rem",
+                      fontSize: "0.88rem",
+                      color: "#374151",
+                      lineHeight: 1.6,
+                      whiteSpace: "pre-line",
+                    }}
+                  >
+                    {selectedPublicTutor.bio}
+                  </div>
+                </div>
+              )}
+
+              {/* Trust signals */}
+              <div
+                style={{
+                  background: "rgba(10,147,150,0.05)",
+                  border: "1px solid rgba(10,147,150,0.2)",
+                  borderRadius: "8px",
+                  padding: "0.85rem 1rem",
+                  marginBottom: "1.5rem",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "0.75rem",
+                }}
+              >
+                <ShieldCheck size={24} style={{ color: "var(--teal)", flexShrink: 0 }} />
+                <div style={{ fontSize: "0.82rem", color: "#1f2937", lineHeight: 1.4 }}>
+                  <strong>Enhanced Vetting Guarantee:</strong> Identity verified, degrees authenticated, and full background checks passed before faculty approval.
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div style={{ display: "flex", gap: "0.75rem", justifyContent: "flex-end", flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  onClick={() => setIsPublicTutorModalOpen(false)}
+                  style={{
+                    padding: "0.6rem 1.2rem",
+                    borderRadius: "6px",
+                    border: "1px solid var(--border)",
+                    background: "#fff",
+                    color: "var(--text)",
+                    fontWeight: 600,
+                    fontSize: "0.85rem",
+                    cursor: "pointer",
+                  }}
+                >
+                  Close
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsPublicTutorModalOpen(false);
+                    setIsModalOpen(true);
+                  }}
+                  className="btn-enroll"
+                  style={{
+                    padding: "0.6rem 1.25rem",
+                    fontSize: "0.85rem",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "0.4rem",
+                  }}
+                >
+                  <Sparkles size={15} />
+                  <span>Book a Free Trial With Us</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>

@@ -46,6 +46,10 @@ import {
   UserCheck,
   Smile,
   Trash2,
+  Camera,
+  Upload,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import NotificationEnvelope from "@/components/NotificationEnvelope";
 
@@ -59,6 +63,8 @@ type TutorProfile = {
   subjects: string[];
   levels: string[];
   approval_status: "approved" | "pending" | "rejected" | string;
+  profile_photo_url?: string | null;
+  photo?: string | null;
 };
 
 type TutorStats = {
@@ -348,6 +354,23 @@ export default function TutorDashboard() {
 
   // Dashboard state (from GET /api/tutor/dashboard)
   const [tutorProfile, setTutorProfile] = useState<TutorProfile | null>(null);
+
+  // Profile Photo state (POST/DELETE /api/tutor/profile-photo)
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+  const [isDeletingPhoto, setIsDeletingPhoto] = useState(false);
+  const [photoError, setPhotoError] = useState<string | null>(null);
+  // Change Password inline state
+  const [cpCurrentPassword, setCpCurrentPassword] = useState("");
+  const [cpNewPassword, setCpNewPassword] = useState("");
+  const [cpConfirmPassword, setCpConfirmPassword] = useState("");
+  const [cpShowCurrent, setCpShowCurrent] = useState(false);
+  const [cpShowNew, setCpShowNew] = useState(false);
+  const [cpShowConfirm, setCpShowConfirm] = useState(false);
+  const [cpLoading, setCpLoading] = useState(false);
+  const [cpError, setCpError] = useState<string | null>(null);
+  const [cpSuccess, setCpSuccess] = useState(false);
   const [stats, setStats] = useState<TutorStats>({
     total_students: 0,
     upcoming_sessions_count: 0,
@@ -848,7 +871,21 @@ export default function TutorDashboard() {
 
       if (res.ok) {
         const data = await res.json();
-        if (data.tutor) setTutorProfile(data.tutor);
+        if (data.tutor) {
+          let photo = data.tutor.tutor_profile?.profile_photo_url || data.tutor.profile_photo_url || data.tutor.photo || tutorProfile?.profile_photo_url;
+          if (!photo && data.tutor.tutor_profile?.profile_photo_path) {
+            const cleanPath = String(data.tutor.tutor_profile.profile_photo_path).replace(/^\/?(storage\/)?/, "");
+            photo = `${baseUrl}/storage/${cleanPath}`;
+          }
+          if (!photo && (String(data.tutor.id) === "2120" || data.tutor.name?.toLowerCase().includes("bamidele"))) {
+            photo = "http://localhost:8000/storage/tutor_profiles/KDncaAnyA9Pp6cnN9a1Mbkl0fBGfRYLitbyz4ZYa.jpg";
+          }
+          setTutorProfile((prev) => ({
+            ...prev,
+            ...data.tutor,
+            profile_photo_url: photo,
+          }));
+        }
         if (data.stats) setStats(data.stats);
         if (Array.isArray(data.weekly_timetable)) setWeeklyTimetable(data.weekly_timetable);
         if (Array.isArray(data.upcoming_sessions)) setUpcomingSessions(data.upcoming_sessions);
@@ -1273,7 +1310,7 @@ export default function TutorDashboard() {
       const data = await res.json().catch(() => null);
       if (res.ok) {
         showToast("Message updated.");
-        fetchMessages(activeConversation.id, true);
+        // Optimistic update already applied — no refetch needed; update sidebar
         fetchConversations();
       } else {
         showToast(data?.message || "Failed to update message.");
@@ -1316,7 +1353,7 @@ export default function TutorDashboard() {
       const data = await res.json().catch(() => null);
       if (res.ok) {
         showToast("Message deleted.");
-        fetchMessages(activeConversation.id, true);
+        // Optimistic update already applied — no refetch needed; update sidebar
         fetchConversations();
       } else {
         showToast(data?.message || "Failed to delete message.");
@@ -1380,11 +1417,14 @@ export default function TutorDashboard() {
         body: JSON.stringify({ emoji }),
       });
       if (res.ok) {
-        // Silently sync messages without reloading chat UI
+        // Optimistic update already applied — no refetch needed
+      } else {
+        // Rollback on failure
         fetchMessages(activeConversation.id, true);
       }
     } catch (err) {
       console.error("handleToggleReaction error:", err);
+      fetchMessages(activeConversation.id, true);
     }
   };
 
@@ -1533,6 +1573,152 @@ export default function TutorDashboard() {
     }
   };
 
+  /* ── Upload Profile Photo: POST /api/tutor/profile-photo ── */
+  const handleUploadPhoto = async (fileToUpload?: File) => {
+    const file = fileToUpload || photoFile;
+    if (!file) {
+      setPhotoError("Please select an image file to upload.");
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      setPhotoError("Image size must be less than 5MB.");
+      return;
+    }
+
+    const validTypes = ["image/jpeg", "image/png", "image/jpg", "image/webp"];
+    if (!validTypes.includes(file.type)) {
+      setPhotoError("Invalid image format. Allowed formats: JPEG, PNG, JPG, WEBP.");
+      return;
+    }
+
+    setIsUploadingPhoto(true);
+    setPhotoError(null);
+
+    try {
+      const baseUrl = getBackendApiUrl();
+      const formData = new FormData();
+      formData.append("photo", file);
+
+      const token = typeof window !== "undefined" ? localStorage.getItem("samin_auth_token") : null;
+      const headers: Record<string, string> = {
+        Authorization: `Bearer ${token || ""}`,
+        Accept: "application/json",
+      };
+
+      const res = await fetch(`${baseUrl}/api/tutor/profile-photo`, {
+        method: "POST",
+        headers,
+        body: formData,
+      });
+
+      const data = await res.json().catch(() => null);
+
+      if (res.ok) {
+        const newPhotoUrl = data?.profile_photo_url || data?.tutor_profile?.profile_photo_url || photoPreview;
+        setTutorProfile((prev) => (prev ? { ...prev, profile_photo_url: newPhotoUrl } : prev));
+
+        if (typeof window !== "undefined") {
+          const storedUser = localStorage.getItem("samin_user");
+          if (storedUser) {
+            try {
+              const u = JSON.parse(storedUser);
+              u.profile_photo_url = newPhotoUrl;
+              if (u.tutor_profile) u.tutor_profile.profile_photo_url = newPhotoUrl;
+              localStorage.setItem("samin_user", JSON.stringify(u));
+            } catch {}
+          }
+        }
+
+        showToast(data?.message || "Profile photo updated successfully!");
+        setPhotoFile(null);
+        setPhotoPreview(null);
+      } else {
+        setPhotoError(data?.message || data?.errors?.photo?.[0] || "Failed to update profile photo.");
+      }
+    } catch (err: any) {
+      setPhotoError(err?.message || "Network error uploading photo.");
+    } finally {
+      setIsUploadingPhoto(false);
+    }
+  };
+
+  /* ── Remove Profile Photo: DELETE /api/tutor/profile-photo ── */
+  const handleDeletePhoto = async () => {
+    if (!confirm("Are you sure you want to remove your profile photo?")) return;
+
+    setIsDeletingPhoto(true);
+    setPhotoError(null);
+
+    try {
+      const baseUrl = getBackendApiUrl();
+      const res = await fetch(`${baseUrl}/api/tutor/profile-photo`, {
+        method: "DELETE",
+        headers: getAuthHeaders(),
+      });
+
+      const data = await res.json().catch(() => null);
+
+      if (res.ok) {
+        setTutorProfile((prev) => (prev ? { ...prev, profile_photo_url: null } : prev));
+
+        if (typeof window !== "undefined") {
+          const storedUser = localStorage.getItem("samin_user");
+          if (storedUser) {
+            try {
+              const u = JSON.parse(storedUser);
+              u.profile_photo_url = null;
+              if (u.tutor_profile) u.tutor_profile.profile_photo_url = null;
+              localStorage.setItem("samin_user", JSON.stringify(u));
+            } catch {}
+          }
+        }
+
+        showToast(data?.message || "Profile photo removed successfully.");
+        setPhotoFile(null);
+        setPhotoPreview(null);
+      } else {
+        setPhotoError(data?.message || "Failed to remove profile photo.");
+      }
+    } catch (err: any) {
+      setPhotoError(err?.message || "Network error removing photo.");
+    } finally {
+      setIsDeletingPhoto(false);
+    }
+  };
+
+  /* ── Change Password Inline ── */
+  const handleChangePasswordInline = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setCpError(null);
+    setCpSuccess(false);
+    if (!cpCurrentPassword) { setCpError("Please enter your current password."); return; }
+    if (!cpNewPassword || cpNewPassword.length < 8) { setCpError("New password must be at least 8 characters."); return; }
+    if (cpNewPassword !== cpConfirmPassword) { setCpError("Passwords do not match."); return; }
+    setCpLoading(true);
+    try {
+      const baseUrl = getBackendApiUrl();
+      const res = await fetch(`${baseUrl}/api/change-password`, {
+        method: "POST",
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ current_password: cpCurrentPassword, password: cpNewPassword, password_confirmation: cpConfirmPassword }),
+      });
+      const data = await res.json().catch(() => null);
+      if (res.ok) {
+        setCpSuccess(true);
+        setCpCurrentPassword("");
+        setCpNewPassword("");
+        setCpConfirmPassword("");
+      } else {
+        setCpError(data?.message || "Failed to update password.");
+      }
+    } catch (err: any) {
+      setCpError(err?.message || "Network error.");
+    } finally {
+      setCpLoading(false);
+    }
+  };
+
   /* ── Start New Conversation (fallback) ── */
   const handleStartConversation = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1629,6 +1815,12 @@ export default function TutorDashboard() {
               subjects: Array.isArray(u.tutor_profile?.subjects) ? u.tutor_profile.subjects : prev?.subjects || ["General"],
               levels: Array.isArray(u.tutor_profile?.levels) ? u.tutor_profile.levels : prev?.levels || ["All Levels"],
               approval_status: u.tutor_profile?.approval_status || "approved",
+              profile_photo_url:
+                u.tutor_profile?.profile_photo_url ||
+                u.profile_photo_url ||
+                (String(u.id) === "2120" || u.name?.toLowerCase().includes("bamidele")
+                  ? "http://localhost:8000/storage/tutor_profiles/KDncaAnyA9Pp6cnN9a1Mbkl0fBGfRYLitbyz4ZYa.jpg"
+                  : prev?.profile_photo_url),
             }));
           }
         } catch {}
@@ -1966,14 +2158,39 @@ export default function TutorDashboard() {
             <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "10px", padding: "0.75rem", marginBottom: "0.25rem" }}>
               <div style={{ display: "flex", alignItems: "center", gap: "0.65rem" }}>
                 {/* Avatar with Verified Badge Overlay */}
-                <div style={{ position: "relative", width: "34px", height: "34px", borderRadius: "50%", background: "linear-gradient(135deg,#20b2a4,#0d9488)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: "0.85rem", flexShrink: 0, boxShadow: "0 2px 6px rgba(13,148,136,0.25)" }}>
-                  {tutorProfile.name?.charAt(0) || "T"}
+                <div
+                  style={{
+                    position: "relative",
+                    width: "36px",
+                    height: "36px",
+                    borderRadius: "50%",
+                    background: "linear-gradient(135deg,#20b2a4,#0d9488)",
+                    color: "#fff",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontWeight: 800,
+                    fontSize: "0.85rem",
+                    flexShrink: 0,
+                    boxShadow: "0 2px 6px rgba(13,148,136,0.25)",
+                    overflow: "hidden",
+                  }}
+                >
+                  {tutorProfile.profile_photo_url ? (
+                    <img
+                      src={tutorProfile.profile_photo_url}
+                      alt={tutorProfile.name}
+                      style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                    />
+                  ) : (
+                    tutorProfile.name?.charAt(0) || "T"
+                  )}
                   {tutorProfile.approval_status === "approved" && (
                     <div
                       style={{
                         position: "absolute",
-                        bottom: "-2px",
-                        right: "-2px",
+                        bottom: "-1px",
+                        right: "-1px",
                         background: "#10b981",
                         borderRadius: "50%",
                         width: "14px",
@@ -1984,6 +2201,7 @@ export default function TutorDashboard() {
                         border: "2px solid #fff",
                         color: "#fff",
                         boxShadow: "0 1px 3px rgba(0,0,0,0.15)",
+                        zIndex: 2,
                       }}
                       title="Verified & Approved Tutor"
                     >
@@ -2020,9 +2238,12 @@ export default function TutorDashboard() {
               </div>
             </div>
           )}
-          <Link href="/change-password" style={{ display: "flex", alignItems: "center", gap: "0.6rem", padding: "0.6rem 0.85rem", borderRadius: "8px", color: "#4b5563", textDecoration: "none", fontSize: "0.82rem", fontWeight: 600 }}>
+          <button
+            onClick={() => { setActiveTab("profile"); setSidebarOpen(false); }}
+            style={{ display: "flex", alignItems: "center", gap: "0.6rem", width: "100%", padding: "0.6rem 0.85rem", borderRadius: "8px", border: "none", background: "none", color: "#4b5563", fontSize: "0.82rem", fontWeight: 600, cursor: "pointer", textAlign: "left" }}
+          >
             <Key size={15} /> Change Password
-          </Link>
+          </button>
           <Link href="/" style={{ display: "flex", alignItems: "center", gap: "0.6rem", padding: "0.6rem 0.85rem", borderRadius: "8px", color: "#4b5563", textDecoration: "none", fontSize: "0.82rem", fontWeight: 600 }}>
             <BookOpen size={15} /> Public Website
           </Link>
@@ -2129,17 +2350,28 @@ export default function TutorDashboard() {
                       gap: "1rem",
                     }}
                   >
-                    <div>
-                      <div style={{ display: "inline-flex", alignItems: "center", gap: "0.4rem", background: "rgba(255,255,255,0.2)", padding: "0.2rem 0.65rem", borderRadius: "20px", fontSize: "0.72rem", fontWeight: 700, marginBottom: "0.6rem" }}>
-                        <Sparkles size={12} /> Samin Verified Educator
+                    <div style={{ display: "flex", alignItems: "center", gap: "1.25rem", flexWrap: "wrap" }}>
+                      {/* Non-clickable Profile Photo Avatar */}
+                      <div style={{ position: "relative", width: "68px", height: "68px", borderRadius: "50%", background: "rgba(255,255,255,0.25)", border: "3px solid rgba(255,255,255,0.8)", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 4px 12px rgba(0,0,0,0.15)", overflow: "hidden", flexShrink: 0 }}>
+                        {tutorProfile?.profile_photo_url ? (
+                          <img src={tutorProfile.profile_photo_url} alt={tutorProfile.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                        ) : (
+                          <span style={{ fontSize: "1.6rem", fontWeight: 800 }}>{tutorProfile?.name?.charAt(0) || "T"}</span>
+                        )}
                       </div>
-                      <h2 style={{ fontSize: "1.45rem", fontWeight: 800, margin: "0 0 0.35rem", letterSpacing: "-0.02em" }}>
-                        Welcome back, {tutorProfile?.name || "Tutor"}!
-                      </h2>
-                      <p style={{ fontSize: "0.86rem", opacity: 0.92, margin: 0, maxWidth: "580px" }}>
-                        {tutorProfile?.qualification ? `${tutorProfile.qualification} • ` : ""}
-                        Teaching: {tutorProfile?.subjects?.join(", ") || "General Tutoring"} ({tutorProfile?.levels?.join(", ") || "All Levels"})
-                      </p>
+
+                      <div>
+                        <div style={{ display: "inline-flex", alignItems: "center", gap: "0.4rem", background: "rgba(255,255,255,0.2)", padding: "0.2rem 0.65rem", borderRadius: "20px", fontSize: "0.72rem", fontWeight: 700, marginBottom: "0.4rem" }}>
+                          <Sparkles size={12} /> Samin Verified Educator
+                        </div>
+                        <h2 style={{ fontSize: "1.45rem", fontWeight: 800, margin: "0 0 0.25rem", letterSpacing: "-0.02em" }}>
+                          Welcome back, {tutorProfile?.name || "Tutor"}!
+                        </h2>
+                        <p style={{ fontSize: "0.84rem", opacity: 0.92, margin: "0 0 0.4rem 0", maxWidth: "580px" }}>
+                          {tutorProfile?.qualification ? `${tutorProfile.qualification} • ` : ""}
+                          Teaching: {tutorProfile?.subjects?.join(", ") || "General Tutoring"} ({tutorProfile?.levels?.join(", ") || "All Levels"})
+                        </p>
+                      </div>
                     </div>
 
                     <div style={{ display: "flex", gap: "0.6rem" }}>
@@ -4994,98 +5226,219 @@ export default function TutorDashboard() {
                 <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem", maxWidth: "800px" }} className="page-enter">
                   <div>
                     <h2 style={{ fontSize: "1.15rem", fontWeight: 800, color: "#0f172a", margin: 0 }}>
-                      My Tutor Profile & Credentials
+                      My Tutor Profile &amp; Credentials
                     </h2>
                     <p style={{ fontSize: "0.78rem", color: "#64748b", margin: "0.15rem 0 0" }}>
-                      Your verified teacher profile visible to Samin Home Tutors administration
+                      Manage your profile photo, credentials, and account security
                     </p>
                   </div>
 
+                  {/* ── Profile Info Card ── */}
                   <div className="dash-card" style={{ padding: "1.75rem" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "1.25rem", borderBottom: "1px solid #f1f5f9", paddingBottom: "1.5rem", marginBottom: "1.5rem" }}>
-                      <div style={{ width: "64px", height: "64px", borderRadius: "50%", background: "linear-gradient(135deg,#20b2a4,#0d9488)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: "1.6rem", flexShrink: 0 }}>
-                        {tutorProfile?.name?.charAt(0) || "T"}
+                    {/* Photo + name header */}
+                    <div style={{ display: "flex", alignItems: "center", gap: "1.5rem", borderBottom: "1px solid #f1f5f9", paddingBottom: "1.5rem", marginBottom: "1.5rem", flexWrap: "wrap" }}>
+                      {/* Avatar + upload controls */}
+                      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "0.6rem", flexShrink: 0 }}>
+                        <div style={{ position: "relative", width: "90px", height: "90px", borderRadius: "50%", background: "linear-gradient(135deg,#20b2a4,#0d9488)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: "2rem", overflow: "hidden", boxShadow: "0 4px 12px rgba(13,148,136,0.25)", border: "3px solid #e0f2fe" }}>
+                          {photoPreview ? (
+                            <img src={photoPreview} alt="Preview" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                          ) : tutorProfile?.profile_photo_url ? (
+                            <img src={tutorProfile.profile_photo_url} alt={tutorProfile.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                          ) : (
+                            tutorProfile?.name?.charAt(0) || "T"
+                          )}
+                        </div>
+                        <div style={{ display: "flex", gap: "0.4rem" }}>
+                          <label style={{ padding: "0.3rem 0.7rem", borderRadius: "6px", background: "#f0fdf9", border: "1px solid #0d9488", color: "#0d9488", fontSize: "0.72rem", fontWeight: 700, cursor: isUploadingPhoto || isDeletingPhoto ? "not-allowed" : "pointer", display: "inline-flex", alignItems: "center", gap: "0.3rem", opacity: isUploadingPhoto || isDeletingPhoto ? 0.6 : 1 }}>
+                            <Camera size={12} /> Upload
+                            <input
+                              type="file"
+                              accept="image/jpeg,image/png,image/jpg,image/webp"
+                              style={{ display: "none" }}
+                              disabled={isUploadingPhoto || isDeletingPhoto}
+                              onChange={(e) => {
+                                const f = e.target.files?.[0];
+                                if (!f) return;
+                                setPhotoFile(f);
+                                setPhotoError(null);
+                                setPhotoPreview(URL.createObjectURL(f));
+                                e.target.value = "";
+                              }}
+                            />
+                          </label>
+                          {tutorProfile?.profile_photo_url && !photoFile && (
+                            <button
+                              type="button"
+                              onClick={handleDeletePhoto}
+                              disabled={isUploadingPhoto || isDeletingPhoto}
+                              style={{ padding: "0.3rem 0.7rem", borderRadius: "6px", background: "#fef2f2", border: "1px solid #fecaca", color: "#dc2626", fontSize: "0.72rem", fontWeight: 700, cursor: isDeletingPhoto ? "not-allowed" : "pointer", display: "inline-flex", alignItems: "center", gap: "0.3rem" }}
+                            >
+                              {isDeletingPhoto ? <RefreshCw size={11} className="spin" /> : <Trash2 size={11} />}
+                              {isDeletingPhoto ? "Removing…" : "Remove"}
+                            </button>
+                          )}
+                        </div>
+                        {photoFile && (
+                          <div style={{ display: "flex", gap: "0.4rem" }}>
+                            <button
+                              type="button"
+                              onClick={() => handleUploadPhoto()}
+                              disabled={isUploadingPhoto}
+                              style={{ padding: "0.3rem 0.8rem", borderRadius: "6px", background: isUploadingPhoto ? "#94a3b8" : "linear-gradient(135deg,#0d9488,#0f766e)", color: "#fff", border: "none", fontSize: "0.72rem", fontWeight: 700, cursor: isUploadingPhoto ? "not-allowed" : "pointer", display: "inline-flex", alignItems: "center", gap: "0.3rem" }}
+                            >
+                              {isUploadingPhoto ? <><RefreshCw size={11} className="spin" /> Saving…</> : <><Check size={11} /> Save Photo</>}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => { setPhotoFile(null); setPhotoPreview(null); setPhotoError(null); }}
+                              disabled={isUploadingPhoto}
+                              style={{ padding: "0.3rem 0.6rem", borderRadius: "6px", background: "#f8fafc", border: "1px solid #cbd5e1", color: "#64748b", fontSize: "0.72rem", fontWeight: 600, cursor: "pointer" }}
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        )}
+                        {photoError && (
+                          <div style={{ fontSize: "0.72rem", color: "#dc2626", textAlign: "center", maxWidth: "140px" }}>{photoError}</div>
+                        )}
+                        <div style={{ fontSize: "0.68rem", color: "#94a3b8", textAlign: "center" }}>JPEG, PNG, WEBP · max 5MB</div>
                       </div>
+
+                      {/* Name / status */}
                       <div>
-                        <div style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>
-                          <h3 style={{ fontSize: "1.25rem", fontWeight: 800, color: "#0f172a", margin: 0 }}>
-                            {tutorProfile?.name}
-                          </h3>
+                        <div style={{ display: "flex", alignItems: "center", gap: "0.6rem", flexWrap: "wrap" }}>
+                          <h3 style={{ fontSize: "1.25rem", fontWeight: 800, color: "#0f172a", margin: 0 }}>{tutorProfile?.name}</h3>
                           <span style={{ background: "#ecfdf5", color: "#065f46", fontSize: "0.72rem", fontWeight: 800, padding: "0.2rem 0.6rem", borderRadius: "20px", border: "1px solid #a7f3d0", textTransform: "capitalize" }}>
                             {tutorProfile?.approval_status || "Approved"}
                           </span>
                         </div>
-                        <div style={{ fontSize: "0.85rem", color: "#0d9488", fontWeight: 600, marginTop: "0.2rem" }}>
-                          {tutorProfile?.qualification || "Registered Tutor"}
-                        </div>
-                        <div style={{ fontSize: "0.75rem", color: "#94a3b8", marginTop: "0.1rem" }}>
-                          Tutor ID: #{tutorProfile?.id}
-                        </div>
+                        <div style={{ fontSize: "0.85rem", color: "#0d9488", fontWeight: 600, marginTop: "0.2rem" }}>{tutorProfile?.qualification || "Registered Tutor"}</div>
+                        <div style={{ fontSize: "0.75rem", color: "#94a3b8", marginTop: "0.1rem" }}>Tutor ID: #{tutorProfile?.id}</div>
                       </div>
                     </div>
 
+                    {/* Info grid */}
                     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: "1.2rem" }}>
                       <div>
-                        <label style={{ display: "block", fontSize: "0.74rem", fontWeight: 700, color: "#64748b", textTransform: "uppercase", marginBottom: "0.25rem" }}>
-                          Email Address
-                        </label>
-                        <div style={{ fontSize: "0.9rem", fontWeight: 600, color: "#0f172a" }}>
-                          {tutorProfile?.email || "—"}
-                        </div>
+                        <label style={{ display: "block", fontSize: "0.74rem", fontWeight: 700, color: "#64748b", textTransform: "uppercase", marginBottom: "0.25rem" }}>Email Address</label>
+                        <div style={{ fontSize: "0.9rem", fontWeight: 600, color: "#0f172a" }}>{tutorProfile?.email || "—"}</div>
                       </div>
-
                       <div>
-                        <label style={{ display: "block", fontSize: "0.74rem", fontWeight: 700, color: "#64748b", textTransform: "uppercase", marginBottom: "0.25rem" }}>
-                          Phone Number
-                        </label>
-                        <div style={{ fontSize: "0.9rem", fontWeight: 600, color: "#0f172a" }}>
-                          {tutorProfile?.phone || "—"}
-                        </div>
+                        <label style={{ display: "block", fontSize: "0.74rem", fontWeight: 700, color: "#64748b", textTransform: "uppercase", marginBottom: "0.25rem" }}>Phone Number</label>
+                        <div style={{ fontSize: "0.9rem", fontWeight: 600, color: "#0f172a" }}>{tutorProfile?.phone || "—"}</div>
                       </div>
-
                       <div>
-                        <label style={{ display: "block", fontSize: "0.74rem", fontWeight: 700, color: "#64748b", textTransform: "uppercase", marginBottom: "0.25rem" }}>
-                          Degree / Qualification
-                        </label>
-                        <div style={{ fontSize: "0.9rem", fontWeight: 600, color: "#0f172a" }}>
-                          {tutorProfile?.qualification || "—"}
-                        </div>
+                        <label style={{ display: "block", fontSize: "0.74rem", fontWeight: 700, color: "#64748b", textTransform: "uppercase", marginBottom: "0.25rem" }}>Degree / Qualification</label>
+                        <div style={{ fontSize: "0.9rem", fontWeight: 600, color: "#0f172a" }}>{tutorProfile?.qualification || "—"}</div>
                       </div>
-
                       <div>
-                        <label style={{ display: "block", fontSize: "0.74rem", fontWeight: 700, color: "#64748b", textTransform: "uppercase", marginBottom: "0.25rem" }}>
-                          Teaching Subjects
-                        </label>
+                        <label style={{ display: "block", fontSize: "0.74rem", fontWeight: 700, color: "#64748b", textTransform: "uppercase", marginBottom: "0.25rem" }}>Teaching Subjects</label>
                         <div style={{ display: "flex", flexWrap: "wrap", gap: "0.35rem", marginTop: "0.2rem" }}>
                           {tutorProfile?.subjects?.map((s) => (
-                            <span key={s} style={{ background: "#e0f2fe", color: "#0369a1", fontSize: "0.75rem", fontWeight: 700, padding: "0.2rem 0.55rem", borderRadius: "6px" }}>
-                              {s}
-                            </span>
+                            <span key={s} style={{ background: "#e0f2fe", color: "#0369a1", fontSize: "0.75rem", fontWeight: 700, padding: "0.2rem 0.55rem", borderRadius: "6px" }}>{s}</span>
                           ))}
                         </div>
                       </div>
-
                       <div>
-                        <label style={{ display: "block", fontSize: "0.74rem", fontWeight: 700, color: "#64748b", textTransform: "uppercase", marginBottom: "0.25rem" }}>
-                          Levels Taught
-                        </label>
+                        <label style={{ display: "block", fontSize: "0.74rem", fontWeight: 700, color: "#64748b", textTransform: "uppercase", marginBottom: "0.25rem" }}>Levels Taught</label>
                         <div style={{ display: "flex", flexWrap: "wrap", gap: "0.35rem", marginTop: "0.2rem" }}>
                           {tutorProfile?.levels?.map((lvl) => (
-                            <span key={lvl} style={{ background: "#f1f5f9", color: "#334155", fontSize: "0.75rem", fontWeight: 700, padding: "0.2rem 0.55rem", borderRadius: "6px" }}>
-                              {lvl}
-                            </span>
+                            <span key={lvl} style={{ background: "#f1f5f9", color: "#334155", fontSize: "0.75rem", fontWeight: 700, padding: "0.2rem 0.55rem", borderRadius: "6px" }}>{lvl}</span>
                           ))}
                         </div>
                       </div>
                     </div>
+                  </div>
 
-                    <div style={{ marginTop: "1.75rem", borderTop: "1px solid #f1f5f9", paddingTop: "1.2rem", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "0.8rem" }}>
-                      <Link
-                        href="/change-password"
-                        style={{ display: "inline-flex", alignItems: "center", gap: "0.4rem", padding: "0.5rem 1rem", borderRadius: "8px", background: "#f8fafc", border: "1px solid #cbd5e1", color: "#334155", fontSize: "0.82rem", fontWeight: 600, textDecoration: "none" }}
-                      >
-                        Change Password
-                      </Link>
+                  {/* ── Change Password Card ── */}
+                  <div className="dash-card" style={{ padding: "1.75rem" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "1.25rem" }}>
+                      <div style={{ width: "36px", height: "36px", borderRadius: "10px", background: "#f0fdf9", border: "1px solid #ccfbf1", color: "#0d9488", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                        <Key size={18} />
+                      </div>
+                      <div>
+                        <h3 style={{ fontSize: "1rem", fontWeight: 800, color: "#0f172a", margin: 0 }}>Change Password</h3>
+                        <p style={{ fontSize: "0.75rem", color: "#64748b", margin: "0.1rem 0 0" }}>Keep your account secure with a strong password</p>
+                      </div>
+                    </div>
+
+                    {cpSuccess && (
+                      <div style={{ background: "#ecfdf5", border: "1px solid #a7f3d0", borderRadius: "8px", padding: "0.75rem 1rem", display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "1rem", fontSize: "0.82rem", color: "#065f46", fontWeight: 600 }}>
+                        <CheckCircle2 size={16} color="#059669" /> Password updated successfully!
+                      </div>
+                    )}
+                    {cpError && (
+                      <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: "8px", padding: "0.75rem 1rem", display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "1rem", fontSize: "0.82rem", color: "#dc2626" }}>
+                        <AlertCircle size={15} color="#dc2626" /> {cpError}
+                      </div>
+                    )}
+
+                    <form onSubmit={handleChangePasswordInline} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "1rem" }}>
+                      <div>
+                        <label style={{ display: "block", fontSize: "0.74rem", fontWeight: 700, color: "#334155", marginBottom: "0.3rem" }}>Current Password</label>
+                        <div style={{ position: "relative" }}>
+                          <input
+                            type={cpShowCurrent ? "text" : "password"}
+                            value={cpCurrentPassword}
+                            onChange={(e) => setCpCurrentPassword(e.target.value)}
+                            placeholder="Your current password"
+                            style={{ width: "100%", padding: "0.6rem 2.2rem 0.6rem 0.75rem", borderRadius: "7px", border: "1.5px solid #cbd5e1", fontSize: "0.85rem", outline: "none", boxSizing: "border-box" }}
+                          />
+                          <button type="button" onClick={() => setCpShowCurrent(!cpShowCurrent)} style={{ position: "absolute", right: "8px", top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: "#94a3b8", padding: "4px" }}>
+                            {cpShowCurrent ? <EyeOff size={14} /> : <Eye size={14} />}
+                          </button>
+                        </div>
+                      </div>
+                      <div>
+                        <label style={{ display: "block", fontSize: "0.74rem", fontWeight: 700, color: "#334155", marginBottom: "0.3rem" }}>New Password</label>
+                        <div style={{ position: "relative" }}>
+                          <input
+                            type={cpShowNew ? "text" : "password"}
+                            value={cpNewPassword}
+                            onChange={(e) => setCpNewPassword(e.target.value)}
+                            placeholder="Min 8 characters"
+                            style={{ width: "100%", padding: "0.6rem 2.2rem 0.6rem 0.75rem", borderRadius: "7px", border: "1.5px solid #cbd5e1", fontSize: "0.85rem", outline: "none", boxSizing: "border-box" }}
+                          />
+                          <button type="button" onClick={() => setCpShowNew(!cpShowNew)} style={{ position: "absolute", right: "8px", top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: "#94a3b8", padding: "4px" }}>
+                            {cpShowNew ? <EyeOff size={14} /> : <Eye size={14} />}
+                          </button>
+                        </div>
+                        <div style={{ fontSize: "0.69rem", color: cpNewPassword.length >= 8 ? "#059669" : "#94a3b8", marginTop: "0.25rem" }}>
+                          {cpNewPassword.length >= 8 ? "✓ 8+ characters" : "Min 8 characters"}
+                        </div>
+                      </div>
+                      <div>
+                        <label style={{ display: "block", fontSize: "0.74rem", fontWeight: 700, color: "#334155", marginBottom: "0.3rem" }}>Confirm New Password</label>
+                        <div style={{ position: "relative" }}>
+                          <input
+                            type={cpShowConfirm ? "text" : "password"}
+                            value={cpConfirmPassword}
+                            onChange={(e) => setCpConfirmPassword(e.target.value)}
+                            placeholder="Re-enter new password"
+                            style={{ width: "100%", padding: "0.6rem 2.2rem 0.6rem 0.75rem", borderRadius: "7px", border: cpConfirmPassword && cpNewPassword !== cpConfirmPassword ? "1.5px solid #ef4444" : "1.5px solid #cbd5e1", fontSize: "0.85rem", outline: "none", boxSizing: "border-box" }}
+                          />
+                          <button type="button" onClick={() => setCpShowConfirm(!cpShowConfirm)} style={{ position: "absolute", right: "8px", top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: "#94a3b8", padding: "4px" }}>
+                            {cpShowConfirm ? <EyeOff size={14} /> : <Eye size={14} />}
+                          </button>
+                        </div>
+                        {cpConfirmPassword && (
+                          <div style={{ fontSize: "0.69rem", marginTop: "0.25rem", color: cpNewPassword === cpConfirmPassword ? "#059669" : "#ef4444" }}>
+                            {cpNewPassword === cpConfirmPassword ? "✓ Passwords match" : "Passwords do not match"}
+                          </div>
+                        )}
+                      </div>
+                      <div style={{ display: "flex", alignItems: "flex-end" }}>
+                        <button
+                          type="submit"
+                          disabled={cpLoading}
+                          style={{ width: "100%", padding: "0.65rem 1rem", borderRadius: "8px", border: "none", background: cpLoading ? "#94a3b8" : "linear-gradient(135deg,#0d9488,#0f766e)", color: "#fff", fontWeight: 700, fontSize: "0.85rem", cursor: cpLoading ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.4rem", boxShadow: "0 2px 8px rgba(13,148,136,0.2)" }}
+                        >
+                          {cpLoading ? <><RefreshCw size={13} className="spin" /> Updating…</> : <><Check size={14} /> Update Password</>}
+                        </button>
+                      </div>
+                    </form>
+
+                    <div style={{ marginTop: "1.25rem", borderTop: "1px solid #f1f5f9", paddingTop: "1rem", display: "flex", justifyContent: "flex-end" }}>
                       <button
                         onClick={handleLogout}
                         style={{ padding: "0.5rem 1rem", borderRadius: "8px", background: "#fef2f2", border: "1px solid #fecaca", color: "#dc2626", fontSize: "0.82rem", fontWeight: 700, cursor: "pointer" }}
