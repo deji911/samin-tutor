@@ -129,21 +129,7 @@ export type PublicTutor = {
   isNew?: boolean;
 };
 
-const initialInstructors: PublicTutor[] = [
-  {
-    id: 2120,
-    name: "Bamidele Thiophilus",
-    headline: "B.Sc. Specialist • Mathematics & Economics",
-    qualification: "B.Sc.",
-    subjects: ["Mathematics", "Economics"],
-    levels: ["Year 1-6", "11 Plus preparation", "GCSE preparation"],
-    years_of_experience: "5 years",
-    bio: "Passionate about imparting knowledge and guiding students to academic excellence.",
-    hourly_rate: 45,
-    profile_photo_url: "http://localhost:8000/storage/tutor_profiles/KDncaAnyA9Pp6cnN9a1Mbkl0fBGfRYLitbyz4ZYa.jpg",
-    is_photo_verified: true,
-  },
-];
+const initialInstructors: PublicTutor[] = [];
 
 const initialApplicants = [
   {
@@ -291,8 +277,8 @@ export default function Home() {
   });
 
   // Public verified tutors state (GET /api/public/tutors)
-  const [tutorsList, setTutorsList] = useState<PublicTutor[]>(initialInstructors);
-  const [isLoadingPublicTutors, setIsLoadingPublicTutors] = useState(false);
+  const [tutorsList, setTutorsList] = useState<PublicTutor[]>([]);
+  const [isLoadingPublicTutors, setIsLoadingPublicTutors] = useState(true);
   const [publicTutorSearch, setPublicTutorSearch] = useState("");
   const [publicTutorSubject, setPublicTutorSubject] = useState("");
   const [selectedPublicTutor, setSelectedPublicTutor] = useState<PublicTutor | null>(null);
@@ -373,7 +359,13 @@ export default function Home() {
       if (searchQuery.trim()) params.append("search", searchQuery.trim());
       if (subjectFilter.trim()) params.append("subject", subjectFilter.trim());
 
-      const res = await fetch(`${baseUrl}/api/public/tutors?${params.toString()}`);
+      const res = await fetch(`${baseUrl}/api/public/tutors?${params.toString()}`, {
+        cache: "no-store",
+        headers: {
+          "Cache-Control": "no-cache",
+          Accept: "application/json",
+        },
+      });
       if (res.ok) {
         const json = await res.json();
         const rawList = json.data || (Array.isArray(json) ? json : []);
@@ -393,9 +385,7 @@ export default function Home() {
             profile_photo_url: t.profile_photo_url || null,
             is_photo_verified: Boolean(t.is_photo_verified),
           }));
-        if (verifiedOnly.length > 0) {
-          setTutorsList(verifiedOnly);
-        }
+        setTutorsList(verifiedOnly);
       }
     } catch (err) {
       console.warn("Could not fetch public tutors from API:", err);
@@ -1432,6 +1422,33 @@ export default function Home() {
             <div style={{ textAlign: "center", padding: "3rem 0" }}>
               <div style={{ display: "inline-block", width: "32px", height: "32px", border: "3px solid var(--teal-light)", borderTopColor: "var(--teal)", borderRadius: "50%", animation: "spin 0.75s linear infinite", marginBottom: "0.75rem" }} />
               <p style={{ fontSize: "0.9rem", color: "var(--text-muted)" }}>Loading verified tutors…</p>
+            </div>
+          ) : tutorsList.length === 0 ? (
+            <div style={{ textAlign: "center", padding: "3rem 1.5rem", background: "#f9fafb", borderRadius: "12px", border: "1px dashed var(--border)", margin: "1rem 0" }}>
+              <div style={{ width: "48px", height: "48px", borderRadius: "50%", background: "rgba(10,147,150,0.1)", color: "var(--teal)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 0.75rem" }}>
+                <GraduationCap size={24} />
+              </div>
+              <h3 style={{ fontSize: "1.05rem", fontWeight: 700, color: "var(--dark)", marginBottom: "0.35rem" }}>
+                {publicTutorSearch || publicTutorSubject ? "No Tutors Found" : "No Verified Tutors Currently Available"}
+              </h3>
+              <p style={{ fontSize: "0.85rem", color: "var(--text-muted)", maxWidth: "440px", margin: "0 auto 1rem", lineHeight: 1.5 }}>
+                {publicTutorSearch || publicTutorSubject
+                  ? "Try adjusting your search query or subject filter to find available faculty members."
+                  : "Our verified faculty roster is updated in real time. Please check back shortly or book a consultation to match with a dedicated tutor."}
+              </p>
+              {(publicTutorSearch || publicTutorSubject) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPublicTutorSearch("");
+                    setPublicTutorSubject("");
+                    fetchPublicTutors("", "");
+                  }}
+                  style={{ padding: "0.45rem 1rem", borderRadius: "6px", border: "1px solid var(--teal)", background: "transparent", color: "var(--teal)", fontSize: "0.82rem", fontWeight: 600, cursor: "pointer" }}
+                >
+                  Clear Search Filters
+                </button>
+              )}
             </div>
           ) : (
             <div className="grid-4">
