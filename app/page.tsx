@@ -1744,7 +1744,7 @@ export default function Home() {
           <div
             className="modal-box"
             onClick={(e) => e.stopPropagation()}
-            style={{ maxWidth: "960px", width: "95vw", maxHeight: "92vh", overflowY: "auto" }}
+            style={{ maxWidth: "680px", width: "95vw", maxHeight: "92vh", overflowY: "auto" }}
           >
             {/* ── Header with tab switcher ── */}
             <div
@@ -1992,7 +1992,7 @@ export default function Home() {
 
             {/* ═══════════════════ STUDENT TAB ═══════════════════ */}
             {registerModalTab === "student" && (
-              <div className="modal-body">
+              <div className="modal-body" style={{ paddingBottom: "2rem" }}>
                 {bookingSuccess ? (
                   <div style={{ textAlign: "center", padding: "2.5rem 1rem" }}>
                     <div style={{ fontSize: "3rem", marginBottom: "0.5rem" }}>🎉</div>
@@ -2087,7 +2087,7 @@ export default function Home() {
 
             {/* ═══════════════════ TUTOR TAB ═══════════════════ */}
             {registerModalTab === "tutor" && (
-              <div className="modal-body">
+              <div className="modal-body" style={{ paddingBottom: "2rem" }}>
                 {applySuccess ? (
                   <div style={{ textAlign: "center", padding: "2rem 0" }}>
                     <div style={{ width: "4.5rem", height: "4.5rem", borderRadius: "50%", background: "#f0fdfa", border: "2px solid #20b2a4", color: "#20b2a4", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 1.2rem" }}>

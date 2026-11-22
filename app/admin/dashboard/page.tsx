@@ -450,7 +450,7 @@ export type AdminStudentActivitySummary = {
   attendance_rate_percentage?: number | null;
 };
 
-type NavTab = "overview" | "applicants" | "tutors" | "bookings" | "sessions" | "reports" | "changes" | "chat_oversight";
+type NavTab = "overview" | "applicants" | "tutors" | "bookings" | "sessions" | "reports" | "changes" | "chat_oversight" | "data_wipe";
 
 type AdminChatConversation = {
   id: number;
@@ -767,6 +767,19 @@ export default function AdminDashboard() {
   // Logout confirmation modal
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+
+  // Admin Operational Data Wipe State (POST /api/admin/data-wipe/request-code & DELETE /api/admin/data-wipe)
+  const [dataWipeStep, setDataWipeStep] = useState<"initial" | "code_sent" | "wiped">("initial");
+  const [isRequestingWipeCode, setIsRequestingWipeCode] = useState(false);
+  const [requestCodeMessage, setRequestCodeMessage] = useState<string | null>(null);
+  const [requestCodeEmail, setRequestCodeEmail] = useState<string | null>(null);
+  const [requestCodeExpiry, setRequestCodeExpiry] = useState<number | null>(null);
+  const [wipeCode, setWipeCode] = useState("");
+  const [wipeConfirmText, setWipeConfirmText] = useState("");
+  const [wipeStorage, setWipeStorage] = useState(true);
+  const [isWipingData, setIsWipingData] = useState(false);
+  const [wipeError, setWipeError] = useState<string | null>(null);
+  const [wipeSuccessSummary, setWipeSuccessSummary] = useState<any | null>(null);
 
   const getBackendApiUrl = () => {
     if (process.env.NEXT_PUBLIC_API_URL) {
@@ -3000,6 +3013,121 @@ export default function AdminDashboard() {
     );
   }
 
+  /* ── Admin Operational Data Wipe Handlers (POST /api/admin/data-wipe/request-code & DELETE /api/admin/data-wipe) ── */
+  const handleRequestWipeCode = async () => {
+    setWipeError(null);
+    setIsRequestingWipeCode(true);
+    try {
+      const token = typeof window !== "undefined" ? localStorage.getItem("samin_auth_token") : null;
+      const baseUrl = getBackendApiUrl();
+      const res = await fetch(`${baseUrl}/api/admin/data-wipe/request-code`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      });
+
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        if (res.status === 429) {
+          setWipeError(data?.message || "Too many requests — please wait before requesting another verification code.");
+        } else if (res.status === 403) {
+          setWipeError("Forbidden — only Administrators have permission to wipe operational data.");
+        } else {
+          setWipeError(data?.message || `Failed to request verification code (HTTP ${res.status}).`);
+        }
+        return;
+      }
+
+      setRequestCodeMessage(data?.message || "Verification code sent to your registered email address.");
+      setRequestCodeEmail(data?.email || null);
+      setRequestCodeExpiry(data?.expires_in_minutes || 15);
+      setDataWipeStep("code_sent");
+      showToast("Verification code sent to your admin email!");
+    } catch (err: any) {
+      console.error("Error requesting wipe code:", err);
+      setWipeError("Network error. Unable to connect to backend server.");
+    } finally {
+      setIsRequestingWipeCode(false);
+    }
+  };
+
+  const handleExecuteDataWipe = async () => {
+    setWipeError(null);
+    if (!wipeCode || wipeCode.trim().length !== 6) {
+      setWipeError("Please enter the 6-digit verification code sent to your email.");
+      return;
+    }
+    if (wipeConfirmText.trim() !== "WIPE_DATA") {
+      setWipeError('You must type "WIPE_DATA" in uppercase to confirm.');
+      return;
+    }
+
+    setIsWipingData(true);
+    try {
+      const token = typeof window !== "undefined" ? localStorage.getItem("samin_auth_token") : null;
+      const baseUrl = getBackendApiUrl();
+      const res = await fetch(`${baseUrl}/api/admin/data-wipe`, {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          confirm: "WIPE_DATA",
+          code: wipeCode.trim(),
+          wipe_storage: wipeStorage,
+        }),
+      });
+
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        if (res.status === 400) {
+          setWipeError(data?.message || 'Missing or invalid confirmation string. Must be "WIPE_DATA".');
+        } else if (res.status === 422) {
+          const firstErr = data?.errors ? (Object.values(data.errors).flat()[0] as string) : null;
+          setWipeError(firstErr || data?.message || "Invalid or expired verification code.");
+        } else if (res.status === 403) {
+          setWipeError("Forbidden — only Administrators have permission to wipe data.");
+        } else {
+          setWipeError(data?.message || `Failed to wipe data (HTTP ${res.status}).`);
+        }
+        return;
+      }
+
+      setWipeSuccessSummary(data);
+      setDataWipeStep("wiped");
+      showToast("Operational data wiped successfully! Admin accounts preserved.");
+
+      // Reset in-memory state & re-fetch
+      setApplicants([]);
+      setTutors([]);
+      setBookings([]);
+      fetchTutorsFromApi();
+      fetchStudentsFromApi();
+      fetchTutorStats();
+      fetchStudentStats();
+    } catch (err: any) {
+      console.error("Error executing data wipe:", err);
+      setWipeError("Network error. Unable to connect to backend server.");
+    } finally {
+      setIsWipingData(false);
+    }
+  };
+
+  const handleResetWipeState = () => {
+    setDataWipeStep("initial");
+    setWipeCode("");
+    setWipeConfirmText("");
+    setWipeError(null);
+    setWipeSuccessSummary(null);
+  };
+
   /* ── Dashboard ── */
   const navItems: { tab: NavTab; icon: React.ReactNode; label: string; badge?: number }[] = [
     { tab: "overview",    icon: <LayoutDashboard size={18} />, label: "Overview" },
@@ -3010,6 +3138,7 @@ export default function AdminDashboard() {
     { tab: "reports",     icon: <FileText size={18} />,        label: "Lesson Reports", badge: reportsTotal || undefined },
     { tab: "changes",        icon: <RotateCcw size={18} />,       label: "Change Requests", badge: changeRequestsCounts.pending || undefined },
     { tab: "chat_oversight", icon: <MessageSquare size={18} />,   label: "Chat Oversight" },
+    { tab: "data_wipe",      icon: <Trash2 size={18} />,          label: "Data Management" },
   ];
 
   return (
@@ -3035,6 +3164,10 @@ export default function AdminDashboard() {
         @keyframes spin{to{transform:rotate(360deg)}}
         @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.35}}
         .toast{position:fixed;bottom:1.5rem;right:1.5rem;background:#1e293b;color:#fff;padding:0.75rem 1.2rem;border-radius:10px;font-size:0.85rem;font-weight:600;z-index:9999;box-shadow:0 8px 24px rgba(0,0,0,0.2);animation:fadeUp 0.3s ease}
+        .admin-stats-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:0.75rem}
+        @media(max-width:1400px){.admin-stats-grid{grid-template-columns:repeat(3,1fr);gap:0.75rem}}
+        @media(max-width:768px){.admin-stats-grid{grid-template-columns:repeat(2,1fr);gap:0.6rem}}
+        @media(max-width:480px){.admin-stats-grid{grid-template-columns:1fr;gap:0.5rem}}
         @media(max-width:768px){
           .sidebar{position:fixed!important;left:0;top:0;z-index:200;height:100vh;transform:translateX(-100%);transition:transform 0.3s}
           .sidebar.open{transform:translateX(0)!important}
@@ -3177,6 +3310,7 @@ export default function AdminDashboard() {
                 {activeTab === "reports" && "Lesson & Progress Reports"}
                 {activeTab === "changes" && "Session Change Requests"}
                 {activeTab === "chat_oversight" && "Chat Oversight"}
+                {activeTab === "data_wipe" && "Operational Data Wipe"}
               </h1>
               <p style={{ fontSize: "0.73rem", color: "#94a3b8", margin: 0 }}>
                 {new Date().toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
@@ -3265,26 +3399,28 @@ export default function AdminDashboard() {
           {activeTab === "overview" && (
             <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
               {/* Stats */}
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(185px,1fr))", gap: "1rem" }}>
+              <div className="admin-stats-grid">
                 {[
-                  { icon: <GraduationCap size={22} color="#20b2a4" />, label: "Active Tutors", value: tutorStats.approved ?? tutors.length, bg: "#f0fdf9", border: "#99f6e4" },
-                  { icon: <UserPlus size={22} color="#d97706" />, label: "Pending Applicants", value: tutorStats.pending ?? applicants.length, bg: "#fffbeb", border: "#fde68a" },
-                  { icon: <Globe size={22} color="#2563eb" />, label: "Public Verified Tutors", value: tutorStats.public_verified ?? 0, bg: "#eff6ff", border: "#bfdbfe" },
-                  { icon: <Calendar size={22} color="#3b82f6" />, label: "Student Registrations", value: studentStats.total ?? bookings.length, bg: "#eff6ff", border: "#bfdbfe" },
-                  { icon: <AlertCircle size={22} color="#ef4444" />, label: "Pending Matches", value: studentStats.pending_match ?? newInquiries, bg: "#fffbeb", border: "#fde68a" },
-                  { icon: <TrendingUp size={22} color="#10b981" />, label: "Matched Students", value: studentStats.matched ?? 0, bg: "#ecfdf5", border: "#a7f3d0" },
+                  { icon: <GraduationCap size={18} color="#20b2a4" />, label: "Active Tutors", value: tutorStats.approved ?? tutors.length, bg: "#f0fdf9", border: "#99f6e4" },
+                  { icon: <UserPlus size={18} color="#d97706" />, label: "Pending Applicants", value: tutorStats.pending ?? applicants.length, bg: "#fffbeb", border: "#fde68a" },
+                  { icon: <Globe size={18} color="#2563eb" />, label: "Public Verified Tutors", value: tutorStats.public_verified ?? 0, bg: "#eff6ff", border: "#bfdbfe" },
+                  { icon: <Calendar size={18} color="#3b82f6" />, label: "Student Registrations", value: studentStats.total ?? bookings.length, bg: "#eff6ff", border: "#bfdbfe" },
+                  { icon: <AlertCircle size={18} color="#ef4444" />, label: "Pending Matches", value: studentStats.pending_match ?? newInquiries, bg: "#fffbeb", border: "#fde68a" },
+                  { icon: <TrendingUp size={18} color="#10b981" />, label: "Matched Students", value: studentStats.matched ?? 0, bg: "#ecfdf5", border: "#a7f3d0" },
                 ].map(({ icon, label, value, bg, border }) => (
-                  <div key={label} className="dash-card" style={{ padding: "1.15rem 1.3rem", display: "flex", alignItems: "center", gap: "1rem", border: `1.5px solid ${border}`, background: bg }}>
-                    <div style={{ width: "2.8rem", height: "2.8rem", borderRadius: "10px", background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, boxShadow: "0 2px 6px rgba(0,0,0,0.06)" }}>{icon}</div>
-                    <div>
-                      <div style={{ fontSize: "1.45rem", fontWeight: 800, color: "#0f172a", lineHeight: 1 }}>
+                  <div key={label} className="dash-card" style={{ padding: "0.75rem 0.85rem", display: "flex", alignItems: "center", gap: "0.65rem", border: `1.5px solid ${border}`, background: bg, minWidth: 0, borderRadius: "10px" }}>
+                    <div style={{ width: "2.35rem", height: "2.35rem", borderRadius: "8px", background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>{icon}</div>
+                    <div style={{ minWidth: 0, flex: 1, overflow: "hidden" }}>
+                      <div style={{ fontSize: "1.25rem", fontWeight: 800, color: "#0f172a", lineHeight: 1 }}>
                         {(isLoadingTutors || isLoadingStudents) ? (
-                          <span style={{ display: "inline-block", width: "16px", height: "16px", border: "2px solid #20b2a4", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />
+                          <span style={{ display: "inline-block", width: "14px", height: "14px", border: "2px solid #20b2a4", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />
                         ) : (
                           value
                         )}
                       </div>
-                      <div style={{ fontSize: "0.75rem", color: "#64748b", fontWeight: 500, marginTop: "0.1rem" }}>{label}</div>
+                      <div style={{ fontSize: "0.72rem", color: "#64748b", fontWeight: 600, marginTop: "0.2rem", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title={label}>
+                        {label}
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -5583,6 +5719,439 @@ export default function AdminDashboard() {
                         <span>{adminConvMessages.length} total messages</span>
                       </div>
                     </>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── Operational Data Wipe Tab (Admin Management) ── */}
+          {activeTab === "data_wipe" && (
+            <div className="page-enter" style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
+              {/* Header Banner */}
+              <div
+                style={{
+                  background: "#fff",
+                  borderRadius: "12px",
+                  border: "1px solid #e2e8f0",
+                  padding: "1.35rem 1.6rem",
+                  display: "flex",
+                  flexWrap: "wrap",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: "1rem",
+                  boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
+                }}
+              >
+                <div>
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>
+                    <div
+                      style={{
+                        width: "36px",
+                        height: "36px",
+                        borderRadius: "8px",
+                        background: "#fef2f2",
+                        border: "1px solid #fecaca",
+                        color: "#dc2626",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
+                      <Trash2 size={20} />
+                    </div>
+                    <div>
+                      <h2 style={{ fontSize: "1.15rem", fontWeight: 800, color: "#0f172a", margin: 0 }}>
+                        Admin Operational Data Wipe
+                      </h2>
+                      <p style={{ fontSize: "0.78rem", color: "#64748b", margin: "0.2rem 0 0 0" }}>
+                        Clean out entered operational business data with 2-step email code verification while permanently preserving all administrator accounts.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                  <span
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "0.35rem",
+                      background: "#ecfdf5",
+                      color: "#059669",
+                      border: "1px solid #a7f3d0",
+                      fontSize: "0.74rem",
+                      fontWeight: 700,
+                      padding: "0.3rem 0.65rem",
+                      borderRadius: "6px",
+                    }}
+                  >
+                    <ShieldCheck size={14} />
+                    <span>Admin Accounts Preserved</span>
+                  </span>
+                </div>
+              </div>
+
+              {/* Two Column Layout: Scope & Execution */}
+              <div style={{ display: "grid", gridTemplateColumns: "1.1fr 1.3fr", gap: "1.25rem", alignItems: "start" }}>
+                {/* Left Card: Scope & Protection Guarantee */}
+                <div
+                  style={{
+                    background: "#fff",
+                    borderRadius: "12px",
+                    border: "1px solid #e2e8f0",
+                    padding: "1.5rem",
+                    boxShadow: "0 1px 3px rgba(0,0,0,0.03)",
+                  }}
+                >
+                  <h3 style={{ fontSize: "0.95rem", fontWeight: 800, color: "#0f172a", margin: "0 0 1rem 0" }}>
+                    Data Wipe Scope & Policy
+                  </h3>
+
+                  {/* Guaranteed Safe */}
+                  <div
+                    style={{
+                      background: "#f0fdf4",
+                      border: "1px solid #bbf7d0",
+                      borderRadius: "8px",
+                      padding: "0.85rem 1rem",
+                      marginBottom: "1.25rem",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.45rem", color: "#166534", fontWeight: 700, fontSize: "0.82rem", marginBottom: "0.35rem" }}>
+                      <CheckCircle2 size={16} />
+                      <span>Permanently Preserved (Never Deleted)</span>
+                    </div>
+                    <ul style={{ margin: 0, paddingLeft: "1.25rem", fontSize: "0.78rem", color: "#15803d", lineHeight: 1.6 }}>
+                      <li><strong>Your Administrator account</strong> (credentials & login remain active)</li>
+                      <li>All other Admin and Super Admin accounts</li>
+                      <li>System configuration, core tables, and authentication secrets</li>
+                    </ul>
+                  </div>
+
+                  {/* What is Deleted */}
+                  <div
+                    style={{
+                      background: "#fff1f2",
+                      border: "1px solid #fecdd3",
+                      borderRadius: "8px",
+                      padding: "0.85rem 1rem",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.45rem", color: "#9f1239", fontWeight: 700, fontSize: "0.82rem", marginBottom: "0.35rem" }}>
+                      <AlertCircle size={16} />
+                      <span>Operational Data Deleted (Irreversible)</span>
+                    </div>
+                    <ul style={{ margin: 0, paddingLeft: "1.25rem", fontSize: "0.78rem", color: "#be123c", lineHeight: 1.6 }}>
+                      <li><strong>Tutors:</strong> User accounts, profiles, qualifications & subjects</li>
+                      <li><strong>Students:</strong> User accounts, registrations, profiles & parent links</li>
+                      <li><strong>Parents:</strong> Associated guardian user accounts</li>
+                      <li><strong>Timetables:</strong> Schedules, session history, attendances & change requests</li>
+                      <li><strong>Reports:</strong> Lesson progress reports & session feedback</li>
+                      <li><strong>Assignments:</strong> Homework tasks, submissions & grading</li>
+                      <li><strong>Chats:</strong> Conversations, messages, attachments & reactions</li>
+                      <li><strong>Notifications:</strong> In-app alerts and notifications</li>
+                      <li><strong>Uploaded Storage:</strong> Photos and documents (optional)</li>
+                    </ul>
+                  </div>
+                </div>
+
+                {/* Right Card: Multi-Step Verification & Trigger */}
+                <div
+                  style={{
+                    background: "#fff",
+                    borderRadius: "12px",
+                    border: "1px solid #e2e8f0",
+                    padding: "1.5rem",
+                    boxShadow: "0 1px 3px rgba(0,0,0,0.03)",
+                  }}
+                >
+                  {/* Step 1: Request Code */}
+                  {dataWipeStep === "initial" && (
+                    <div>
+                      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.75rem" }}>
+                        <span style={{ width: "24px", height: "24px", borderRadius: "50%", background: "#0d9488", color: "#fff", fontSize: "0.78rem", fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center" }}>1</span>
+                        <h3 style={{ fontSize: "0.95rem", fontWeight: 800, color: "#0f172a", margin: 0 }}>
+                          Request Verification Code
+                        </h3>
+                      </div>
+
+                      <p style={{ fontSize: "0.82rem", color: "#64748b", lineHeight: 1.5, margin: "0 0 1.25rem 0" }}>
+                        To protect against unauthorized or accidental deletions, a secure 6-digit one-time code will be dispatched to your registered administrator email address.
+                      </p>
+
+                      {wipeError && (
+                        <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: "8px", padding: "0.75rem", color: "#dc2626", fontSize: "0.8rem", marginBottom: "1rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                          <AlertCircle size={16} style={{ flexShrink: 0 }} />
+                          <span>{wipeError}</span>
+                        </div>
+                      )}
+
+                      <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "8px", padding: "0.85rem 1rem", marginBottom: "1.25rem", display: "flex", alignItems: "center", gap: "0.6rem" }}>
+                        <Mail size={18} color="#0d9488" />
+                        <div>
+                          <div style={{ fontSize: "0.72rem", color: "#64748b", fontWeight: 600 }}>Destination Admin Email</div>
+                          <div style={{ fontSize: "0.86rem", fontWeight: 700, color: "#0f172a" }}>
+                            {currentUser?.email || "Authenticated Admin Email"}
+                          </div>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={handleRequestWipeCode}
+                        disabled={isRequestingWipeCode}
+                        style={{
+                          width: "100%",
+                          padding: "0.75rem 1.25rem",
+                          borderRadius: "8px",
+                          border: "none",
+                          background: isRequestingWipeCode ? "#94a3b8" : "#0d9488",
+                          color: "#fff",
+                          fontWeight: 700,
+                          fontSize: "0.88rem",
+                          cursor: isRequestingWipeCode ? "not-allowed" : "pointer",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          gap: "0.45rem",
+                          transition: "background 0.15s ease",
+                        }}
+                      >
+                        <Key size={16} />
+                        <span>{isRequestingWipeCode ? "Requesting Code..." : "Send Verification Code to Admin Email"}</span>
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Step 2: Enter Code & Confirm */}
+                  {dataWipeStep === "code_sent" && (
+                    <div>
+                      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.75rem" }}>
+                        <span style={{ width: "24px", height: "24px", borderRadius: "50%", background: "#dc2626", color: "#fff", fontSize: "0.78rem", fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center" }}>2</span>
+                        <h3 style={{ fontSize: "0.95rem", fontWeight: 800, color: "#0f172a", margin: 0 }}>
+                          Confirm Operational Wipe
+                        </h3>
+                      </div>
+
+                      {/* Code sent notice */}
+                      <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "8px", padding: "0.75rem 0.9rem", marginBottom: "1.25rem", fontSize: "0.8rem", color: "#166534" }}>
+                        <div style={{ fontWeight: 700, marginBottom: "0.2rem" }}>
+                          ✓ Verification code sent!
+                        </div>
+                        <div>
+                          Check your email inbox ({requestCodeEmail || "registered address"}). The 6-digit code expires in {requestCodeExpiry || 15} minutes.
+                        </div>
+                      </div>
+
+                      {wipeError && (
+                        <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: "8px", padding: "0.75rem", color: "#dc2626", fontSize: "0.8rem", marginBottom: "1rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                          <AlertCircle size={16} style={{ flexShrink: 0 }} />
+                          <span>{wipeError}</span>
+                        </div>
+                      )}
+
+                      {/* 6-Digit Code */}
+                      <div style={{ marginBottom: "1rem" }}>
+                        <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 700, color: "#334155", marginBottom: "0.35rem" }}>
+                          6-Digit Verification Code *
+                        </label>
+                        <input
+                          type="text"
+                          maxLength={6}
+                          placeholder="e.g. 123456"
+                          value={wipeCode}
+                          onChange={(e) => setWipeCode(e.target.value.replace(/\D/g, ""))}
+                          style={{
+                            width: "100%",
+                            padding: "0.65rem 0.9rem",
+                            borderRadius: "7px",
+                            border: "1.5px solid #cbd5e1",
+                            fontSize: "1.1rem",
+                            fontWeight: 700,
+                            letterSpacing: "0.25em",
+                            textAlign: "center",
+                            outline: "none",
+                            boxSizing: "border-box",
+                            fontFamily: "monospace",
+                          }}
+                        />
+                      </div>
+
+                      {/* Confirmation String */}
+                      <div style={{ marginBottom: "1rem" }}>
+                        <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 700, color: "#334155", marginBottom: "0.35rem" }}>
+                          Type <span style={{ color: "#dc2626" }}>"WIPE_DATA"</span> to confirm *
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="WIPE_DATA"
+                          value={wipeConfirmText}
+                          onChange={(e) => setWipeConfirmText(e.target.value)}
+                          style={{
+                            width: "100%",
+                            padding: "0.6rem 0.85rem",
+                            borderRadius: "7px",
+                            border: "1.5px solid #cbd5e1",
+                            fontSize: "0.9rem",
+                            fontWeight: 700,
+                            outline: "none",
+                            boxSizing: "border-box",
+                          }}
+                        />
+                      </div>
+
+                      {/* Wipe Storage Checkbox */}
+                      <div style={{ marginBottom: "1.5rem" }}>
+                        <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.82rem", color: "#334155", cursor: "pointer", fontWeight: 600 }}>
+                          <input
+                            type="checkbox"
+                            checked={wipeStorage}
+                            onChange={(e) => setWipeStorage(e.target.checked)}
+                            style={{ width: "16px", height: "16px", accentColor: "#dc2626" }}
+                          />
+                          <span>Also delete uploaded avatars, files, and stored attachments</span>
+                        </label>
+                      </div>
+
+                      {/* Action buttons */}
+                      <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
+                        <button
+                          type="button"
+                          onClick={handleExecuteDataWipe}
+                          disabled={isWipingData || wipeCode.length !== 6 || wipeConfirmText.trim() !== "WIPE_DATA"}
+                          style={{
+                            width: "100%",
+                            padding: "0.75rem 1.25rem",
+                            borderRadius: "8px",
+                            border: "none",
+                            background: isWipingData || wipeCode.length !== 6 || wipeConfirmText.trim() !== "WIPE_DATA" ? "#94a3b8" : "#dc2626",
+                            color: "#fff",
+                            fontWeight: 700,
+                            fontSize: "0.88rem",
+                            cursor: isWipingData || wipeCode.length !== 6 || wipeConfirmText.trim() !== "WIPE_DATA" ? "not-allowed" : "pointer",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            gap: "0.45rem",
+                          }}
+                        >
+                          <Trash2 size={16} />
+                          <span>{isWipingData ? "Wiping Operational Data..." : "Permanently Wipe Operational Data"}</span>
+                        </button>
+
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "0.25rem" }}>
+                          <button
+                            type="button"
+                            onClick={handleRequestWipeCode}
+                            disabled={isRequestingWipeCode}
+                            style={{ background: "none", border: "none", color: "#0d9488", fontSize: "0.78rem", fontWeight: 600, cursor: "pointer", padding: 0 }}
+                          >
+                            Resend code
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleResetWipeState}
+                            style={{ background: "none", border: "none", color: "#64748b", fontSize: "0.78rem", fontWeight: 600, cursor: "pointer", padding: 0 }}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Step 3: Success Summary */}
+                  {dataWipeStep === "wiped" && (
+                    <div style={{ textAlign: "center", padding: "1rem 0" }}>
+                      <div
+                        style={{
+                          width: "52px",
+                          height: "52px",
+                          borderRadius: "50%",
+                          background: "#ecfdf5",
+                          border: "2px solid #a7f3d0",
+                          color: "#059669",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          margin: "0 auto 1rem",
+                        }}
+                      >
+                        <CheckCircle2 size={32} />
+                      </div>
+
+                      <h3 style={{ fontSize: "1.15rem", fontWeight: 800, color: "#0f172a", margin: "0 0 0.35rem" }}>
+                        Data Wiped Successfully!
+                      </h3>
+                      <p style={{ fontSize: "0.82rem", color: "#64748b", margin: "0 0 1.25rem 0" }}>
+                        All operational data has been deleted from the database. Administrator accounts were safely preserved.
+                      </p>
+
+                      {/* Breakdown Stats */}
+                      {wipeSuccessSummary?.summary && (
+                        <div
+                          style={{
+                            background: "#f8fafc",
+                            border: "1px solid #e2e8f0",
+                            borderRadius: "10px",
+                            padding: "1rem",
+                            marginBottom: "1.25rem",
+                            textAlign: "left",
+                          }}
+                        >
+                          <div style={{ fontSize: "0.74rem", fontWeight: 800, color: "#475569", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "0.75rem" }}>
+                            Deletion Summary
+                          </div>
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.6rem", fontSize: "0.8rem" }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", borderBottom: "1px dashed #e2e8f0", paddingBottom: "0.25rem" }}>
+                              <span style={{ color: "#64748b" }}>Tutors Deleted:</span>
+                              <strong>{wipeSuccessSummary.summary.tutors_deleted ?? 0}</strong>
+                            </div>
+                            <div style={{ display: "flex", justifyContent: "space-between", borderBottom: "1px dashed #e2e8f0", paddingBottom: "0.25rem" }}>
+                              <span style={{ color: "#64748b" }}>Students Deleted:</span>
+                              <strong>{wipeSuccessSummary.summary.students_deleted ?? 0}</strong>
+                            </div>
+                            <div style={{ display: "flex", justifyContent: "space-between", borderBottom: "1px dashed #e2e8f0", paddingBottom: "0.25rem" }}>
+                              <span style={{ color: "#64748b" }}>Parents Deleted:</span>
+                              <strong>{wipeSuccessSummary.summary.parents_deleted ?? 0}</strong>
+                            </div>
+                            <div style={{ display: "flex", justifyContent: "space-between", borderBottom: "1px dashed #e2e8f0", paddingBottom: "0.25rem" }}>
+                              <span style={{ color: "#64748b" }}>Sessions Deleted:</span>
+                              <strong>{wipeSuccessSummary.summary.sessions_deleted ?? 0}</strong>
+                            </div>
+                            <div style={{ display: "flex", justifyContent: "space-between", borderBottom: "1px dashed #e2e8f0", paddingBottom: "0.25rem" }}>
+                              <span style={{ color: "#64748b" }}>Assignments:</span>
+                              <strong>{wipeSuccessSummary.summary.assignments_deleted ?? 0}</strong>
+                            </div>
+                            <div style={{ display: "flex", justifyContent: "space-between", borderBottom: "1px dashed #e2e8f0", paddingBottom: "0.25rem" }}>
+                              <span style={{ color: "#64748b" }}>Messages:</span>
+                              <strong>{wipeSuccessSummary.summary.messages_deleted ?? 0}</strong>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          handleResetWipeState();
+                          setActiveTab("overview");
+                        }}
+                        style={{
+                          padding: "0.65rem 1.5rem",
+                          borderRadius: "8px",
+                          border: "none",
+                          background: "#0d9488",
+                          color: "#fff",
+                          fontWeight: 700,
+                          fontSize: "0.85rem",
+                          cursor: "pointer",
+                        }}
+                      >
+                        Return to Overview Dashboard
+                      </button>
+                    </div>
                   )}
                 </div>
               </div>
